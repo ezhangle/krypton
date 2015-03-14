@@ -7,26 +7,24 @@ SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c src/hmac.c \
 					src/tls_recv.c src/tls_sv.c src/x509.c src/x509_verify.c
 HEADERS = src/ktypes.h src/crypto.h src/tlsproto.h src/tls.h src/ber.h \
 					src/pem.h src/x509.h src/bigint_impl.h src/bigint.h
+TEST_SOURCES = test/sv-test.c test/cl-test.c
 CFLAGS := -O2 -W -Wall -I. $(CLFAGS_EXTRA)
 
-.PHONY: all clean test test-ossl test-krypton
+.PHONY: all clean
 
-all: sv-krypton
+all: tests
 
 krypton.c: $(HEADERS) $(SOURCES) Makefile
 	cat openssl/ssl.h $(HEADERS) $(SOURCES) | sed -E "/#include .*(ssl.h|`echo $(HEADERS) | sed -e 's,src/,,g' -e 's, ,|,g'`)/d" > $@
 
-sv-ossl: test/sv-test.c
-	$(CC) $(CFLAGS) -o $@ $< -lssl -lcrypto
+tests: $(TEST_SOURCES) krypton.c
+	$(CC) $(CFLAGS) -o sv-test-openssl test/sv-test.c -lssl -lcrypto
+	$(CC) $(CFLAGS) -o cl-test-openssl test/cl-test.c -lssl -lcrypto
+	$(CC) $(CFLAGS) -o sv-test-krypton test/sv-test.c krypton.c
+	$(CC) $(CFLAGS) -o cl-test-krypton test/cl-test.c krypton.c
 
-cl-ossl: test/cl-test.c
-	$(CC) $(CFLAGS) -o $@ $< -lssl -lcrypto
-
-sv-krypton: test/sv-test.c krypton.c
-	$(CC) $(CFLAGS) -o $@ $< krypton.c
-
-cl-krypton: test/cl-test.c krypton.c
-	$(CC) $(CFLAGS) -o $@ $< krypton.c
+format:
+	clang-format -i -style '{BasedOnStyle: Google, AllowShortFunctionsOnASingleLine: None}' $$(grep -lrsi 'copyright.*cesanta' src test)
 
 clean:
-	rm -rf *-ossl *-krypton *.o *.gc* *.dSYM *.exe *.obj *.pdb
+	rm -rf *-openssl *-krypton *.o *.gc* *.dSYM *.exe *.obj *.pdb
