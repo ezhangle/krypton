@@ -5,6 +5,24 @@ Krypton is a drop-in replacement for OpenSSL.
 Krypton is a source and binary compatible OpenSSL subset. Main design goal goal
 was to minimize static and runtime memory footprint.
 
+## Usage
+
+Just copy a single file, `krypton.c`, to your source repo.
+
+If you're already using OpenSSL library and wish to switch to Krypton,
+just add `krypton.c` file to the build, and remove `-lssl -lcrypto` build
+options:
+
+     OpenSSL:  cc app.c -lssl -lcrypto
+     Krypton:  cc app.c krypton.c
+
+If you're not using OpenSSL and OpenSSL headers are not installed on you're
+workstation, just copy over `openssl` directory to your build as well.
+
+## Supported API
+
+See `openssl/ssl.h` header file for the list of supported functions.
+
 ## Certificate Verification
 
 1. As a simplification, full candidate certificate chains back to a self-signed
