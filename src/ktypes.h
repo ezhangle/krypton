@@ -8,13 +8,46 @@
 
 #define _FILE_OFFSET_BITS 64
 #define _GNU_SOURCE
+#undef WIN32_LEAN_AND_MEAN      // Let windows.h always include winsock2.h
+
+#ifndef NOT_AMALGAMATED
+#define NS_INTERNAL static
+#else
+#define NS_INTERNAL
+#endif
 
 #include <sys/types.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <errno.h>
+
+#ifdef _MSC_VER
+#include <winsock2.h>
+#include <windows.h>
+#define __unused
+typedef __int64 int64_t;
+typedef unsigned __int64 uint64_t;
+typedef int int32_t;
+typedef unsigned int uint32_t;
+typedef unsigned short uint16_t;
+typedef unsigned char uint8_t;
+typedef unsigned long uintptr_t;
+typedef long ssize_t;
+#define __func__ ""
+#define __packed
+#ifndef EWOULDBLOCK
+#define EWOULDBLOCK WSAEWOULDBLOCK
+#endif
+#pragma comment(lib, "ws2_32.lib")    // Linking with winsock library
+#else
+#include <sys/socket.h>
+#include <stdint.h>
+#define __packed __attribute__((packed))
+#endif
 
 #ifndef BYTE_ORDER
 #define LITTLE_ENDIAN 0x41424344UL
@@ -51,17 +84,13 @@
 #endif
 
 /* #define KRYPTON_DEBUG 1 */
-#if KRYPTON_DEBUG
+#if defined(KRYPTON_DEBUG) && !defined(_MSC_VER)
 #define dprintf(...) printf(__VA_ARGS__)
 #else
-#define dprintf(x...)
+#define dprintf(x)
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
-
-#ifndef NS_INTERNAL
-#define NS_INTERNAL static
-#endif
 
 struct ro_vec {
   const uint8_t *ptr;
@@ -153,5 +182,16 @@ NS_INTERNAL void ssl_err(struct ssl_st *ssl, int err);
 NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
 NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
+
+#include "crypto.h"
+#include "pem.h"
+#include "ber.h"
+#include "bigint_impl.h"
+#include "bigint.h"
+#include "../openssl/ssl.h"
+#include "tlsproto.h"
+#include "tls.h"
+#include "ber.h"
+#include "x509.h"
 
 #endif /* _KTYPES_H */

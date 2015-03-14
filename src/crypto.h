@@ -6,8 +6,6 @@
 #ifndef _CRYPTO_H
 #define _CRYPTO_H
 
-#include <stdint.h>
-
 typedef struct _BI_CTX BI_CTX;
 typedef struct _bigint bigint; /**< An alias for _bigint */
 typedef struct _RSA_CTX RSA_CTX;
@@ -38,7 +36,7 @@ NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
 /* SHA1 */
 #define SHA1_SIZE 20
 typedef struct {
-  unsigned long long size;
+  uint64_t size;
   unsigned int H[5];
   unsigned int W[16];
 } SHA_CTX;

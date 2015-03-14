@@ -3,11 +3,7 @@
  * All rights reserved
  */
 
-#include "../openssl/ssl.h"
 #include "ktypes.h"
-#include "crypto.h"
-#include "tls.h"
-#include "tlsproto.h"
 
 NS_INTERNAL tls_sec_t tls_new_security(void) {
   struct tls_security *sec;
@@ -49,8 +45,10 @@ NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
 NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
-  uint8_t check[vrfy_len];
+  uint8_t check[128];  /* TODO(lsm): fix this, and assert below */
   SHA256_CTX tmp_hash;
+
+  assert(sizeof(check) > vrfy_len);
 
   /* don't interfere with running hash */
   memcpy(&tmp_hash, &sec->handshakes_hash, sizeof(tmp_hash));
@@ -59,7 +57,7 @@ NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
   SHA256_Final(buf + 15, &tmp_hash);
 
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf), check,
-      sizeof(check));
+      vrfy_len);
 
   return !memcmp(check, vrfy, sizeof(check));
 }
@@ -67,8 +65,10 @@ NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
 NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
-  uint8_t check[vrfy_len];
+  uint8_t check[128];  /* TODO(lsm): fix this, and assert below */
   SHA256_CTX tmp_hash;
+
+  assert(sizeof(check) > vrfy_len);
 
   /* don't interfere with running hash */
   memcpy(&tmp_hash, &sec->handshakes_hash, sizeof(tmp_hash));
@@ -77,9 +77,9 @@ NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
   SHA256_Final(buf + 15, &tmp_hash);
 
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf), check,
-      sizeof(check));
+      vrfy_len);
 
-  return !memcmp(check, vrfy, sizeof(check));
+  return !memcmp(check, vrfy, vrfy_len);
 }
 
 NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,

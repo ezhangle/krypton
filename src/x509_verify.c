@@ -3,21 +3,19 @@
  * All rights reserved
  */
 
-#include "../openssl/ssl.h"
 #include "ktypes.h"
-#include "crypto.h"
-#include "x509.h"
-#include "ber.h"
 
 static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
-                          uint8_t digest[static MAX_DIGEST_SIZE],
+                          uint8_t *digest,
                           size_t *dlen) {
-  uint8_t buf[sig->len];
+  uint8_t buf[128];
   struct gber_tag tag;
   const uint8_t *ptr, *end;
   int ret;
 
-  ret = RSA_decrypt(rsa, sig->ptr, buf, sizeof(buf), 0);
+  assert(sig->len < sizeof(buf)); /* TODO(lsm): fix this */
+
+  ret = RSA_decrypt(rsa, sig->ptr, buf, sig->len, 0);
   if (ret <= 0) {
     dprintf("RSA signature check failed\n");
     return 0;

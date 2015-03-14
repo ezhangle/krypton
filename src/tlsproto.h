@@ -14,34 +14,35 @@
 
 #define NUM_COMPRESSORS 1
 
+#pragma pack(1)
 struct tls_random {
   uint32_t time;
   uint8_t opaque[28];
-} __attribute__((packed));
+} __packed;
 
 struct tls_premaster_secret {
   uint16_t version;
   uint8_t opaque[46];
-} __attribute__((packed));
+} __packed;
 
 struct tls_hmac_hdr {
   uint64_t seq;
   uint8_t type;
   uint16_t vers;
   uint16_t len;
-} __attribute__((packed));
+} __packed;
 
 struct tls_hdr {
   uint8_t type;
   uint16_t vers;
   uint16_t len;
-} __attribute__((packed));
+} __packed;
 
 struct tls_EXT_reneg {
   uint16_t type;
   uint16_t len;
   uint8_t ri_len;
-} __attribute__((packed));
+} __packed;
 
 struct tls_svr_hello {
   uint8_t type;
@@ -55,7 +56,7 @@ struct tls_svr_hello {
   uint16_t ext_len;
 
   struct tls_EXT_reneg ext_reneg;
-} __attribute__((packed));
+} __packed;
 
 struct tls_cl_hello {
   uint8_t type;
@@ -71,7 +72,7 @@ struct tls_cl_hello {
   uint16_t ext_len;
 
   struct tls_EXT_reneg ext_reneg;
-} __attribute__((packed));
+} __packed;
 
 struct tls_cert {
   uint8_t type;
@@ -79,35 +80,36 @@ struct tls_cert {
   uint16_t len;
   uint8_t certs_len_hi;
   uint16_t certs_len;
-} __attribute__((packed));
+} __packed;
 
 struct tls_cert_hdr {
   /* for chains */
   uint8_t cert_len_hi;
   uint16_t cert_len;
-} __attribute__((packed));
+} __packed;
 
 struct tls_svr_hello_done {
   uint8_t type;
   uint8_t len_hi;
   uint16_t len;
-} __attribute__((packed));
+} __packed;
 
 struct tls_change_cipher_spec {
   uint8_t one;
-} __attribute__((packed));
+} __packed;
 
 struct tls_finished {
   uint8_t type;
   uint8_t len_hi;
   uint16_t len;
   uint8_t vrfy[12];
-} __attribute__((packed));
+} __packed;
 
 struct tls_alert {
   uint8_t level;
   uint8_t desc;
-} __attribute__((packed));
+} __packed;
+#pragma pack()
 
 #define TLS_CHANGE_CIPHER_SPEC 20
 #define TLS_ALERT 21

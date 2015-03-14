@@ -6,9 +6,6 @@
 #ifndef _TLS_H
 #define _TLS_H
 
-#include "crypto.h"
-#include "tlsproto.h"
-
 typedef struct tls_security {
   /*
    * client_write_MAC_key

@@ -3,12 +3,7 @@
  * All rights reserved
  */
 
-#include "../openssl/ssl.h"
 #include "ktypes.h"
-#include "tls.h"
-#include "tlsproto.h"
-#include "ber.h"
-#include "x509.h"
 
 static int check_cipher(uint16_t suite) {
   switch (suite) {
@@ -360,8 +355,11 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
                            const uint8_t *buf, const uint8_t *end) {
   uint32_t len;
   uint16_t ilen;
-  uint8_t out[RSA_block_size(ssl->ctx->rsa_privkey)];
+  size_t out_size = RSA_block_size(ssl->ctx->rsa_privkey);
+  uint8_t out[300];
   int ret;
+
+  assert(out_size < sizeof(out)); /* TODO(lsm): fix this */
 
   if (buf + sizeof(len) > end)
     goto err;
@@ -377,8 +375,8 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   if (buf + ilen > end)
     goto err;
 
-  memset(out, 0, sizeof(out));
-  ret = RSA_decrypt(ssl->ctx->rsa_privkey, buf, out, sizeof(out), 1);
+  memset(out, 0, out_size);
+  ret = RSA_decrypt(ssl->ctx->rsa_privkey, buf, out, out_size, 1);
 #if 0
   printf(" + Got %u byte RSA premaster secret\n", ilen);
   hex_dump(buf, ilen, 0);

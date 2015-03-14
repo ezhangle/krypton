@@ -3,13 +3,7 @@
  * All rights reserved
  */
 
-#include "../openssl/ssl.h"
 #include "ktypes.h"
-#include "tls.h"
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <errno.h>
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -73,7 +67,7 @@ again:
   ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
 #endif
   if (ret < 0) {
-    if (errno == EAGAIN) {
+    if (errno == EWOULDBLOCK) {
       goto shuffle;
     }
     dprintf("send: %s\n", strerror(errno));

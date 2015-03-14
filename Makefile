@@ -23,6 +23,9 @@ tests: $(TEST_SOURCES) krypton.c
 	$(CC) $(CFLAGS) -o sv-test-krypton test/sv-test.c krypton.c
 	$(CC) $(CFLAGS) -o cl-test-krypton test/cl-test.c krypton.c
 
+vc6: krypton.c
+	wine cl -c $(SOURCES) -Isrc -DNOT_AMALGAMATED
+
 format:
 	clang-format -i \
 	-style '{BasedOnStyle: Google, AllowShortIfStatementsOnASingleLine: false, AllowShortLoopsOnASingleLine: false, AllowShortFunctionsOnASingleLine: None}' \

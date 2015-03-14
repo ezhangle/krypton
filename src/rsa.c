@@ -34,13 +34,8 @@
  */
 
 #define CONFIG_SSL_CERT_VERIFICATION 1
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include <stdlib.h>
-#include "crypto.h"
-#include "bigint_impl.h"
-#include "bigint.h"
+
+#include "ktypes.h"
 
 struct _RSA_CTX
 {

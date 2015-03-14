@@ -3,14 +3,9 @@
  * All rights reserved
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
+#include "ktypes.h"
 
-#include "pem.h"
-
-static int decode(uint8_t in, uint8_t out[static 1]) {
+static int decode(uint8_t in, uint8_t *out) {
   if (in >= 'A' && in <= 'Z') {
     *out = in - 'A';
     return 1;
@@ -34,7 +29,7 @@ static int decode(uint8_t in, uint8_t out[static 1]) {
   return 0;
 }
 
-static int decode_block1(const uint8_t buf[static 2], uint8_t out[static 1]) {
+static int decode_block1(const uint8_t *buf, uint8_t *out) {
   uint8_t tmp[2];
   unsigned int i;
 
@@ -48,7 +43,7 @@ static int decode_block1(const uint8_t buf[static 2], uint8_t out[static 1]) {
 
   return 1;
 }
-static int decode_block2(const uint8_t buf[static 3], uint8_t out[static 2]) {
+static int decode_block2(const uint8_t *buf, uint8_t *out) {
   uint8_t tmp[3];
   unsigned int i;
 
@@ -64,7 +59,7 @@ static int decode_block2(const uint8_t buf[static 3], uint8_t out[static 2]) {
 
   return 1;
 }
-static int decode_block3(const uint8_t buf[static 4], uint8_t out[static 3]) {
+static int decode_block3(const uint8_t *buf, uint8_t *out) {
   uint8_t tmp[4];
   unsigned int i;
 

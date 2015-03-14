@@ -6,8 +6,6 @@
 #ifndef _KRYPTON_H
 #define _KRYPTON_H
 
-#include <stdint.h>
-
 typedef struct x509_store_ctx_st X509_STORE_CTX;
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;
@@ -75,13 +73,46 @@ void SSL_CTX_free(SSL_CTX *);
 
 #define _FILE_OFFSET_BITS 64
 #define _GNU_SOURCE
+#undef WIN32_LEAN_AND_MEAN      // Let windows.h always include winsock2.h
+
+#ifndef NOT_AMALGAMATED
+#define NS_INTERNAL static
+#else
+#define NS_INTERNAL
+#endif
 
 #include <sys/types.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <errno.h>
+
+#ifdef _MSC_VER
+#include <winsock2.h>
+#include <windows.h>
+#define __unused
+typedef __int64 int64_t;
+typedef unsigned __int64 uint64_t;
+typedef int int32_t;
+typedef unsigned int uint32_t;
+typedef unsigned short uint16_t;
+typedef unsigned char uint8_t;
+typedef unsigned long uintptr_t;
+typedef long ssize_t;
+#define __func__ ""
+#define __packed
+#ifndef EWOULDBLOCK
+#define EWOULDBLOCK WSAEWOULDBLOCK
+#endif
+#pragma comment(lib, "ws2_32.lib")    // Linking with winsock library
+#else
+#include <sys/socket.h>
+#include <stdint.h>
+#define __packed __attribute__((packed))
+#endif
 
 #ifndef BYTE_ORDER
 #define LITTLE_ENDIAN 0x41424344UL
@@ -118,17 +149,13 @@ void SSL_CTX_free(SSL_CTX *);
 #endif
 
 /* #define KRYPTON_DEBUG 1 */
-#if KRYPTON_DEBUG
+#if defined(KRYPTON_DEBUG) && !defined(_MSC_VER)
 #define dprintf(...) printf(__VA_ARGS__)
 #else
-#define dprintf(x...)
+#define dprintf(x)
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
-
-#ifndef NS_INTERNAL
-#define NS_INTERNAL static
-#endif
 
 struct ro_vec {
   const uint8_t *ptr;
@@ -221,6 +248,7 @@ NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
 NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
 
+
 #endif /* _KTYPES_H */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
@@ -230,10 +258,8 @@ NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #ifndef _CRYPTO_H
 #define _CRYPTO_H
 
-#include <stdint.h>
-
 typedef struct _BI_CTX BI_CTX;
-typedef struct _bigint bigint;  /**< An alias for _bigint */
+typedef struct _bigint bigint; /**< An alias for _bigint */
 typedef struct _RSA_CTX RSA_CTX;
 
 NS_INTERNAL int get_random(uint8_t *out, size_t len);
@@ -243,17 +269,16 @@ NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
 typedef struct _RSA_CTX RSA_CTX;
 typedef struct _SHA256_CTX SHA256_CTX;
 
-NS_INTERNAL void prf(const uint8_t *sec, int sec_len,
-	 const uint8_t *seed, int seed_len,
-	 uint8_t *out, int olen);
+NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
+                     int seed_len, uint8_t *out, int olen);
 
 /* SHA256 */
-#define SHA256_SIZE			32
-#define SHA256_BLOCK_LENGTH		64
+#define SHA256_SIZE 32
+#define SHA256_BLOCK_LENGTH 64
 struct _SHA256_CTX {
-	uint32_t	state[8];
-	uint64_t	bitcount;
-	uint8_t	buffer[SHA256_BLOCK_LENGTH];
+  uint32_t state[8];
+  uint64_t bitcount;
+  uint8_t buffer[SHA256_BLOCK_LENGTH];
 };
 
 NS_INTERNAL void SHA256_Init(SHA256_CTX *c);
@@ -261,11 +286,11 @@ NS_INTERNAL void SHA256_Update(SHA256_CTX *, const uint8_t *input, size_t len);
 NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
 
 /* SHA1 */
-#define SHA1_SIZE	20
+#define SHA1_SIZE 20
 typedef struct {
-	unsigned long long size;
-	unsigned int H[5];
-	unsigned int W[16];
+  uint64_t size;
+  unsigned int H[5];
+  unsigned int W[16];
 } SHA_CTX;
 
 NS_INTERNAL void SHA1_Init(SHA_CTX *ctx);
@@ -273,11 +298,11 @@ NS_INTERNAL void SHA1_Update(SHA_CTX *ctx, const void *in, unsigned long len);
 NS_INTERNAL void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx);
 
 /* MD5 */
-#define MD5_SIZE	16
+#define MD5_SIZE 16
 typedef struct {
-	uint32_t state[4];        /* state (ABCD) */
-	uint32_t count[2];        /* number of bits, modulo 2^64 (lsb first) */
-	uint8_t buffer[64];       /* input buffer */
+  uint32_t state[4];  /* state (ABCD) */
+  uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
+  uint8_t buffer[64]; /* input buffer */
 } MD5_CTX;
 
 NS_INTERNAL void MD5_Init(MD5_CTX *);
@@ -287,52 +312,49 @@ NS_INTERNAL void MD5_Final(uint8_t *digest, MD5_CTX *);
 #define MAX_DIGEST_SIZE SHA256_SIZE
 
 /* RC4 */
-#define RC4_KEY_SIZE	16
-typedef struct  {
-	uint8_t x, y;
-	uint8_t m[256];
+#define RC4_KEY_SIZE 16
+typedef struct {
+  uint8_t x, y;
+  uint8_t m[256];
 } RC4_CTX;
 
 NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
-NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg,
-				uint8_t *data, int length);
+NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
+                           int length);
 
 /* HMAC */
 NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
-		int key_len, uint8_t *digest);
+                             int key_len, uint8_t *digest);
 NS_INTERNAL void hmac_md5(const uint8_t *key, size_t key_len,
-		const uint8_t *msg, size_t msg_len,
-		const uint8_t *msg2, size_t msg2_len,
-		uint8_t *digest);
+                          const uint8_t *msg, size_t msg_len,
+                          const uint8_t *msg2, size_t msg2_len,
+                          uint8_t *digest);
 
 /* RSA */
-NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx,
-        const uint8_t *modulus, int mod_len,
-        const uint8_t *pub_exp, int pub_len,
-        const uint8_t *priv_exp, int priv_len,
-        const uint8_t *p, int p_len,
-        const uint8_t *q, int q_len,
-        const uint8_t *dP, int dP_len,
-        const uint8_t *dQ, int dQ_len,
-        const uint8_t *qInv, int qInv_len
-        );
-NS_INTERNAL void RSA_pub_key_new(RSA_CTX **rsa_ctx,
-        const uint8_t *modulus, int mod_len,
-        const uint8_t *pub_exp, int pub_len);
+NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
+                                  int mod_len, const uint8_t *pub_exp,
+                                  int pub_len, const uint8_t *priv_exp,
+                                  int priv_len, const uint8_t *p, int p_len,
+                                  const uint8_t *q, int q_len,
+                                  const uint8_t *dP, int dP_len,
+                                  const uint8_t *dQ, int dQ_len,
+                                  const uint8_t *qInv, int qInv_len);
+NS_INTERNAL void RSA_pub_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
+                                 int mod_len, const uint8_t *pub_exp,
+                                 int pub_len);
 NS_INTERNAL void RSA_free(RSA_CTX *ctx);
-NS_INTERNAL int RSA_decrypt(const RSA_CTX *ctx,
-	const uint8_t *in_data, uint8_t *out_data,
-        int out_len, int is_decryption);
+NS_INTERNAL int RSA_decrypt(const RSA_CTX *ctx, const uint8_t *in_data,
+                            uint8_t *out_data, int out_len, int is_decryption);
 NS_INTERNAL bigint *RSA_private(const RSA_CTX *c, bigint *bi_msg);
-NS_INTERNAL int RSA_encrypt(const RSA_CTX *ctx,
-	const uint8_t *in_data, uint16_t in_len,
-        uint8_t *out_data, int is_signing);
-NS_INTERNAL bigint *RSA_public(const RSA_CTX * c, bigint *bi_msg);
+NS_INTERNAL int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data,
+                            uint16_t in_len, uint8_t *out_data, int is_signing);
+NS_INTERNAL bigint *RSA_public(const RSA_CTX *c, bigint *bi_msg);
 NS_INTERNAL int RSA_block_size(RSA_CTX *ctx);
-#if defined(CONFIG_SSL_CERT_VERIFICATION) || defined(CONFIG_SSL_GENERATE_X509_CERT)
-NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx,
-	const uint8_t *sig, int sig_len,
-        bigint *modulus, bigint *pub_exp);
+#if defined(CONFIG_SSL_CERT_VERIFICATION) || \
+    defined(CONFIG_SSL_GENERATE_X509_CERT)
+NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx, const uint8_t *sig,
+                                    int sig_len, bigint *modulus,
+                                    bigint *pub_exp);
 NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #endif
 
@@ -356,163 +378,165 @@ NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #define _TLSPROTO_H
 
 /* set to number of null ciphers */
-#define ALLOW_NULL_CIPHERS	0
+#define ALLOW_NULL_CIPHERS 0
 
 /* just count non-NULL ciphers */
-#define NUM_CIPHER_SUITES	1
+#define NUM_CIPHER_SUITES 1
 
-#define NUM_COMPRESSORS		1
+#define NUM_COMPRESSORS 1
 
+#pragma pack(1)
 struct tls_random {
-	uint32_t time;
-	uint8_t opaque[28];
-}__attribute__((packed));
+  uint32_t time;
+  uint8_t opaque[28];
+} __packed;
 
 struct tls_premaster_secret {
-	uint16_t version;
-	uint8_t opaque[46];
-}__attribute__((packed));
+  uint16_t version;
+  uint8_t opaque[46];
+} __packed;
 
 struct tls_hmac_hdr {
-	uint64_t seq;
-	uint8_t type;
-	uint16_t vers;
-	uint16_t len;
-}__attribute__((packed));
+  uint64_t seq;
+  uint8_t type;
+  uint16_t vers;
+  uint16_t len;
+} __packed;
 
 struct tls_hdr {
-	uint8_t type;
-	uint16_t vers;
-	uint16_t len;
-}__attribute__((packed));
+  uint8_t type;
+  uint16_t vers;
+  uint16_t len;
+} __packed;
 
 struct tls_EXT_reneg {
-	uint16_t type;
-	uint16_t len;
-	uint8_t ri_len;
-}__attribute__((packed));
+  uint16_t type;
+  uint16_t len;
+  uint8_t ri_len;
+} __packed;
 
 struct tls_svr_hello {
-	uint8_t type;
-	uint8_t len_hi;
-	uint16_t len;
-	uint16_t version;
-	struct tls_random random;
-	uint8_t sess_id_len;
-	uint16_t cipher_suite;
-	uint8_t compressor;
-	uint16_t ext_len;
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint16_t version;
+  struct tls_random random;
+  uint8_t sess_id_len;
+  uint16_t cipher_suite;
+  uint8_t compressor;
+  uint16_t ext_len;
 
-	struct tls_EXT_reneg ext_reneg;
-}__attribute__((packed));
+  struct tls_EXT_reneg ext_reneg;
+} __packed;
 
 struct tls_cl_hello {
-	uint8_t type;
-	uint8_t len_hi;
-	uint16_t len;
-	uint16_t version;
-	struct tls_random random;
-	uint8_t sess_id_len;
-	uint16_t cipher_suites_len;
-	uint16_t cipher_suite[NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1];
-	uint8_t num_compressors;
-	uint8_t compressor[NUM_COMPRESSORS];
-	uint16_t ext_len;
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint16_t version;
+  struct tls_random random;
+  uint8_t sess_id_len;
+  uint16_t cipher_suites_len;
+  uint16_t cipher_suite[NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1];
+  uint8_t num_compressors;
+  uint8_t compressor[NUM_COMPRESSORS];
+  uint16_t ext_len;
 
-	struct tls_EXT_reneg ext_reneg;
-}__attribute__((packed));
+  struct tls_EXT_reneg ext_reneg;
+} __packed;
 
 struct tls_cert {
-	uint8_t type;
-	uint8_t len_hi;
-	uint16_t len;
-	uint8_t certs_len_hi;
-	uint16_t certs_len;
-}__attribute__((packed));
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint8_t certs_len_hi;
+  uint16_t certs_len;
+} __packed;
 
 struct tls_cert_hdr {
-	/* for chains */
-	uint8_t cert_len_hi;
-	uint16_t cert_len;
-}__attribute__((packed));
+  /* for chains */
+  uint8_t cert_len_hi;
+  uint16_t cert_len;
+} __packed;
 
 struct tls_svr_hello_done {
-	uint8_t type;
-	uint8_t len_hi;
-	uint16_t len;
-}__attribute__((packed));
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+} __packed;
 
 struct tls_change_cipher_spec {
-	uint8_t one;
-}__attribute__((packed));
+  uint8_t one;
+} __packed;
 
 struct tls_finished {
-	uint8_t type;
-	uint8_t len_hi;
-	uint16_t len;
-	uint8_t vrfy[12];
-}__attribute__((packed));
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint8_t vrfy[12];
+} __packed;
 
 struct tls_alert {
-	uint8_t level;
-	uint8_t desc;
-}__attribute__((packed));
+  uint8_t level;
+  uint8_t desc;
+} __packed;
+#pragma pack()
 
-#define TLS_CHANGE_CIPHER_SPEC		20
-#define TLS_ALERT			21
-#define TLS_HANDSHAKE			22
-#define TLS_APP_DATA			23
-#define TLS_HEARTBEAT			24
+#define TLS_CHANGE_CIPHER_SPEC 20
+#define TLS_ALERT 21
+#define TLS_HANDSHAKE 22
+#define TLS_APP_DATA 23
+#define TLS_HEARTBEAT 24
 
-#define HANDSHAKE_HELLO_REQ		0
-#define HANDSHAKE_CLIENT_HELLO		1
-#define HANDSHAKE_SERVER_HELLO		2
-#define HANDSHAKE_NEW_SESSION_TICKET	4
-#define HANDSHAKE_CERTIFICATE		11
-#define HANDSHAKE_SERVER_KEY_EXCH	12
-#define HANDSHAKE_CERTIFICATE_REQ	13
-#define HANDSHAKE_SERVER_HELLO_DONE	14
-#define HANDSHAKE_CERTIFICATE_VRFY	15
-#define HANDSHAKE_CLIENT_KEY_EXCH	16
-#define HANDSHAKE_FINISHED		20
+#define HANDSHAKE_HELLO_REQ 0
+#define HANDSHAKE_CLIENT_HELLO 1
+#define HANDSHAKE_SERVER_HELLO 2
+#define HANDSHAKE_NEW_SESSION_TICKET 4
+#define HANDSHAKE_CERTIFICATE 11
+#define HANDSHAKE_SERVER_KEY_EXCH 12
+#define HANDSHAKE_CERTIFICATE_REQ 13
+#define HANDSHAKE_SERVER_HELLO_DONE 14
+#define HANDSHAKE_CERTIFICATE_VRFY 15
+#define HANDSHAKE_CLIENT_KEY_EXCH 16
+#define HANDSHAKE_FINISHED 20
 
-#define EXT_SERVER_NAME			0x0000
-#define EXT_SESSION_TICKET		0x0023
-#define EXT_HEARTBEAT			0x000f
-#define EXT_SIG_ALGOS			0x000d
-#define EXT_NPN				0x3374
-#define EXT_RENEG_INFO			0xff01
+#define EXT_SERVER_NAME 0x0000
+#define EXT_SESSION_TICKET 0x0023
+#define EXT_HEARTBEAT 0x000f
+#define EXT_SIG_ALGOS 0x000d
+#define EXT_NPN 0x3374
+#define EXT_RENEG_INFO 0xff01
 
-#define ALERT_LEVEL_WARNING		1
-#define ALERT_LEVEL_FATAL		2
+#define ALERT_LEVEL_WARNING 1
+#define ALERT_LEVEL_FATAL 2
 
-#define ALERT_CLOSE_NOTIFY		0
-#define ALERT_UNEXPECTED_MESSAGE	10
-#define ALERT_BAD_RECORD_MAC		20
-#define ALERT_RECORD_OVERFLOW		22
-#define ALERT_HANDSHAKE_FAILURE		40
-#define ALERT_BAD_CERT			42
-#define ALERT_UNSUPPORTED_CERT		43
-#define ALERT_CERT_REVOKED		44
-#define ALERT_CERT_EXPIRED		43
-#define ALERT_CERT_UNKNOWN		46
-#define ALERT_ILLEGAL_PARAMETER		47
-#define ALERT_UNKNOWN_CA		48
-#define ALERT_ACCESS_DENIED		49
-#define ALERT_DECODE_ERROR		50
-#define ALERT_DECRYPT_ERROR		51
-#define ALERT_PROTOCOL_VERSION		70
-#define ALERT_INSUFFICIENT_SECURITY	71
-#define ALERT_INTERNAL_ERROR		80
-#define ALERT_USER_CANCELLED		90
-#define ALERT_NO_RENEGOTIATION		100
-#define ALERT_UNSUPPORTED_EXT		110
+#define ALERT_CLOSE_NOTIFY 0
+#define ALERT_UNEXPECTED_MESSAGE 10
+#define ALERT_BAD_RECORD_MAC 20
+#define ALERT_RECORD_OVERFLOW 22
+#define ALERT_HANDSHAKE_FAILURE 40
+#define ALERT_BAD_CERT 42
+#define ALERT_UNSUPPORTED_CERT 43
+#define ALERT_CERT_REVOKED 44
+#define ALERT_CERT_EXPIRED 43
+#define ALERT_CERT_UNKNOWN 46
+#define ALERT_ILLEGAL_PARAMETER 47
+#define ALERT_UNKNOWN_CA 48
+#define ALERT_ACCESS_DENIED 49
+#define ALERT_DECODE_ERROR 50
+#define ALERT_DECRYPT_ERROR 51
+#define ALERT_PROTOCOL_VERSION 70
+#define ALERT_INSUFFICIENT_SECURITY 71
+#define ALERT_INTERNAL_ERROR 80
+#define ALERT_USER_CANCELLED 90
+#define ALERT_NO_RENEGOTIATION 100
+#define ALERT_UNSUPPORTED_EXT 110
 
-#define CIPHER_TLS_NULL_MD5		0x0001
-#define CIPHER_TLS_RC4_MD5		0x0004
-#define CIPHER_EMPTY_RENEG_EXT		0x00ff
+#define CIPHER_TLS_NULL_MD5 0x0001
+#define CIPHER_TLS_RC4_MD5 0x0004
+#define CIPHER_EMPTY_RENEG_EXT 0x00ff
 
-#define COMPRESSOR_NULL			0x00
+#define COMPRESSOR_NULL 0x00
 
 #endif /* _TLSPROTO_H */
 /*
@@ -523,38 +547,37 @@ struct tls_alert {
 #ifndef _TLS_H
 #define _TLS_H
 
-
 typedef struct tls_security {
-	/*
-	 * client_write_MAC_key
-	 * server_write_MAC_key
-	 * client_write_key
-	 * server_write_key
-	*/
-	uint8_t keys[MD5_SIZE * 2 + RC4_KEY_SIZE * 2];
+  /*
+   * client_write_MAC_key
+   * server_write_MAC_key
+   * client_write_key
+   * server_write_key
+  */
+  uint8_t keys[MD5_SIZE * 2 + RC4_KEY_SIZE * 2];
 
-	uint64_t client_write_seq;
-	uint64_t server_write_seq;
+  uint64_t client_write_seq;
+  uint64_t server_write_seq;
 
-	uint16_t cipher_suite;
-	uint16_t peer_vers;
-	uint8_t compressor;
+  uint16_t cipher_suite;
+  uint16_t peer_vers;
+  uint8_t compressor;
 
-	uint8_t cipher_negotiated:1;
-	uint8_t compressor_negotiated:1;
-	uint8_t bitpad:6;
+  uint8_t cipher_negotiated : 1;
+  uint8_t compressor_negotiated : 1;
+  uint8_t bitpad : 6;
 
-	RSA_CTX *svr_key;
+  RSA_CTX *svr_key;
 
-	uint8_t master_secret[48];
-	struct tls_random cl_rnd;
-	struct tls_random sv_rnd;
+  uint8_t master_secret[48];
+  struct tls_random cl_rnd;
+  struct tls_random sv_rnd;
 
-	RC4_CTX server_write_ctx;
-	RC4_CTX client_write_ctx;
+  RC4_CTX server_write_ctx;
+  RC4_CTX client_write_ctx;
 
-	SHA256_CTX handshakes_hash;
-}*tls_sec_t;
+  SHA256_CTX handshakes_hash;
+} * tls_sec_t;
 
 NS_INTERNAL tls_sec_t tls_new_security(void);
 NS_INTERNAL void tls_free_security(tls_sec_t sec);
@@ -571,22 +594,22 @@ NS_INTERNAL int tls_close_notify(SSL *ssl);
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);
 NS_INTERNAL int tls_cl_hello(SSL *ssl);
-NS_INTERNAL int tls_check_server_finished(tls_sec_t sec,
-				const uint8_t *vrfy, size_t vrfy_len);
-NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec,
-					uint8_t *vrfy, size_t vrfy_len);
+NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
+                                          size_t vrfy_len);
+NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
+                                              size_t vrfy_len);
 
 /* server */
 NS_INTERNAL int tls_sv_hello(SSL *ssl);
 NS_INTERNAL int tls_sv_finish(SSL *ssl);
 
-NS_INTERNAL int tls_check_client_finished(tls_sec_t sec,
-				const uint8_t *vrfy, size_t vrfy_len);
-NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec,
-				uint8_t *vrfy, size_t vrfy_len);
+NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
+                                          size_t vrfy_len);
+NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
+                                              size_t vrfy_len);
 
 NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
-				struct tls_premaster_secret *pre);
+                                           struct tls_premaster_secret *pre);
 
 #endif /* _TLS_H */
 /*
@@ -639,26 +662,26 @@ typedef struct pem_st PEM;
 typedef struct der_st DER;
 
 struct pem_st {
-	unsigned int tot_len;
-	uint16_t num_obj;
-	uint16_t max_obj;
-	DER *obj;
+  unsigned int tot_len;
+  uint16_t num_obj;
+  uint16_t max_obj;
+  DER *obj;
 };
 
 struct der_st {
-	uint8_t *der;
-	uint32_t der_len;
-	uint8_t der_type;
+  uint8_t *der;
+  uint32_t der_len;
+  uint8_t der_type;
 };
 
-#define PEM_SIG_CERT	(1<<0)
-#define PEM_SIG_KEY	(1<<1)
+#define PEM_SIG_CERT (1 << 0)
+#define PEM_SIG_KEY (1 << 1)
 NS_INTERNAL struct pem_st *pem_load(const char *fn, int type_mask);
 NS_INTERNAL void pem_free(struct pem_st *p);
 
 /* not crypto, but required for reading keys and certs */
-NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len,
-			uint8_t *out, size_t *obytes);
+NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len, uint8_t *out,
+                           size_t *obytes);
 
 #endif /* _PEM_H */
 /*
@@ -669,30 +692,30 @@ NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len,
 #ifndef _X509_H
 #define _X509_H
 
-#define X509_ENC_ALG_UNKNOWN	0
-#define X509_ENC_ALG_RSA	1
+#define X509_ENC_ALG_UNKNOWN 0
+#define X509_ENC_ALG_RSA 1
 
-#define X509_HASH_MD5		0x04
-#define X509_HASH_SHA1		0x05
-#define X509_HASH_SHA256	0x0b
+#define X509_HASH_MD5 0x04
+#define X509_HASH_SHA1 0x05
+#define X509_HASH_SHA256 0x0b
 
 typedef struct X509_st X509;
 struct X509_st {
-	X509 *next;
-	RSA_CTX *pub_key;
+  X509 *next;
+  RSA_CTX *pub_key;
 
-	struct vec issuer;
-	struct vec subject;
-	struct vec sig;
+  struct vec issuer;
+  struct vec subject;
+  struct vec sig;
 
-	uint8_t enc_alg;
-	uint8_t is_self_signed;
+  uint8_t enc_alg;
+  uint8_t is_self_signed;
 
-	/* both must be RSA + something */
-	uint8_t hash_alg;
-	uint8_t issuer_hash_alg;
+  /* both must be RSA + something */
+  uint8_t hash_alg;
+  uint8_t issuer_hash_alg;
 
-	uint8_t digest[MAX_DIGEST_SIZE];
+  uint8_t digest[MAX_DIGEST_SIZE];
 };
 
 NS_INTERNAL X509 *X509_new(const uint8_t *ptr, size_t len);
@@ -705,19 +728,19 @@ NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
 #endif /* _X509_H */
 /*
  * Copyright (c) 2007, Cameron Rich
- * 
+ *
  * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without 
+ *
+ * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * Redistributions of source code must retain the above copyright notice, 
+ * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software 
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -745,8 +768,8 @@ NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
 
 /* Architecture specific functions for big ints */
 #if defined(CONFIG_INTEGER_8BIT)
-#define COMP_RADIX          256U       /**< Max component + 1 */
-#define COMP_MAX            0xFFFFU/**< (Max dbl comp -1) */
+#define COMP_RADIX          256        /**< Max component + 1 */
+#define COMP_MAX            0xFFFF /**< (Max dbl comp -1) */
 #define COMP_BIT_SIZE       8   /**< Number of bits in a component. */
 #define COMP_BYTE_SIZE      1   /**< Number of bytes in a component. */
 #define COMP_NUM_NIBBLES    2   /**< Used For diagnostics only. */
@@ -754,7 +777,7 @@ typedef uint8_t comp;	        /**< A single precision component. */
 typedef uint16_t long_comp;     /**< A double precision component. */
 typedef int16_t slong_comp;     /**< A signed double precision component. */
 #elif defined(CONFIG_INTEGER_16BIT)
-#define COMP_RADIX          65536U       /**< Max component + 1 */
+#define COMP_RADIX          65536       /**< Max component + 1 */
 #define COMP_MAX            0xFFFFFFFFU/**< (Max dbl comp -1) */
 #define COMP_BIT_SIZE       16  /**< Number of bits in a component. */
 #define COMP_BYTE_SIZE      2   /**< Number of bytes in a component. */
@@ -763,8 +786,8 @@ typedef uint16_t comp;	        /**< A single precision component. */
 typedef uint32_t long_comp;     /**< A double precision component. */
 typedef int32_t slong_comp;     /**< A signed double precision component. */
 #else /* regular 32 bit */
-#ifdef WIN32
-#define COMP_RADIX          4294967296i64         
+#ifdef _WIN32
+#define COMP_RADIX          4294967296i64
 #define COMP_MAX            0xFFFFFFFFFFFFFFFFui64
 #else
 #define COMP_RADIX          4294967296ULL         /**< Max component + 1 */
@@ -794,7 +817,7 @@ struct _bigint
 typedef struct _bigint bigint;  /**< An alias for _bigint */
 
 /**
- * Maintains the state of the cache, and a number of variables used in 
+ * Maintains the state of the cache, and a number of variables used in
  * reduction.
  */
 struct _BI_CTX /**< A big integer "session" context. */
@@ -824,7 +847,7 @@ struct _BI_CTX /**< A big integer "session" context. */
 };
 typedef struct _BI_CTX BI_CTX;
 
-#ifndef WIN32
+#ifndef _WIN32
 #define max(a,b) ((a)>(b)?(a):(b))  /**< Find the maximum of 2 numbers. */
 #define min(a,b) ((a)<(b)?(a):(b))  /**< Find the minimum of 2 numbers. */
 #endif
@@ -936,148 +959,137 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
  * All rights reserved
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
 
-
-static int decode(uint8_t in, uint8_t out[static 1])
-{
-	if ( in >= 'A' && in <= 'Z' ) {
-		*out = in - 'A';
-		return 1;
-	}
-	if ( in >= 'a' && in <= 'z' ) {
-		*out = (in - 'a') + 26;
-		return 1;
-	}
-	if ( in >= '0' && in <= '9' ) {
-		*out = (in - '0') + 52;
-		return 1;
-	}
-	if ( in == '+' ) {
-		*out = 62;
-		return 1;
-	}
-	if ( in == '/' ) {
-		*out = 63;
-		return 1;
-	}
-	return 0;
+static int decode(uint8_t in, uint8_t *out) {
+  if (in >= 'A' && in <= 'Z') {
+    *out = in - 'A';
+    return 1;
+  }
+  if (in >= 'a' && in <= 'z') {
+    *out = (in - 'a') + 26;
+    return 1;
+  }
+  if (in >= '0' && in <= '9') {
+    *out = (in - '0') + 52;
+    return 1;
+  }
+  if (in == '+') {
+    *out = 62;
+    return 1;
+  }
+  if (in == '/') {
+    *out = 63;
+    return 1;
+  }
+  return 0;
 }
 
-static int decode_block1(const uint8_t buf[static 2], uint8_t out[static 1])
-{
-	uint8_t tmp[2];
-	unsigned int i;
+static int decode_block1(const uint8_t *buf, uint8_t *out) {
+  uint8_t tmp[2];
+  unsigned int i;
 
-	for(i = 0; i < sizeof(tmp); i++) {
-		if ( !decode(buf[i], &tmp[i]) )
-			return 0;
-	}
+  for (i = 0; i < sizeof(tmp); i++) {
+    if (!decode(buf[i], &tmp[i]))
+      return 0;
+  }
 
-	/* [ 6 from 0 : 2 from 1 ] */
-	out[0] = (tmp[0] << 2) | (tmp[1] >> 4);
+  /* [ 6 from 0 : 2 from 1 ] */
+  out[0] = (tmp[0] << 2) | (tmp[1] >> 4);
 
-	return 1;
+  return 1;
 }
-static int decode_block2(const uint8_t buf[static 3], uint8_t out[static 2])
-{
-	uint8_t tmp[3];
-	unsigned int i;
+static int decode_block2(const uint8_t *buf, uint8_t *out) {
+  uint8_t tmp[3];
+  unsigned int i;
 
-	for(i = 0; i < sizeof(tmp); i++) {
-		if ( !decode(buf[i], &tmp[i]) )
-			return 0;
-	}
+  for (i = 0; i < sizeof(tmp); i++) {
+    if (!decode(buf[i], &tmp[i]))
+      return 0;
+  }
 
-	/* [ 6 from 0 : 2 from 1 ] */
-	/* [ 4 from 1 : 4 from 2 ] */
-	out[0] = (tmp[0] << 2) | (tmp[1] >> 4);
-	out[1] = ((tmp[1] & 0x0f) << 4) | (tmp[2] >> 2);
+  /* [ 6 from 0 : 2 from 1 ] */
+  /* [ 4 from 1 : 4 from 2 ] */
+  out[0] = (tmp[0] << 2) | (tmp[1] >> 4);
+  out[1] = ((tmp[1] & 0x0f) << 4) | (tmp[2] >> 2);
 
-	return 1;
+  return 1;
 }
-static int decode_block3(const uint8_t buf[static 4], uint8_t out[static 3])
-{
-	uint8_t tmp[4];
-	unsigned int i;
+static int decode_block3(const uint8_t *buf, uint8_t *out) {
+  uint8_t tmp[4];
+  unsigned int i;
 
-	for(i = 0; i < sizeof(tmp); i++) {
-		if ( !decode(buf[i], &tmp[i]) )
-			return 0;
-	}
+  for (i = 0; i < sizeof(tmp); i++) {
+    if (!decode(buf[i], &tmp[i]))
+      return 0;
+  }
 
-	/* [ 6 from 0 : 2 from 1 ] */
-	/* [ 4 from 1 : 4 from 2 ] */
-	/* [ 2 from 2 : 6 from 3 ] */
-	out[0] = (tmp[0] << 2) | (tmp[1] >> 4);
-	out[1] = ((tmp[1] & 0x0f) << 4) | (tmp[2] >> 2);
-	out[2] = ((tmp[2] & 0x3) << 6) | tmp[3];
-	return 1;
+  /* [ 6 from 0 : 2 from 1 ] */
+  /* [ 4 from 1 : 4 from 2 ] */
+  /* [ 2 from 2 : 6 from 3 ] */
+  out[0] = (tmp[0] << 2) | (tmp[1] >> 4);
+  out[1] = ((tmp[1] & 0x0f) << 4) | (tmp[2] >> 2);
+  out[2] = ((tmp[2] & 0x3) << 6) | tmp[3];
+  return 1;
 }
 
-NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len,
-			uint8_t *out, size_t *obytes)
-{
-	*obytes = 0;
-	while(len) {
-		uint8_t olen;
-		int ret;
+NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len, uint8_t *out,
+                           size_t *obytes) {
+  *obytes = 0;
+  while (len) {
+    uint8_t olen;
+    int ret;
 
-		if ( len < 4 ) {
-			return 0;
-		}
+    if (len < 4) {
+      return 0;
+    }
 
-		if ( buf[0] == '=' ) {
-			ret = 1;
-			olen = 0;
-		}else if ( buf[2] == '=' ) {
-			ret = decode_block1(buf, out);
-			olen = 1;
-		}else if ( buf[3] == '=' ) {
-			ret = decode_block2(buf, out);
-			olen = 2;
-		}else{
-			ret = decode_block3(buf, out);
-			olen = 3;
-		}
+    if (buf[0] == '=') {
+      ret = 1;
+      olen = 0;
+    } else if (buf[2] == '=') {
+      ret = decode_block1(buf, out);
+      olen = 1;
+    } else if (buf[3] == '=') {
+      ret = decode_block2(buf, out);
+      olen = 2;
+    } else {
+      ret = decode_block3(buf, out);
+      olen = 3;
+    }
 
-		if ( !ret )
-			return 0;
+    if (!ret)
+      return 0;
 
-		*obytes += olen;
-		out += olen;
-		buf += 4;
-		len -= 4;
-	}
+    *obytes += olen;
+    out += olen;
+    buf += 4;
+    len -= 4;
+  }
 
-	return 1;
+  return 1;
 }
 
 #if CODE_FU
 #include <ctype.h>
 
-int main(int argc, char **argv)
-{
-	char buf[300];
-	uint8_t out[400];
-	size_t olen;
+int main(int argc, char **argv) {
+  char buf[300];
+  uint8_t out[400];
+  size_t olen;
 
-	while(fgets(buf, sizeof(buf), stdin)) {
-		char *lf;
+  while (fgets(buf, sizeof(buf), stdin)) {
+    char *lf;
 
-		lf = strchr(buf, '\n');
-		*lf = '\0';
+    lf = strchr(buf, '\n');
+    *lf = '\0';
 
-		if ( !b64_decode((uint8_t *)buf, lf - buf, out, &olen) ) {
-			printf("error\n");
-		}else{
-			hex_dump(out, olen, 0);
-		}
-	}
-	return 0;
+    if (!b64_decode((uint8_t *)buf, lf - buf, out, &olen)) {
+      printf("error\n");
+    } else {
+      hex_dump(out, olen, 0);
+    }
+  }
+  return 0;
 }
 #endif
 /*
@@ -1085,7 +1097,6 @@ int main(int argc, char **argv)
  * Released under the MIT license.
  */
 
-#include <ctype.h>
 
 #if KRYPTON_DEBUG
 static void hex_dumpf_r(FILE *f, const uint8_t *tmp, size_t len, size_t llen,
@@ -1158,8 +1169,9 @@ NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
 }
 
 NS_INTERNAL const char *const ber_id_octet_clsname(uint8_t id) {
-  static const char *const clsname[] = {"universal",        "application",
-                                        "context-specific", "private", };
+  static const char *const clsname[] = {
+      "universal", "application", "context-specific", "private",
+  };
   return clsname[(id & 0xc0) >> 6];
 }
 #endif
@@ -1167,7 +1179,7 @@ NS_INTERNAL const char *const ber_id_octet_clsname(uint8_t id) {
 #if 0
 NS_INTERNAL unsigned int ber_id_octet_class(uint8_t id)
 {
-	return (id & 0xc0) >> 6;
+  return (id & 0xc0) >> 6;
 }
 #endif
 
@@ -1227,9 +1239,9 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
 
 #if 0
 NS_INTERNAL const uint8_t *ber_tag_info(struct gber_tag *tag,
-				const uint8_t *ptr, size_t len)
+        const uint8_t *ptr, size_t len)
 {
-	return do_decode_tag(tag, ptr, len);
+  return do_decode_tag(tag, ptr, len);
 }
 #endif
 
@@ -1242,19 +1254,19 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
 }
 /*
  * Copyright (c) 2007, Cameron Rich
- * 
+ *
  * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without 
+ *
+ * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * Redistributions of source code must retain the above copyright notice, 
+ * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software 
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -1275,8 +1287,8 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
  * @brief The bigint implementation as used by the axTLS project.
  *
  * The bigint library is for RSA encryption/decryption as well as signing.
- * This code tries to minimise use of malloc/free by maintaining a small 
- * cache. A bigint context may maintain state by being made "permanent". 
+ * This code tries to minimise use of malloc/free by maintaining a small
+ * cache. A bigint context may maintain state by being made "permanent".
  * It be be later released with a bi_depermanent() and bi_free() call.
  *
  * It supports the following reduction techniques:
@@ -1302,17 +1314,11 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
  * @{
  */
 
-#include <stdlib.h>
-#include <limits.h>
-#include <string.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <time.h>
 
-#define V1      v->comps[v->size-1]                 /**< v1 for division */
-#define V2      v->comps[v->size-2]                 /**< v2 for division */
-#define U(j)    tmp_u->comps[tmp_u->size-j-1]       /**< uj for division */
-#define Q(j)    quotient->comps[quotient->size-j-1] /**< qj for division */
+#define V1 v->comps[v->size - 1]                     /**< v1 for division */
+#define V2 v->comps[v->size - 2]                     /**< v2 for division */
+#define U(j) tmp_u->comps[tmp_u->size - j - 1]       /**< uj for division */
+#define Q(j) quotient->comps[quotient->size - j - 1] /**< qj for division */
 
 static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bi, comp i);
 static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom);
@@ -1328,85 +1334,75 @@ static bigint *comp_left_shift(bigint *biR, int num_shifts);
 #ifdef CONFIG_BIGINT_CHECK_ON
 static void check(const bigint *bi);
 #else
-#define check(A)                /**< disappears in normal production mode */
+#define check(A) /**< disappears in normal production mode */
 #endif
-
 
 /**
  * @brief Start a new bigint context.
  * @return A bigint context.
  */
-NS_INTERNAL BI_CTX *bi_initialize(void)
-{
-    /* calloc() sets everything to zero */
-    BI_CTX *ctx = (BI_CTX *)calloc(1, sizeof(BI_CTX));
-   
-    /* the radix */
-    ctx->bi_radix = alloc(ctx, 2); 
-    ctx->bi_radix->comps[0] = 0;
-    ctx->bi_radix->comps[1] = 1;
-    bi_permanent(ctx->bi_radix);
-    return ctx;
+NS_INTERNAL BI_CTX *bi_initialize(void) {
+  /* calloc() sets everything to zero */
+  BI_CTX *ctx = (BI_CTX *)calloc(1, sizeof(BI_CTX));
+
+  /* the radix */
+  ctx->bi_radix = alloc(ctx, 2);
+  ctx->bi_radix->comps[0] = 0;
+  ctx->bi_radix->comps[1] = 1;
+  bi_permanent(ctx->bi_radix);
+  return ctx;
 }
 
 /**
  * @brief Close the bigint context and free any resources.
  *
- * Free up any used memory - a check is done if all objects were not 
+ * Free up any used memory - a check is done if all objects were not
  * properly freed.
  * @param ctx [in]   The bigint session context.
  */
-NS_INTERNAL void bi_terminate(BI_CTX *ctx)
-{
-    bi_depermanent(ctx->bi_radix); 
-    bi_free(ctx, ctx->bi_radix);
+NS_INTERNAL void bi_terminate(BI_CTX *ctx) {
+  bi_depermanent(ctx->bi_radix);
+  bi_free(ctx, ctx->bi_radix);
 
-    if (ctx->active_count != 0)
-    {
+  if (ctx->active_count != 0) {
 #ifdef CONFIG_SSL_FULL_MODE
-        printf("bi_terminate: there were %d un-freed bigints\n",
-                       ctx->active_count);
+    printf("bi_terminate: there were %d un-freed bigints\n", ctx->active_count);
 #endif
-        abort();
-    }
+    abort();
+  }
 
-    bi_clear_cache(ctx);
-    free(ctx);
+  bi_clear_cache(ctx);
+  free(ctx);
 }
 
 /**
  *@brief Clear the memory cache.
  */
-NS_INTERNAL void bi_clear_cache(BI_CTX *ctx)
-{
-    bigint *p, *pn;
+NS_INTERNAL void bi_clear_cache(BI_CTX *ctx) {
+  bigint *p, *pn;
 
-    if (ctx->free_list == NULL)
-        return;
-    
-    for (p = ctx->free_list; p != NULL; p = pn)
-    {
-        pn = p->next;
-        free(p->comps);
-        free(p);
-    }
+  if (ctx->free_list == NULL) return;
 
-    ctx->free_count = 0;
-    ctx->free_list = NULL;
+  for (p = ctx->free_list; p != NULL; p = pn) {
+    pn = p->next;
+    free(p->comps);
+    free(p);
+  }
+
+  ctx->free_count = 0;
+  ctx->free_list = NULL;
 }
 
 /**
- * @brief Increment the number of references to this object. 
+ * @brief Increment the number of references to this object.
  * It does not do a full copy.
  * @param bi [in]   The bigint to copy.
  * @return A reference to the same bigint.
  */
-NS_INTERNAL bigint *bi_copy(bigint *bi)
-{
-    check(bi);
-    if (bi->refs != PERMANENT)
-        bi->refs++;
-    return bi;
+NS_INTERNAL bigint *bi_copy(bigint *bi) {
+  check(bi);
+  if (bi->refs != PERMANENT) bi->refs++;
+  return bi;
 }
 
 /**
@@ -1415,83 +1411,75 @@ NS_INTERNAL bigint *bi_copy(bigint *bi)
  * For this object to be freed, bi_depermanent() must be called.
  * @param bi [in]   The bigint to be made permanent.
  */
-NS_INTERNAL void bi_permanent(bigint *bi)
-{
-    check(bi);
-    if (bi->refs != 1)
-    {
+NS_INTERNAL void bi_permanent(bigint *bi) {
+  check(bi);
+  if (bi->refs != 1) {
 #ifdef CONFIG_SSL_FULL_MODE
-        printf("bi_permanent: refs was not 1\n");
+    printf("bi_permanent: refs was not 1\n");
 #endif
-        abort();
-    }
+    abort();
+  }
 
-    bi->refs = PERMANENT;
+  bi->refs = PERMANENT;
 }
 
 /**
  * @brief Take a permanent object and make it eligible for freedom.
  * @param bi [in]   The bigint to be made back to temporary.
  */
-NS_INTERNAL void bi_depermanent(bigint *bi)
-{
-    check(bi);
-    if (bi->refs != PERMANENT)
-    {
+NS_INTERNAL void bi_depermanent(bigint *bi) {
+  check(bi);
+  if (bi->refs != PERMANENT) {
 #ifdef CONFIG_SSL_FULL_MODE
-        printf("bi_depermanent: bigint was not permanent\n");
+    printf("bi_depermanent: bigint was not permanent\n");
 #endif
-        abort();
-    }
+    abort();
+  }
 
-    bi->refs = 1;
+  bi->refs = 1;
 }
 
 /**
- * @brief Free a bigint object so it can be used again. 
+ * @brief Free a bigint object so it can be used again.
  *
- * The memory itself it not actually freed, just tagged as being available 
+ * The memory itself it not actually freed, just tagged as being available
  * @param ctx [in]   The bigint session context.
  * @param bi [in]    The bigint to be freed.
  */
-NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi)
-{
-    check(bi);
-    if (bi->refs == PERMANENT)
-    {
-        return;
-    }
+NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi) {
+  check(bi);
+  if (bi->refs == PERMANENT) {
+    return;
+  }
 
-    if (--bi->refs > 0)
-    {
-        return;
-    }
+  if (--bi->refs > 0) {
+    return;
+  }
 
-    bi->next = ctx->free_list;
-    ctx->free_list = bi;
-    ctx->free_count++;
+  bi->next = ctx->free_list;
+  ctx->free_list = bi;
+  ctx->free_count++;
 
-    if (--ctx->active_count < 0)
-    {
+  if (--ctx->active_count < 0) {
 #ifdef CONFIG_SSL_FULL_MODE
-        printf("bi_free: active_count went negative "
-                "- double-freed bigint?\n");
+    printf(
+        "bi_free: active_count went negative "
+        "- double-freed bigint?\n");
 #endif
-        abort();
-    }
+    abort();
+  }
 }
 
 /**
  * @brief Convert an (unsigned) integer into a bigint.
  * @param ctx [in]   The bigint session context.
  * @param i [in]     The (unsigned) integer to be converted.
- * 
+ *
  */
-NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i)
-{
-    bigint *biR = alloc(ctx, 1);
-    biR->comps[0] = i;
-    return biR;
+NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i) {
+  bigint *biR = alloc(ctx, 1);
+  biR->comps[0] = i;
+  return biR;
 }
 
 /**
@@ -1499,12 +1487,11 @@ NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i)
  * @param ctx [in]   The bigint session context.
  * @param bi  [in]   The bigint object to be copied.
  */
-NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi)
-{
-    bigint *biR = alloc(ctx, bi->size);
-    check(bi);
-    memcpy(biR->comps, bi->comps, bi->size*COMP_BYTE_SIZE);
-    return biR;
+NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi) {
+  bigint *biR = alloc(ctx, bi->size);
+  check(bi);
+  memcpy(biR->comps, bi->comps, bi->size * COMP_BYTE_SIZE);
+  return biR;
 }
 
 /**
@@ -1514,34 +1501,32 @@ NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi)
  * @param bib [in]  Another bigint.
  * @return The result of the addition.
  */
-NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib)
-{
-    int n;
-    comp carry = 0;
-    comp *pa, *pb;
+NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib) {
+  int n;
+  comp carry = 0;
+  comp *pa, *pb;
 
-    check(bia);
-    check(bib);
+  check(bia);
+  check(bib);
 
-    n = max(bia->size, bib->size);
-    more_comps(bia, n+1);
-    more_comps(bib, n);
-    pa = bia->comps;
-    pb = bib->comps;
+  n = max(bia->size, bib->size);
+  more_comps(bia, n + 1);
+  more_comps(bib, n);
+  pa = bia->comps;
+  pb = bib->comps;
 
-    do
-    {
-        comp  sl, rl, cy1;
-        sl = *pa + *pb++;
-        rl = sl + carry;
-        cy1 = sl < *pa;
-        carry = cy1 | (rl < sl);
-        *pa++ = rl;
-    } while (--n != 0);
+  do {
+    comp sl, rl, cy1;
+    sl = *pa + *pb++;
+    rl = sl + carry;
+    cy1 = sl < *pa;
+    carry = cy1 | (rl < sl);
+    *pa++ = rl;
+  } while (--n != 0);
 
-    *pa = carry;                  /* do overflow */
-    bi_free(ctx, bib);
-    return trim(bia);
+  *pa = carry; /* do overflow */
+  bi_free(ctx, bib);
+  return trim(bia);
 }
 
 /**
@@ -1553,68 +1538,64 @@ NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib)
  * is_negative may be null.
  * @return The result of the subtraction. The result is always positive.
  */
-NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, 
-        bigint *bia, bigint *bib, int *is_negative)
-{
-    int n = bia->size;
-    comp *pa, *pb, carry = 0;
+NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia, bigint *bib,
+                                int *is_negative) {
+  int n = bia->size;
+  comp *pa, *pb, carry = 0;
 
-    check(bia);
-    check(bib);
+  check(bia);
+  check(bib);
 
-    more_comps(bib, n);
-    pa = bia->comps;
-    pb = bib->comps;
+  more_comps(bib, n);
+  pa = bia->comps;
+  pb = bib->comps;
 
-    do 
-    {
-        comp sl, rl, cy1;
-        sl = *pa - *pb++;
-        rl = sl - carry;
-        cy1 = sl > *pa;
-        carry = cy1 | (rl > sl);
-        *pa++ = rl;
-    } while (--n != 0);
+  do {
+    comp sl, rl, cy1;
+    sl = *pa - *pb++;
+    rl = sl - carry;
+    cy1 = sl > *pa;
+    carry = cy1 | (rl > sl);
+    *pa++ = rl;
+  } while (--n != 0);
 
-    if (is_negative)    /* indicate a negative result */
-    {
-        *is_negative = carry;
-    }
+  if (is_negative) /* indicate a negative result */
+  {
+    *is_negative = carry;
+  }
 
-    bi_free(ctx, trim(bib));    /* put bib back to the way it was */
-    return trim(bia);
+  bi_free(ctx, trim(bib)); /* put bib back to the way it was */
+  return trim(bia);
 }
 
 /**
  * Perform a multiply between a bigint an an (unsigned) integer
  */
-static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bia, comp b)
-{
-    int j = 0, n = bia->size;
-    bigint *biR = alloc(ctx, n + 1);
-    comp carry = 0;
-    comp *r = biR->comps;
-    comp *a = bia->comps;
+static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bia, comp b) {
+  int j = 0, n = bia->size;
+  bigint *biR = alloc(ctx, n + 1);
+  comp carry = 0;
+  comp *r = biR->comps;
+  comp *a = bia->comps;
 
-    check(bia);
+  check(bia);
 
-    /* clear things to start with */
-    memset(r, 0, ((n+1)*COMP_BYTE_SIZE));
+  /* clear things to start with */
+  memset(r, 0, ((n + 1) * COMP_BYTE_SIZE));
 
-    do
-    {
-        long_comp tmp = *r + (long_comp)a[j]*b + carry;
-        *r++ = (comp)tmp;              /* downsize */
-        carry = (comp)(tmp >> COMP_BIT_SIZE);
-    } while (++j < n);
+  do {
+    long_comp tmp = *r + (long_comp)a[j] * b + carry;
+    *r++ = (comp)tmp; /* downsize */
+    carry = (comp)(tmp >> COMP_BIT_SIZE);
+  } while (++j < n);
 
-    *r = carry;
-    bi_free(ctx, bia);
-    return trim(biR);
+  *r = carry;
+  bi_free(ctx, bia);
+  return trim(biR);
 }
 
 /**
- * @brief Does both division and modulo calculations. 
+ * @brief Does both division and modulo calculations.
  *
  * Used extensively when doing classical reduction.
  * @param ctx [in]  The bigint session context.
@@ -1624,232 +1605,207 @@ static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bia, comp b)
  * (1).
  * @return  The result of the division/reduction.
  */
-NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *u, bigint *v, int is_mod)
-{
-    int n = v->size, m = u->size-n;
-    int j = 0, orig_u_size = u->size;
-    uint8_t mod_offset = ctx->mod_offset;
-    comp d;
-    bigint *quotient, *tmp_u;
-    comp q_dash;
+NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *u, bigint *v, int is_mod) {
+  int n = v->size, m = u->size - n;
+  int j = 0, orig_u_size = u->size;
+  uint8_t mod_offset = ctx->mod_offset;
+  comp d;
+  bigint *quotient, *tmp_u;
+  comp q_dash;
 
-    check(u);
-    check(v);
+  check(u);
+  check(v);
 
-    /* if doing reduction and we are < mod, then return mod */
-    if (is_mod && bi_compare(v, u) > 0)
-    {
-        bi_free(ctx, v);
-        return u;
-    }
-
-    quotient = alloc(ctx, m+1);
-    tmp_u = alloc(ctx, n+1);
-    v = trim(v);        /* make sure we have no leading 0's */
-    d = (comp)((long_comp)COMP_RADIX/(V1+1));
-
-    /* clear things to start with */
-    memset(quotient->comps, 0, ((quotient->size)*COMP_BYTE_SIZE));
-
-    /* normalise */
-    if (d > 1)
-    {
-        u = bi_int_multiply(ctx, u, d);
-
-        if (is_mod)
-        {
-            v = ctx->bi_normalised_mod[mod_offset];
-        }
-        else
-        {
-            v = bi_int_multiply(ctx, v, d);
-        }
-    }
-
-    if (orig_u_size == u->size)  /* new digit position u0 */
-    {
-        more_comps(u, orig_u_size + 1);
-    }
-
-    do
-    {
-        /* get a temporary short version of u */
-        memcpy(tmp_u->comps, &u->comps[u->size-n-1-j], (n+1)*COMP_BYTE_SIZE);
-
-        /* calculate q' */
-        if (U(0) == V1)
-        {
-            q_dash = COMP_RADIX-1;
-        }
-        else
-        {
-            q_dash = (comp)(((long_comp)U(0)*COMP_RADIX + U(1))/V1);
-
-            if (v->size > 1 && V2)
-            {
-                /* we are implementing the following:
-                if (V2*q_dash > (((U(0)*COMP_RADIX + U(1) - 
-                        q_dash*V1)*COMP_RADIX) + U(2))) ... */
-                comp inner = (comp)((long_comp)COMP_RADIX*U(0) + U(1) - 
-                                            (long_comp)q_dash*V1);
-                if ((long_comp)V2*q_dash > (long_comp)inner*COMP_RADIX + U(2))
-                {
-                    q_dash--;
-                }
-            }
-        }
-
-        /* multiply and subtract */
-        if (q_dash)
-        {
-            int is_negative;
-            tmp_u = bi_subtract(ctx, tmp_u, 
-                    bi_int_multiply(ctx, bi_copy(v), q_dash), &is_negative);
-            more_comps(tmp_u, n+1);
-
-            Q(j) = q_dash; 
-
-            /* add back */
-            if (is_negative)
-            {
-                Q(j)--;
-                tmp_u = bi_add(ctx, tmp_u, bi_copy(v));
-
-                /* lop off the carry */
-                tmp_u->size--;
-                v->size--;
-            }
-        }
-        else
-        {
-            Q(j) = 0; 
-        }
-
-        /* copy back to u */
-        memcpy(&u->comps[u->size-n-1-j], tmp_u->comps, (n+1)*COMP_BYTE_SIZE);
-    } while (++j <= m);
-
-    bi_free(ctx, tmp_u);
+  /* if doing reduction and we are < mod, then return mod */
+  if (is_mod && bi_compare(v, u) > 0) {
     bi_free(ctx, v);
+    return u;
+  }
 
-    if (is_mod)     /* get the remainder */
-    {
-        bi_free(ctx, quotient);
-        return bi_int_divide(ctx, trim(u), d);
+  quotient = alloc(ctx, m + 1);
+  tmp_u = alloc(ctx, n + 1);
+  v = trim(v); /* make sure we have no leading 0's */
+  d = (comp)((long_comp)COMP_RADIX / (V1 + 1));
+
+  /* clear things to start with */
+  memset(quotient->comps, 0, ((quotient->size) * COMP_BYTE_SIZE));
+
+  /* normalise */
+  if (d > 1) {
+    u = bi_int_multiply(ctx, u, d);
+
+    if (is_mod) {
+      v = ctx->bi_normalised_mod[mod_offset];
+    } else {
+      v = bi_int_multiply(ctx, v, d);
     }
-    else            /* get the quotient */
-    {
-        bi_free(ctx, u);
-        return trim(quotient);
+  }
+
+  if (orig_u_size == u->size) /* new digit position u0 */
+  {
+    more_comps(u, orig_u_size + 1);
+  }
+
+  do {
+    /* get a temporary short version of u */
+    memcpy(tmp_u->comps, &u->comps[u->size - n - 1 - j],
+           (n + 1) * COMP_BYTE_SIZE);
+
+    /* calculate q' */
+    if (U(0) == V1) {
+      q_dash = COMP_RADIX - 1;
+    } else {
+      q_dash = (comp)(((long_comp)U(0) * COMP_RADIX + U(1)) / V1);
+
+      if (v->size > 1 && V2) {
+        /* we are implementing the following:
+        if (V2*q_dash > (((U(0)*COMP_RADIX + U(1) -
+                q_dash*V1)*COMP_RADIX) + U(2))) ... */
+        comp inner = (comp)((long_comp)COMP_RADIX * U(0) + U(1) -
+                            (long_comp)q_dash * V1);
+        if ((long_comp)V2 * q_dash > (long_comp)inner * COMP_RADIX + U(2)) {
+          q_dash--;
+        }
+      }
     }
+
+    /* multiply and subtract */
+    if (q_dash) {
+      int is_negative;
+      tmp_u = bi_subtract(ctx, tmp_u, bi_int_multiply(ctx, bi_copy(v), q_dash),
+                          &is_negative);
+      more_comps(tmp_u, n + 1);
+
+      Q(j) = q_dash;
+
+      /* add back */
+      if (is_negative) {
+        Q(j)--;
+        tmp_u = bi_add(ctx, tmp_u, bi_copy(v));
+
+        /* lop off the carry */
+        tmp_u->size--;
+        v->size--;
+      }
+    } else {
+      Q(j) = 0;
+    }
+
+    /* copy back to u */
+    memcpy(&u->comps[u->size - n - 1 - j], tmp_u->comps,
+           (n + 1) * COMP_BYTE_SIZE);
+  } while (++j <= m);
+
+  bi_free(ctx, tmp_u);
+  bi_free(ctx, v);
+
+  if (is_mod) /* get the remainder */
+  {
+    bi_free(ctx, quotient);
+    return bi_int_divide(ctx, trim(u), d);
+  } else /* get the quotient */
+  {
+    bi_free(ctx, u);
+    return trim(quotient);
+  }
 }
 
 /*
  * Perform an integer divide on a bigint.
  */
-static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom)
-{
-    int i = biR->size - 1;
-    long_comp r = 0;
+static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom) {
+  int i = biR->size - 1;
+  long_comp r = 0;
 
-    check(biR);
+  check(biR);
 
-    do
-    {
-        r = (r<<COMP_BIT_SIZE) + biR->comps[i];
-        biR->comps[i] = (comp)(r / denom);
-        r %= denom;
-    } while (--i >= 0);
+  do {
+    r = (r << COMP_BIT_SIZE) + biR->comps[i];
+    biR->comps[i] = (comp)(r / denom);
+    r %= denom;
+  } while (--i >= 0);
 
-    return trim(biR);
+  return trim(biR);
 }
 
 #ifdef CONFIG_BIGINT_MONTGOMERY
 /**
- * There is a need for the value of integer N' such that B^-1(B-1)-N^-1N'=1, 
- * where B^-1(B-1) mod N=1. Actually, only the least significant part of 
- * N' is needed, hence the definition N0'=N' mod b. We reproduce below the 
- * simple algorithm from an article by Dusse and Kaliski to efficiently 
+ * There is a need for the value of integer N' such that B^-1(B-1)-N^-1N'=1,
+ * where B^-1(B-1) mod N=1. Actually, only the least significant part of
+ * N' is needed, hence the definition N0'=N' mod b. We reproduce below the
+ * simple algorithm from an article by Dusse and Kaliski to efficiently
  * find N0' from N0 and b */
-static comp modular_inverse(bigint *bim)
-{
-    int i;
-    comp t = 1;
-    comp two_2_i_minus_1 = 2;   /* 2^(i-1) */
-    long_comp two_2_i = 4;      /* 2^i */
-    comp N = bim->comps[0];
+static comp modular_inverse(bigint *bim) {
+  int i;
+  comp t = 1;
+  comp two_2_i_minus_1 = 2; /* 2^(i-1) */
+  long_comp two_2_i = 4;    /* 2^i */
+  comp N = bim->comps[0];
 
-    for (i = 2; i <= COMP_BIT_SIZE; i++)
-    {
-        if ((long_comp)N*t%two_2_i >= two_2_i_minus_1)
-        {
-            t += two_2_i_minus_1;
-        }
-
-        two_2_i_minus_1 <<= 1;
-        two_2_i <<= 1;
+  for (i = 2; i <= COMP_BIT_SIZE; i++) {
+    if ((long_comp)N * t % two_2_i >= two_2_i_minus_1) {
+      t += two_2_i_minus_1;
     }
 
-    return (comp)(COMP_RADIX-t);
+    two_2_i_minus_1 <<= 1;
+    two_2_i <<= 1;
+  }
+
+  return (comp)(COMP_RADIX - t);
 }
 #endif
 
 #if defined(CONFIG_BIGINT_KARATSUBA) || defined(CONFIG_BIGINT_BARRETT) || \
     defined(CONFIG_BIGINT_MONTGOMERY)
 /**
- * Take each component and shift down (in terms of components) 
+ * Take each component and shift down (in terms of components)
  */
-static bigint *comp_right_shift(bigint *biR, int num_shifts)
-{
-    int i = biR->size-num_shifts;
-    comp *x = biR->comps;
-    comp *y = &biR->comps[num_shifts];
+static bigint *comp_right_shift(bigint *biR, int num_shifts) {
+  int i = biR->size - num_shifts;
+  comp *x = biR->comps;
+  comp *y = &biR->comps[num_shifts];
 
-    check(biR);
+  check(biR);
 
-    if (i <= 0)     /* have we completely right shifted? */
-    {
-        biR->comps[0] = 0;  /* return 0 */
-        biR->size = 1;
-        return biR;
-    }
-
-    do
-    {
-        *x++ = *y++;
-    } while (--i > 0);
-
-    biR->size -= num_shifts;
+  if (i <= 0) /* have we completely right shifted? */
+  {
+    biR->comps[0] = 0; /* return 0 */
+    biR->size = 1;
     return biR;
+  }
+
+  do {
+    *x++ = *y++;
+  } while (--i > 0);
+
+  biR->size -= num_shifts;
+  return biR;
 }
 
 /**
- * Take each component and shift it up (in terms of components) 
+ * Take each component and shift it up (in terms of components)
  */
-static bigint *comp_left_shift(bigint *biR, int num_shifts)
-{
-    int i = biR->size-1;
-    comp *x, *y;
+static bigint *comp_left_shift(bigint *biR, int num_shifts) {
+  int i = biR->size - 1;
+  comp *x, *y;
 
-    check(biR);
+  check(biR);
 
-    if (num_shifts <= 0)
-    {
-        return biR;
-    }
-
-    more_comps(biR, biR->size + num_shifts);
-
-    x = &biR->comps[i+num_shifts];
-    y = &biR->comps[i];
-
-    do
-    {
-        *x-- = *y--;
-    } while (i--);
-
-    memset(biR->comps, 0, num_shifts*COMP_BYTE_SIZE); /* zero LS comps */
+  if (num_shifts <= 0) {
     return biR;
+  }
+
+  more_comps(biR, biR->size + num_shifts);
+
+  x = &biR->comps[i + num_shifts];
+  y = &biR->comps[i];
+
+  do {
+    *x-- = *y--;
+  } while (i--);
+
+  memset(biR->comps, 0, num_shifts * COMP_BYTE_SIZE); /* zero LS comps */
+  return biR;
 }
 #endif
 
@@ -1860,85 +1816,75 @@ static bigint *comp_left_shift(bigint *biR, int num_shifts)
  * @param size [in] The number of bytes of data.
  * @return A bigint representing this data.
  */
-NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int size)
-{
-    bigint *biR = alloc(ctx, (size+COMP_BYTE_SIZE-1)/COMP_BYTE_SIZE);
-    int i, j = 0, offset = 0;
+NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int size) {
+  bigint *biR = alloc(ctx, (size + COMP_BYTE_SIZE - 1) / COMP_BYTE_SIZE);
+  int i, j = 0, offset = 0;
 
-    memset(biR->comps, 0, biR->size*COMP_BYTE_SIZE);
+  memset(biR->comps, 0, biR->size * COMP_BYTE_SIZE);
 
-    for (i = size-1; i >= 0; i--)
-    {
-        biR->comps[offset] += data[i] << (j*8);
+  for (i = size - 1; i >= 0; i--) {
+    biR->comps[offset] += data[i] << (j * 8);
 
-        if (++j == COMP_BYTE_SIZE)
-        {
-            j = 0;
-            offset ++;
-        }
+    if (++j == COMP_BYTE_SIZE) {
+      j = 0;
+      offset++;
     }
+  }
 
-    return trim(biR);
+  return trim(biR);
 }
 
 #ifdef CONFIG_SSL_FULL_MODE
 /**
- * @brief The testharness uses this code to import text hex-streams and 
+ * @brief The testharness uses this code to import text hex-streams and
  * convert them into bigints.
  * @param ctx [in]  The bigint session context.
  * @param data [in] A string consisting of hex characters. The characters must
  * be in upper case.
  * @return A bigint representing this data.
  */
-NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data)
-{
-    int size = strlen(data);
-    bigint *biR = alloc(ctx, (size+COMP_NUM_NIBBLES-1)/COMP_NUM_NIBBLES);
-    int i, j = 0, offset = 0;
-    memset(biR->comps, 0, biR->size*COMP_BYTE_SIZE);
+NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data) {
+  int size = strlen(data);
+  bigint *biR = alloc(ctx, (size + COMP_NUM_NIBBLES - 1) / COMP_NUM_NIBBLES);
+  int i, j = 0, offset = 0;
+  memset(biR->comps, 0, biR->size * COMP_BYTE_SIZE);
 
-    for (i = size-1; i >= 0; i--)
-    {
-        int num = (data[i] <= '9') ? (data[i] - '0') : (data[i] - 'A' + 10);
-        biR->comps[offset] += num << (j*4);
+  for (i = size - 1; i >= 0; i--) {
+    int num = (data[i] <= '9') ? (data[i] - '0') : (data[i] - 'A' + 10);
+    biR->comps[offset] += num << (j * 4);
 
-        if (++j == COMP_NUM_NIBBLES)
-        {
-            j = 0;
-            offset ++;
-        }
+    if (++j == COMP_NUM_NIBBLES) {
+      j = 0;
+      offset++;
     }
+  }
 
-    return biR;
+  return biR;
 }
 
-NS_INTERNAL void bi_print(const char *label, bigint *x)
-{
-    int i, j;
+NS_INTERNAL void bi_print(const char *label, bigint *x) {
+  int i, j;
 
-    if (x == NULL)
-    {
-        printf("%s: (null)\n", label);
-        return;
+  if (x == NULL) {
+    printf("%s: (null)\n", label);
+    return;
+  }
+
+  printf("%s: (size %d)\n", label, x->size);
+  for (i = x->size - 1; i >= 0; i--) {
+    for (j = COMP_NUM_NIBBLES - 1; j >= 0; j--) {
+      comp mask = 0x0f << (j * 4);
+      comp num = (x->comps[i] & mask) >> (j * 4);
+      putc((num <= 9) ? (num + '0') : (num + 'A' - 10), stdout);
     }
+  }
 
-    printf("%s: (size %d)\n", label, x->size);
-    for (i = x->size-1; i >= 0; i--)
-    {
-        for (j = COMP_NUM_NIBBLES-1; j >= 0; j--)
-        {
-            comp mask = 0x0f << (j*4);
-            comp num = (x->comps[i] & mask) >> (j*4);
-            putc((num <= 9) ? (num + '0') : (num + 'A' - 10), stdout);
-        }
-    }  
-
-    printf("\n");
+  printf("\n");
 }
 #endif
 
 /**
- * @brief Take a bigint and convert it into a byte sequence. 
+ * @brief Take a bigint and convert it into a byte sequence.
  *
  * This is useful after a decrypt operation.
  * @param ctx [in]  The bigint session context.
@@ -1947,34 +1893,30 @@ NS_INTERNAL void bi_print(const char *label, bigint *x)
  * @param size [in] The maximum size of the byte stream. Unused bytes will be
  * zeroed.
  */
-NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *x, uint8_t *data, int size)
-{
-    int i, j, k = size-1;
+NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *x, uint8_t *data, int size) {
+  int i, j, k = size - 1;
 
-    check(x);
-    memset(data, 0, size);  /* ensure all leading 0's are cleared */
+  check(x);
+  memset(data, 0, size); /* ensure all leading 0's are cleared */
 
-    for (i = 0; i < x->size; i++)
-    {
-        for (j = 0; j < COMP_BYTE_SIZE; j++)
-        {
-            comp mask = 0xff << (j*8);
-            int num = (x->comps[i] & mask) >> (j*8);
-            data[k--] = num;
+  for (i = 0; i < x->size; i++) {
+    for (j = 0; j < COMP_BYTE_SIZE; j++) {
+      comp mask = 0xff << (j * 8);
+      int num = (x->comps[i] & mask) >> (j * 8);
+      data[k--] = num;
 
-            if (k < 0)
-            {
-                goto buf_done;
-            }
-        }
+      if (k < 0) {
+        goto buf_done;
+      }
     }
+  }
 buf_done:
 
-    bi_free(ctx, x);
+  bi_free(ctx, x);
 }
 
 /**
- * @brief Pre-calculate some of the expensive steps in reduction. 
+ * @brief Pre-calculate some of the expensive steps in reduction.
  *
  * This function should only be called once (normally when a session starts).
  * When the session is over, bi_free_mod() should be called. bi_mod_power()
@@ -1986,36 +1928,35 @@ buf_done:
  * modulus we are referring to.
  * @see bi_free_mod(), bi_mod_power().
  */
-NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset)
-{
-    int k = bim->size;
-    comp d = (comp)((long_comp)COMP_RADIX/(bim->comps[k-1]+1));
+NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset) {
+  int k = bim->size;
+  comp d = (comp)((long_comp)COMP_RADIX / (bim->comps[k - 1] + 1));
 #ifdef CONFIG_BIGINT_MONTGOMERY
-    bigint *R, *R2;
+  bigint *R, *R2;
 #endif
 
-    ctx->bi_mod[mod_offset] = bim;
-    bi_permanent(ctx->bi_mod[mod_offset]);
-    ctx->bi_normalised_mod[mod_offset] = bi_int_multiply(ctx, bim, d);
-    bi_permanent(ctx->bi_normalised_mod[mod_offset]);
+  ctx->bi_mod[mod_offset] = bim;
+  bi_permanent(ctx->bi_mod[mod_offset]);
+  ctx->bi_normalised_mod[mod_offset] = bi_int_multiply(ctx, bim, d);
+  bi_permanent(ctx->bi_normalised_mod[mod_offset]);
 
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-    /* set montgomery variables */
-    R = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k-1);     /* R */
-    R2 = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k*2-1);  /* R^2 */
-    ctx->bi_RR_mod_m[mod_offset] = bi_mod(ctx, R2);             /* R^2 mod m */
-    ctx->bi_R_mod_m[mod_offset] = bi_mod(ctx, R);               /* R mod m */
+  /* set montgomery variables */
+  R = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k - 1);      /* R */
+  R2 = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k * 2 - 1); /* R^2 */
+  ctx->bi_RR_mod_m[mod_offset] = bi_mod(ctx, R2);                /* R^2 mod m */
+  ctx->bi_R_mod_m[mod_offset] = bi_mod(ctx, R);                  /* R mod m */
 
-    bi_permanent(ctx->bi_RR_mod_m[mod_offset]);
-    bi_permanent(ctx->bi_R_mod_m[mod_offset]);
+  bi_permanent(ctx->bi_RR_mod_m[mod_offset]);
+  bi_permanent(ctx->bi_R_mod_m[mod_offset]);
 
-    ctx->N0_dash[mod_offset] = modular_inverse(ctx->bi_mod[mod_offset]);
+  ctx->N0_dash[mod_offset] = modular_inverse(ctx->bi_mod[mod_offset]);
 
-#elif defined (CONFIG_BIGINT_BARRETT)
-    ctx->bi_mu[mod_offset] = 
-        bi_divide(ctx, comp_left_shift(
-            bi_clone(ctx, ctx->bi_radix), k*2-1), ctx->bi_mod[mod_offset], 0);
-    bi_permanent(ctx->bi_mu[mod_offset]);
+#elif defined(CONFIG_BIGINT_BARRETT)
+  ctx->bi_mu[mod_offset] =
+      bi_divide(ctx, comp_left_shift(bi_clone(ctx, ctx->bi_radix), k * 2 - 1),
+                ctx->bi_mod[mod_offset], 0);
+  bi_permanent(ctx->bi_mu[mod_offset]);
 #endif
 }
 
@@ -2025,134 +1966,122 @@ NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset)
  * @param mod_offset [in] The offset to use.
  * @see bi_set_mod().
  */
-void bi_free_mod(BI_CTX *ctx, int mod_offset)
-{
-    bi_depermanent(ctx->bi_mod[mod_offset]);
-    bi_free(ctx, ctx->bi_mod[mod_offset]);
-#if defined (CONFIG_BIGINT_MONTGOMERY)
-    bi_depermanent(ctx->bi_RR_mod_m[mod_offset]);
-    bi_depermanent(ctx->bi_R_mod_m[mod_offset]);
-    bi_free(ctx, ctx->bi_RR_mod_m[mod_offset]);
-    bi_free(ctx, ctx->bi_R_mod_m[mod_offset]);
+void bi_free_mod(BI_CTX *ctx, int mod_offset) {
+  bi_depermanent(ctx->bi_mod[mod_offset]);
+  bi_free(ctx, ctx->bi_mod[mod_offset]);
+#if defined(CONFIG_BIGINT_MONTGOMERY)
+  bi_depermanent(ctx->bi_RR_mod_m[mod_offset]);
+  bi_depermanent(ctx->bi_R_mod_m[mod_offset]);
+  bi_free(ctx, ctx->bi_RR_mod_m[mod_offset]);
+  bi_free(ctx, ctx->bi_R_mod_m[mod_offset]);
 #elif defined(CONFIG_BIGINT_BARRETT)
-    bi_depermanent(ctx->bi_mu[mod_offset]); 
-    bi_free(ctx, ctx->bi_mu[mod_offset]);
+  bi_depermanent(ctx->bi_mu[mod_offset]);
+  bi_free(ctx, ctx->bi_mu[mod_offset]);
 #endif
-    bi_depermanent(ctx->bi_normalised_mod[mod_offset]); 
-    bi_free(ctx, ctx->bi_normalised_mod[mod_offset]);
+  bi_depermanent(ctx->bi_normalised_mod[mod_offset]);
+  bi_free(ctx, ctx->bi_normalised_mod[mod_offset]);
 }
 
-/** 
+/**
  * Perform a standard multiplication between two bigints.
  *
  * Barrett reduction has no need for some parts of the product, so ignore bits
  * of the multiply. This routine gives Barrett its big performance
- * improvements over Classical/Montgomery reduction methods. 
+ * improvements over Classical/Montgomery reduction methods.
  */
-static bigint *regular_multiply(BI_CTX *ctx, bigint *bia, bigint *bib, 
-        int inner_partial, int outer_partial)
-{
-    int i = 0, j;
-    int n = bia->size;
-    int t = bib->size;
-    bigint *biR = alloc(ctx, n + t);
-    comp *sr = biR->comps;
-    comp *sa = bia->comps;
-    comp *sb = bib->comps;
+static bigint *regular_multiply(BI_CTX *ctx, bigint *bia, bigint *bib,
+                                int inner_partial, int outer_partial) {
+  int i = 0, j;
+  int n = bia->size;
+  int t = bib->size;
+  bigint *biR = alloc(ctx, n + t);
+  comp *sr = biR->comps;
+  comp *sa = bia->comps;
+  comp *sb = bib->comps;
 
-    check(bia);
-    check(bib);
+  check(bia);
+  check(bib);
 
-    /* clear things to start with */
-    memset(biR->comps, 0, ((n+t)*COMP_BYTE_SIZE));
+  /* clear things to start with */
+  memset(biR->comps, 0, ((n + t) * COMP_BYTE_SIZE));
 
-    do 
-    {
-        long_comp tmp;
-        comp carry = 0;
-        int r_index = i;
-        j = 0;
+  do {
+    long_comp tmp;
+    comp carry = 0;
+    int r_index = i;
+    j = 0;
 
-        if (outer_partial && outer_partial-i > 0 && outer_partial < n)
-        {
-            r_index = outer_partial-1;
-            j = outer_partial-i-1;
-        }
+    if (outer_partial && outer_partial - i > 0 && outer_partial < n) {
+      r_index = outer_partial - 1;
+      j = outer_partial - i - 1;
+    }
 
-        do
-        {
-            if (inner_partial && r_index >= inner_partial) 
-            {
-                break;
-            }
+    do {
+      if (inner_partial && r_index >= inner_partial) {
+        break;
+      }
 
-            tmp = sr[r_index] + ((long_comp)sa[j])*sb[i] + carry;
-            sr[r_index++] = (comp)tmp;              /* downsize */
-            carry = tmp >> COMP_BIT_SIZE;
-        } while (++j < n);
+      tmp = sr[r_index] + ((long_comp)sa[j]) * sb[i] + carry;
+      sr[r_index++] = (comp)tmp; /* downsize */
+      carry = tmp >> COMP_BIT_SIZE;
+    } while (++j < n);
 
-        sr[r_index] = carry;
-    } while (++i < t);
+    sr[r_index] = carry;
+  } while (++i < t);
 
-    bi_free(ctx, bia);
-    bi_free(ctx, bib);
-    return trim(biR);
+  bi_free(ctx, bia);
+  bi_free(ctx, bib);
+  return trim(biR);
 }
 
 #ifdef CONFIG_BIGINT_KARATSUBA
 /*
- * Karatsuba improves on regular multiplication due to only 3 multiplications 
- * being done instead of 4. The additional additions/subtractions are O(N) 
- * rather than O(N^2) and so for big numbers it saves on a few operations 
+ * Karatsuba improves on regular multiplication due to only 3 multiplications
+ * being done instead of 4. The additional additions/subtractions are O(N)
+ * rather than O(N^2) and so for big numbers it saves on a few operations
  */
-static bigint *karatsuba(BI_CTX *ctx, bigint *bia, bigint *bib, int is_square)
-{
-    bigint *x0, *x1;
-    bigint *p0, *p1, *p2;
-    int m;
+static bigint *karatsuba(BI_CTX *ctx, bigint *bia, bigint *bib, int is_square) {
+  bigint *x0, *x1;
+  bigint *p0, *p1, *p2;
+  int m;
 
-    if (is_square)
-    {
-        m = (bia->size + 1)/2;
-    }
-    else
-    {
-        m = (max(bia->size, bib->size) + 1)/2;
-    }
+  if (is_square) {
+    m = (bia->size + 1) / 2;
+  } else {
+    m = (max(bia->size, bib->size) + 1) / 2;
+  }
 
-    x0 = bi_clone(ctx, bia);
-    x0->size = m;
-    x1 = bi_clone(ctx, bia);
-    comp_right_shift(x1, m);
-    bi_free(ctx, bia);
+  x0 = bi_clone(ctx, bia);
+  x0->size = m;
+  x1 = bi_clone(ctx, bia);
+  comp_right_shift(x1, m);
+  bi_free(ctx, bia);
 
-    /* work out the 3 partial products */
-    if (is_square)
-    {
-        p0 = bi_square(ctx, bi_copy(x0));
-        p2 = bi_square(ctx, bi_copy(x1));
-        p1 = bi_square(ctx, bi_add(ctx, x0, x1));
-    }
-    else /* normal multiply */
-    {
-        bigint *y0, *y1;
-        y0 = bi_clone(ctx, bib);
-        y0->size = m;
-        y1 = bi_clone(ctx, bib);
-        comp_right_shift(y1, m);
-        bi_free(ctx, bib);
+  /* work out the 3 partial products */
+  if (is_square) {
+    p0 = bi_square(ctx, bi_copy(x0));
+    p2 = bi_square(ctx, bi_copy(x1));
+    p1 = bi_square(ctx, bi_add(ctx, x0, x1));
+  } else /* normal multiply */
+  {
+    bigint *y0, *y1;
+    y0 = bi_clone(ctx, bib);
+    y0->size = m;
+    y1 = bi_clone(ctx, bib);
+    comp_right_shift(y1, m);
+    bi_free(ctx, bib);
 
-        p0 = bi_multiply(ctx, bi_copy(x0), bi_copy(y0));
-        p2 = bi_multiply(ctx, bi_copy(x1), bi_copy(y1));
-        p1 = bi_multiply(ctx, bi_add(ctx, x0, x1), bi_add(ctx, y0, y1));
-    }
+    p0 = bi_multiply(ctx, bi_copy(x0), bi_copy(y0));
+    p2 = bi_multiply(ctx, bi_copy(x1), bi_copy(y1));
+    p1 = bi_multiply(ctx, bi_add(ctx, x0, x1), bi_add(ctx, y0, y1));
+  }
 
-    p1 = bi_subtract(ctx, 
-            bi_subtract(ctx, p1, bi_copy(p2), NULL), bi_copy(p0), NULL);
+  p1 = bi_subtract(ctx, bi_subtract(ctx, p1, bi_copy(p2), NULL), bi_copy(p0),
+                   NULL);
 
-    comp_left_shift(p1, m);
-    comp_left_shift(p2, 2*m);
-    return bi_add(ctx, p1, bi_add(ctx, p0, p2));
+  comp_left_shift(p1, m);
+  comp_left_shift(p2, 2 * m);
+  return bi_add(ctx, p1, bi_add(ctx, p0, p2));
 }
 #endif
 
@@ -2163,20 +2092,18 @@ static bigint *karatsuba(BI_CTX *ctx, bigint *bia, bigint *bib, int is_square)
  * @param bib [in]  Another bigint.
  * @return The result of the multiplication.
  */
-NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib)
-{
-    check(bia);
-    check(bib);
+NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib) {
+  check(bia);
+  check(bib);
 
 #ifdef CONFIG_BIGINT_KARATSUBA
-    if (min(bia->size, bib->size) < MUL_KARATSUBA_THRESH)
-    {
-        return regular_multiply(ctx, bia, bib, 0, 0);
-    }
-
-    return karatsuba(ctx, bia, bib, 0);
-#else
+  if (min(bia->size, bib->size) < MUL_KARATSUBA_THRESH) {
     return regular_multiply(ctx, bia, bib, 0, 0);
+  }
+
+  return karatsuba(ctx, bia, bib, 0);
+#else
+  return regular_multiply(ctx, bia, bib, 0, 0);
 #endif
 }
 
@@ -2184,54 +2111,47 @@ NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib)
 /*
  * Perform the actual square operion. It takes into account overflow.
  */
-static bigint *regular_square(BI_CTX *ctx, bigint *bi)
-{
-    int t = bi->size;
-    int i = 0, j;
-    bigint *biR = alloc(ctx, t*2+1);
-    comp *w = biR->comps;
-    comp *x = bi->comps;
-    long_comp carry;
-    memset(w, 0, biR->size*COMP_BYTE_SIZE);
+static bigint *regular_square(BI_CTX *ctx, bigint *bi) {
+  int t = bi->size;
+  int i = 0, j;
+  bigint *biR = alloc(ctx, t * 2 + 1);
+  comp *w = biR->comps;
+  comp *x = bi->comps;
+  long_comp carry;
+  memset(w, 0, biR->size * COMP_BYTE_SIZE);
 
-    do
-    {
-        long_comp tmp = w[2*i] + (long_comp)x[i]*x[i];
-        w[2*i] = (comp)tmp;
-        carry = tmp >> COMP_BIT_SIZE;
+  do {
+    long_comp tmp = w[2 * i] + (long_comp)x[i] * x[i];
+    w[2 * i] = (comp)tmp;
+    carry = tmp >> COMP_BIT_SIZE;
 
-        for (j = i+1; j < t; j++)
-        {
-            uint8_t c = 0;
-            long_comp xx = (long_comp)x[i]*x[j];
-            if ((COMP_MAX-xx) < xx)
-                c = 1;
+    for (j = i + 1; j < t; j++) {
+      uint8_t c = 0;
+      long_comp xx = (long_comp)x[i] * x[j];
+      if ((COMP_MAX - xx) < xx) c = 1;
 
-            tmp = (xx<<1);
+      tmp = (xx << 1);
 
-            if ((COMP_MAX-tmp) < w[i+j])
-                c = 1;
+      if ((COMP_MAX - tmp) < w[i + j]) c = 1;
 
-            tmp += w[i+j];
+      tmp += w[i + j];
 
-            if ((COMP_MAX-tmp) < carry)
-                c = 1;
+      if ((COMP_MAX - tmp) < carry) c = 1;
 
-            tmp += carry;
-            w[i+j] = (comp)tmp;
-            carry = tmp >> COMP_BIT_SIZE;
+      tmp += carry;
+      w[i + j] = (comp)tmp;
+      carry = tmp >> COMP_BIT_SIZE;
 
-            if (c)
-                carry += COMP_RADIX;
-        }
+      if (c) carry += COMP_RADIX;
+    }
 
-        tmp = w[i+t] + carry;
-        w[i+t] = (comp)tmp;
-        w[i+t+1] = tmp >> COMP_BIT_SIZE;
-    } while (++i < t);
+    tmp = w[i + t] + carry;
+    w[i + t] = (comp)tmp;
+    w[i + t + 1] = tmp >> COMP_BIT_SIZE;
+  } while (++i < t);
 
-    bi_free(ctx, bi);
-    return trim(biR);
+  bi_free(ctx, bi);
+  return trim(biR);
 }
 
 /**
@@ -2240,19 +2160,17 @@ static bigint *regular_square(BI_CTX *ctx, bigint *bi)
  * @param bia [in]  A bigint.
  * @return The result of the multiplication.
  */
-NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bia)
-{
-    check(bia);
+NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bia) {
+  check(bia);
 
 #ifdef CONFIG_BIGINT_KARATSUBA
-    if (bia->size < SQU_KARATSUBA_THRESH) 
-    {
-        return regular_square(ctx, bia);
-    }
-
-    return karatsuba(ctx, bia, NULL, 1);
-#else
+  if (bia->size < SQU_KARATSUBA_THRESH) {
     return regular_square(ctx, bia);
+  }
+
+  return karatsuba(ctx, bia, NULL, 1);
+#else
+  return regular_square(ctx, bia);
 #endif
 }
 #endif
@@ -2263,184 +2181,161 @@ NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bia)
  * @param bib [in]  Another bigint.
  * @return -1 if smaller, 1 if larger and 0 if equal.
  */
-NS_INTERNAL int bi_compare(bigint *bia, bigint *bib)
-{
-    int r, i;
+NS_INTERNAL int bi_compare(bigint *bia, bigint *bib) {
+  int r, i;
 
-    check(bia);
-    check(bib);
+  check(bia);
+  check(bib);
 
-    if (bia->size > bib->size)
+  if (bia->size > bib->size)
+    r = 1;
+  else if (bia->size < bib->size)
+    r = -1;
+  else {
+    comp *a = bia->comps;
+    comp *b = bib->comps;
+
+    /* Same number of components.  Compare starting from the high end
+     * and working down. */
+    r = 0;
+    i = bia->size - 1;
+
+    do {
+      if (a[i] > b[i]) {
         r = 1;
-    else if (bia->size < bib->size)
+        break;
+      } else if (a[i] < b[i]) {
         r = -1;
-    else
-    {
-        comp *a = bia->comps; 
-        comp *b = bib->comps; 
+        break;
+      }
+    } while (--i >= 0);
+  }
 
-        /* Same number of components.  Compare starting from the high end
-         * and working down. */
-        r = 0;
-        i = bia->size - 1;
-
-        do 
-        {
-            if (a[i] > b[i])
-            { 
-                r = 1;
-                break; 
-            }
-            else if (a[i] < b[i])
-            { 
-                r = -1;
-                break; 
-            }
-        } while (--i >= 0);
-    }
-
-    return r;
+  return r;
 }
 
 /*
- * Allocate and zero more components.  Does not consume bi. 
+ * Allocate and zero more components.  Does not consume bi.
  */
-static void more_comps(bigint *bi, int n)
-{
-    if (n > bi->max_comps)
-    {
-        bi->max_comps = max(bi->max_comps * 2, n);
-        bi->comps = (comp*)realloc(bi->comps, bi->max_comps * COMP_BYTE_SIZE);
-    }
+static void more_comps(bigint *bi, int n) {
+  if (n > bi->max_comps) {
+    bi->max_comps = max(bi->max_comps * 2, n);
+    bi->comps = (comp *)realloc(bi->comps, bi->max_comps * COMP_BYTE_SIZE);
+  }
 
-    if (n > bi->size)
-    {
-        memset(&bi->comps[bi->size], 0, (n-bi->size)*COMP_BYTE_SIZE);
-    }
+  if (n > bi->size) {
+    memset(&bi->comps[bi->size], 0, (n - bi->size) * COMP_BYTE_SIZE);
+  }
 
-    bi->size = n;
+  bi->size = n;
 }
 
 /*
  * Make a new empty bigint. It may just use an old one if one is available.
  * Otherwise get one off the heap.
  */
-static bigint *alloc(BI_CTX *ctx, int size)
-{
-    bigint *biR;
+static bigint *alloc(BI_CTX *ctx, int size) {
+  bigint *biR;
 
-    /* Can we recycle an old bigint? */
-    if (ctx->free_list != NULL)
-    {
-        biR = ctx->free_list;
-        ctx->free_list = biR->next;
-        ctx->free_count--;
+  /* Can we recycle an old bigint? */
+  if (ctx->free_list != NULL) {
+    biR = ctx->free_list;
+    ctx->free_list = biR->next;
+    ctx->free_count--;
 
-        if (biR->refs != 0)
-        {
+    if (biR->refs != 0) {
 #ifdef CONFIG_SSL_FULL_MODE
-            printf("alloc: refs was not 0\n");
+      printf("alloc: refs was not 0\n");
 #endif
-            abort();    /* create a stack trace from a core dump */
-        }
-
-        more_comps(biR, size);
-    }
-    else
-    {
-        /* No free bigints available - create a new one. */
-        biR = (bigint *)malloc(sizeof(bigint));
-        biR->comps = (comp*)malloc(size * COMP_BYTE_SIZE);
-        biR->max_comps = size;  /* give some space to spare */
+      abort(); /* create a stack trace from a core dump */
     }
 
-    biR->size = size;
-    biR->refs = 1;
-    biR->next = NULL;
-    ctx->active_count++;
-    return biR;
+    more_comps(biR, size);
+  } else {
+    /* No free bigints available - create a new one. */
+    biR = (bigint *)malloc(sizeof(bigint));
+    biR->comps = (comp *)malloc(size * COMP_BYTE_SIZE);
+    biR->max_comps = size; /* give some space to spare */
+  }
+
+  biR->size = size;
+  biR->refs = 1;
+  biR->next = NULL;
+  ctx->active_count++;
+  return biR;
 }
 
 /*
  * Work out the highest '1' bit in an exponent. Used when doing sliding-window
  * exponentiation.
  */
-static int find_max_exp_index(bigint *biexp)
-{
-    int i = COMP_BIT_SIZE-1;
-    comp shift = COMP_RADIX/2;
-    comp test = biexp->comps[biexp->size-1];    /* assume no leading zeroes */
+static int find_max_exp_index(bigint *biexp) {
+  int i = COMP_BIT_SIZE - 1;
+  comp shift = COMP_RADIX / 2;
+  comp test = biexp->comps[biexp->size - 1]; /* assume no leading zeroes */
 
-    check(biexp);
+  check(biexp);
 
-    do
-    {
-        if (test & shift)
-        {
-            return i+(biexp->size-1)*COMP_BIT_SIZE;
-        }
+  do {
+    if (test & shift) {
+      return i + (biexp->size - 1) * COMP_BIT_SIZE;
+    }
 
-        shift >>= 1;
-    } while (i-- != 0);
+    shift >>= 1;
+  } while (i-- != 0);
 
-    return -1;      /* error - must have been a leading 0 */
+  return -1; /* error - must have been a leading 0 */
 }
 
 /*
  * Is a particular bit is an exponent 1 or 0? Used when doing sliding-window
  * exponentiation.
  */
-static int exp_bit_is_one(bigint *biexp, int offset)
-{
-    comp test = biexp->comps[offset / COMP_BIT_SIZE];
-    int num_shifts = offset % COMP_BIT_SIZE;
-    comp shift = 1;
-    int i;
+static int exp_bit_is_one(bigint *biexp, int offset) {
+  comp test = biexp->comps[offset / COMP_BIT_SIZE];
+  int num_shifts = offset % COMP_BIT_SIZE;
+  comp shift = 1;
+  int i;
 
-    check(biexp);
+  check(biexp);
 
-    for (i = 0; i < num_shifts; i++)
-    {
-        shift <<= 1;
-    }
+  for (i = 0; i < num_shifts; i++) {
+    shift <<= 1;
+  }
 
-    return (test & shift) != 0;
+  return (test & shift) != 0;
 }
 
 #ifdef CONFIG_BIGINT_CHECK_ON
 /*
  * Perform a sanity check on bi.
  */
-static void check(const bigint *bi)
-{
-    if (bi->refs <= 0)
-    {
-        printf("check: zero or negative refs in bigint\n");
-        abort();
-    }
+static void check(const bigint *bi) {
+  if (bi->refs <= 0) {
+    printf("check: zero or negative refs in bigint\n");
+    abort();
+  }
 
-    if (bi->next != NULL)
-    {
-        printf("check: attempt to use a bigint from "
-                "the free list\n");
-        abort();
-    }
+  if (bi->next != NULL) {
+    printf(
+        "check: attempt to use a bigint from "
+        "the free list\n");
+    abort();
+  }
 }
 #endif
 
 /*
  * Delete any leading 0's (and allow for 0).
  */
-static bigint *trim(bigint *bi)
-{
-    check(bi);
+static bigint *trim(bigint *bi) {
+  check(bi);
 
-    while (bi->comps[bi->size-1] == 0 && bi->size > 1)
-    {
-        bi->size--;
-    }
+  while (bi->comps[bi->size - 1] == 0 && bi->size > 1) {
+    bi->size--;
+  }
 
-    return bi;
+  return bi;
 }
 
 #if defined(CONFIG_BIGINT_MONTGOMERY)
@@ -2450,53 +2345,49 @@ static bigint *trim(bigint *bi)
  * @param bixy [in]  A bigint.
  * @return The result of the montgomery reduction.
  */
-NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy)
-{
-    int i = 0, n;
-    uint8_t mod_offset = ctx->mod_offset;
-    bigint *bim = ctx->bi_mod[mod_offset];
-    comp mod_inv = ctx->N0_dash[mod_offset];
+NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy) {
+  int i = 0, n;
+  uint8_t mod_offset = ctx->mod_offset;
+  bigint *bim = ctx->bi_mod[mod_offset];
+  comp mod_inv = ctx->N0_dash[mod_offset];
 
-    check(bixy);
+  check(bixy);
 
-    if (ctx->use_classical)     /* just use classical instead */
-    {
-        return bi_mod(ctx, bixy);
-    }
+  if (ctx->use_classical) /* just use classical instead */
+  {
+    return bi_mod(ctx, bixy);
+  }
 
-    n = bim->size;
+  n = bim->size;
 
-    do
-    {
-        bixy = bi_add(ctx, bixy, comp_left_shift(
-                    bi_int_multiply(ctx, bim, bixy->comps[i]*mod_inv), i));
-    } while (++i < n);
+  do {
+    bixy = bi_add(ctx, bixy,
+                  comp_left_shift(
+                      bi_int_multiply(ctx, bim, bixy->comps[i] * mod_inv), i));
+  } while (++i < n);
 
-    comp_right_shift(bixy, n);
+  comp_right_shift(bixy, n);
 
-    if (bi_compare(bixy, bim) >= 0)
-    {
-        bixy = bi_subtract(ctx, bixy, bim, NULL);
-    }
+  if (bi_compare(bixy, bim) >= 0) {
+    bixy = bi_subtract(ctx, bixy, bim, NULL);
+  }
 
-    return bixy;
+  return bixy;
 }
 
 #elif defined(CONFIG_BIGINT_BARRETT)
 /*
  * Stomp on the most significant components to give the illusion of a "mod base
- * radix" operation 
+ * radix" operation
  */
-static bigint *comp_mod(bigint *bi, int mod)
-{
-    check(bi);
+static bigint *comp_mod(bigint *bi, int mod) {
+  check(bi);
 
-    if (bi->size > mod)
-    {
-        bi->size = mod;
-    }
+  if (bi->size > mod) {
+    bi->size = mod;
+  }
 
-    return bi;
+  return bi;
 }
 
 /**
@@ -2505,77 +2396,72 @@ static bigint *comp_mod(bigint *bi, int mod)
  * @param bi [in]  A bigint.
  * @return The result of the Barrett reduction.
  */
-NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi)
-{
-    bigint *q1, *q2, *q3, *r1, *r2, *r;
-    uint8_t mod_offset = ctx->mod_offset;
-    bigint *bim = ctx->bi_mod[mod_offset];
-    int k = bim->size;
+NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi) {
+  bigint *q1, *q2, *q3, *r1, *r2, *r;
+  uint8_t mod_offset = ctx->mod_offset;
+  bigint *bim = ctx->bi_mod[mod_offset];
+  int k = bim->size;
 
-    check(bi);
-    check(bim);
+  check(bi);
+  check(bim);
 
-    /* use Classical method instead  - Barrett cannot help here */
-    if (bi->size > k*2)
-    {
-        return bi_mod(ctx, bi);
-    }
+  /* use Classical method instead  - Barrett cannot help here */
+  if (bi->size > k * 2) {
+    return bi_mod(ctx, bi);
+  }
 
-    q1 = comp_right_shift(bi_clone(ctx, bi), k-1);
+  q1 = comp_right_shift(bi_clone(ctx, bi), k - 1);
 
-    /* do outer partial multiply */
-    q2 = regular_multiply(ctx, q1, ctx->bi_mu[mod_offset], 0, k-1); 
-    q3 = comp_right_shift(q2, k+1);
-    r1 = comp_mod(bi, k+1);
+  /* do outer partial multiply */
+  q2 = regular_multiply(ctx, q1, ctx->bi_mu[mod_offset], 0, k - 1);
+  q3 = comp_right_shift(q2, k + 1);
+  r1 = comp_mod(bi, k + 1);
 
-    /* do inner partial multiply */
-    r2 = comp_mod(regular_multiply(ctx, q3, bim, k+1, 0), k+1);
-    r = bi_subtract(ctx, r1, r2, NULL);
+  /* do inner partial multiply */
+  r2 = comp_mod(regular_multiply(ctx, q3, bim, k + 1, 0), k + 1);
+  r = bi_subtract(ctx, r1, r2, NULL);
 
-    /* if (r >= m) r = r - m; */
-    if (bi_compare(r, bim) >= 0)
-    {
-        r = bi_subtract(ctx, r, bim, NULL);
-    }
+  /* if (r >= m) r = r - m; */
+  if (bi_compare(r, bim) >= 0) {
+    r = bi_subtract(ctx, r, bim, NULL);
+  }
 
-    return r;
+  return r;
 }
 #endif /* CONFIG_BIGINT_BARRETT */
 
 #ifdef CONFIG_BIGINT_SLIDING_WINDOW
 /*
- * Work out g1, g3, g5, g7... etc for the sliding-window algorithm 
+ * Work out g1, g3, g5, g7... etc for the sliding-window algorithm
  */
-static void precompute_slide_window(BI_CTX *ctx, int window, bigint *g1)
-{
-    int k = 1, i;
-    bigint *g2;
+static void precompute_slide_window(BI_CTX *ctx, int window, bigint *g1) {
+  int k = 1, i;
+  bigint *g2;
 
-    for (i = 0; i < window-1; i++)   /* compute 2^(window-1) */
-    {
-        k <<= 1;
-    }
+  for (i = 0; i < window - 1; i++) /* compute 2^(window-1) */
+  {
+    k <<= 1;
+  }
 
-    ctx->g = (bigint **)malloc(k*sizeof(bigint *));
-    ctx->g[0] = bi_clone(ctx, g1);
-    bi_permanent(ctx->g[0]);
-    g2 = bi_residue(ctx, bi_square(ctx, ctx->g[0]));   /* g^2 */
+  ctx->g = (bigint **)malloc(k * sizeof(bigint *));
+  ctx->g[0] = bi_clone(ctx, g1);
+  bi_permanent(ctx->g[0]);
+  g2 = bi_residue(ctx, bi_square(ctx, ctx->g[0])); /* g^2 */
 
-    for (i = 1; i < k; i++)
-    {
-        ctx->g[i] = bi_residue(ctx, bi_multiply(ctx, ctx->g[i-1], bi_copy(g2)));
-        bi_permanent(ctx->g[i]);
-    }
+  for (i = 1; i < k; i++) {
+    ctx->g[i] = bi_residue(ctx, bi_multiply(ctx, ctx->g[i - 1], bi_copy(g2)));
+    bi_permanent(ctx->g[i]);
+  }
 
-    bi_free(ctx, g2);
-    ctx->window = k;
+  bi_free(ctx, g2);
+  ctx->window = k;
 }
 #endif
 
 /**
  * @brief Perform a modular exponentiation.
  *
- * This function requires bi_set_mod() to have been called previously. This is 
+ * This function requires bi_set_mod() to have been called previously. This is
  * one of the optimisations used for performance.
  * @param ctx [in]  The bigint session context.
  * @param bi  [in]  The bigint on which to perform the mod power operation.
@@ -2583,92 +2469,81 @@ static void precompute_slide_window(BI_CTX *ctx, int window, bigint *g1)
  * @return The result of the mod exponentiation operation
  * @see bi_set_mod().
  */
-NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp)
-{
-    int i = find_max_exp_index(biexp), j, window_size = 1;
-    bigint *biR = int_to_bi(ctx, 1);
+NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp) {
+  int i = find_max_exp_index(biexp), j, window_size = 1;
+  bigint *biR = int_to_bi(ctx, 1);
 
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-    uint8_t mod_offset = ctx->mod_offset;
-    if (!ctx->use_classical)
-    {
-        /* preconvert */
-        bi = bi_mont(ctx, 
-                bi_multiply(ctx, bi, ctx->bi_RR_mod_m[mod_offset]));    /* x' */
-        bi_free(ctx, biR);
-        biR = ctx->bi_R_mod_m[mod_offset];                              /* A */
-    }
+  uint8_t mod_offset = ctx->mod_offset;
+  if (!ctx->use_classical) {
+    /* preconvert */
+    bi = bi_mont(ctx,
+                 bi_multiply(ctx, bi, ctx->bi_RR_mod_m[mod_offset])); /* x' */
+    bi_free(ctx, biR);
+    biR = ctx->bi_R_mod_m[mod_offset]; /* A */
+  }
 #endif
 
-    check(bi);
-    check(biexp);
+  check(bi);
+  check(biexp);
 
 #ifdef CONFIG_BIGINT_SLIDING_WINDOW
-    for (j = i; j > 32; j /= 5) /* work out an optimum size */
-        window_size++;
+  for (j = i; j > 32; j /= 5) /* work out an optimum size */
+    window_size++;
 
-    /* work out the slide constants */
-    precompute_slide_window(ctx, window_size, bi);
-#else   /* just one constant */
-    ctx->g = (bigint **)malloc(sizeof(bigint *));
-    ctx->g[0] = bi_clone(ctx, bi);
-    ctx->window = 1;
-    bi_permanent(ctx->g[0]);
+  /* work out the slide constants */
+  precompute_slide_window(ctx, window_size, bi);
+#else /* just one constant */
+  ctx->g = (bigint **)malloc(sizeof(bigint *));
+  ctx->g[0] = bi_clone(ctx, bi);
+  ctx->window = 1;
+  bi_permanent(ctx->g[0]);
 #endif
 
-    /* if sliding-window is off, then only one bit will be done at a time and
-     * will reduce to standard left-to-right exponentiation */
-    do
+  /* if sliding-window is off, then only one bit will be done at a time and
+   * will reduce to standard left-to-right exponentiation */
+  do {
+    if (exp_bit_is_one(biexp, i)) {
+      int l = i - window_size + 1;
+      int part_exp = 0;
+
+      if (l < 0) /* LSB of exponent will always be 1 */
+        l = 0;
+      else {
+        while (exp_bit_is_one(biexp, l) == 0) l++; /* go back up */
+      }
+
+      /* build up the section of the exponent */
+      for (j = i; j >= l; j--) {
+        biR = bi_residue(ctx, bi_square(ctx, biR));
+        if (exp_bit_is_one(biexp, j)) part_exp++;
+
+        if (j != l) part_exp <<= 1;
+      }
+
+      part_exp = (part_exp - 1) / 2; /* adjust for array */
+      biR = bi_residue(ctx, bi_multiply(ctx, biR, ctx->g[part_exp]));
+      i = l - 1;
+    } else /* square it */
     {
-        if (exp_bit_is_one(biexp, i))
-        {
-            int l = i-window_size+1;
-            int part_exp = 0;
-
-            if (l < 0)  /* LSB of exponent will always be 1 */
-                l = 0;
-            else
-            {
-                while (exp_bit_is_one(biexp, l) == 0)
-                    l++;    /* go back up */
-            }
-
-            /* build up the section of the exponent */
-            for (j = i; j >= l; j--)
-            {
-                biR = bi_residue(ctx, bi_square(ctx, biR));
-                if (exp_bit_is_one(biexp, j))
-                    part_exp++;
-
-                if (j != l)
-                    part_exp <<= 1;
-            }
-
-            part_exp = (part_exp-1)/2;  /* adjust for array */
-            biR = bi_residue(ctx, bi_multiply(ctx, biR, ctx->g[part_exp]));
-            i = l-1;
-        }
-        else    /* square it */
-        {
-            biR = bi_residue(ctx, bi_square(ctx, biR));
-            i--;
-        }
-    } while (i >= 0);
-     
-    /* cleanup */
-    for (i = 0; i < ctx->window; i++)
-    {
-        bi_depermanent(ctx->g[i]);
-        bi_free(ctx, ctx->g[i]);
+      biR = bi_residue(ctx, bi_square(ctx, biR));
+      i--;
     }
+  } while (i >= 0);
 
-    free(ctx->g);
-    bi_free(ctx, bi);
-    bi_free(ctx, biexp);
+  /* cleanup */
+  for (i = 0; i < ctx->window; i++) {
+    bi_depermanent(ctx->g[i]);
+    bi_free(ctx, ctx->g[i]);
+  }
+
+  free(ctx->g);
+  bi_free(ctx, bi);
+  bi_free(ctx, biexp);
 #if defined CONFIG_BIGINT_MONTGOMERY
-    return ctx->use_classical ? biR : bi_mont(ctx, biR); /* convert back */
+  return ctx->use_classical ? biR : bi_mont(ctx, biR); /* convert back */
 #else /* CONFIG_BIGINT_CLASSICAL or CONFIG_BIGINT_BARRETT */
-    return biR;
+  return biR;
 #endif
 }
 
@@ -2696,8 +2571,8 @@ NS_INTERNAL bigint *bi_mod_power2(BI_CTX *ctx, bigint *bi, bigint *bim, bigint *
      * doing peer verification, and so is not expensive :-) */
     BI_CTX *tmp_ctx = bi_initialize();
     bi_set_mod(tmp_ctx, bi_clone(tmp_ctx, bim), BIGINT_M_OFFSET);
-    tmp_biR = bi_mod_power(tmp_ctx, 
-                bi_clone(tmp_ctx, bi), 
+    tmp_biR = bi_mod_power(tmp_ctx,
+                bi_clone(tmp_ctx, bi),
                 bi_clone(tmp_ctx, biexp));
     biR = bi_clone(ctx, tmp_biR);
     bi_free(tmp_ctx, tmp_biR);
@@ -2724,31 +2599,29 @@ NS_INTERNAL bigint *bi_mod_power2(BI_CTX *ctx, bigint *bi, bigint *bim, bigint *
  * @param qInv [in] CRT's qInv bigint
  * @return The result of the CRT operation
  */
-NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
-        bigint *dP, bigint *dQ,
-        bigint *p, bigint *q, bigint *qInv)
-{
-    bigint *m1, *m2, *h;
+NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
+                           bigint *p, bigint *q, bigint *qInv) {
+  bigint *m1, *m2, *h;
 
-    /* Montgomery has a condition the 0 < x, y < m and these products violate
-     * that condition. So disable Montgomery when using CRT */
+/* Montgomery has a condition the 0 < x, y < m and these products violate
+ * that condition. So disable Montgomery when using CRT */
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-    ctx->use_classical = 1;
+  ctx->use_classical = 1;
 #endif
-    ctx->mod_offset = BIGINT_P_OFFSET;
-    m1 = bi_mod_power(ctx, bi_copy(bi), dP);
+  ctx->mod_offset = BIGINT_P_OFFSET;
+  m1 = bi_mod_power(ctx, bi_copy(bi), dP);
 
-    ctx->mod_offset = BIGINT_Q_OFFSET;
-    m2 = bi_mod_power(ctx, bi, dQ);
+  ctx->mod_offset = BIGINT_Q_OFFSET;
+  m2 = bi_mod_power(ctx, bi, dQ);
 
-    h = bi_subtract(ctx, bi_add(ctx, m1, p), bi_copy(m2), NULL);
-    h = bi_multiply(ctx, h, qInv);
-    ctx->mod_offset = BIGINT_P_OFFSET;
-    h = bi_residue(ctx, h);
+  h = bi_subtract(ctx, bi_add(ctx, m1, p), bi_copy(m2), NULL);
+  h = bi_multiply(ctx, h, qInv);
+  ctx->mod_offset = BIGINT_P_OFFSET;
+  h = bi_residue(ctx, h);
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-    ctx->use_classical = 0;         /* reset for any further operation */
+  ctx->use_classical = 0; /* reset for any further operation */
 #endif
-    return bi_add(ctx, m2, bi_multiply(ctx, q, h));
+  return bi_add(ctx, m2, bi_multiply(ctx, q, h));
 }
 /** @} */
 /*
@@ -2761,7 +2634,8 @@ SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth) {
   SSL_CTX *ctx;
 
   ctx = calloc(1, sizeof(*ctx));
-  if (NULL == ctx) goto out;
+  if (NULL == ctx)
+    goto out;
 
   assert(meth != NULL);
 
@@ -2809,14 +2683,16 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
   }
 
   p = pem_load(CAfile, PEM_SIG_CERT);
-  if (NULL == p) goto out;
+  if (NULL == p)
+    goto out;
 
   for (ca = NULL, i = 0; i < p->num_obj; i++) {
     DER *d = &p->obj[i];
     X509 *new;
 
     new = X509_new(d->der, d->der_len);
-    if (NULL == new) goto out;
+    if (NULL == new)
+      goto out;
 
     new->next = ca;
     ca = new;
@@ -2834,7 +2710,8 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file) {
   PEM *p;
 
   p = pem_load(file, PEM_SIG_CERT);
-  if (NULL == p) goto out;
+  if (NULL == p)
+    goto out;
 
   pem_free(ctx->pem_cert);
   ctx->pem_cert = p;
@@ -2853,7 +2730,8 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type) {
   }
 
   p = pem_load(file, PEM_SIG_CERT);
-  if (NULL == p) goto out;
+  if (NULL == p)
+    goto out;
 
   pem_free(ctx->pem_cert);
   ctx->pem_cert = p;
@@ -2868,9 +2746,11 @@ static int decode_int(const uint8_t **pptr, const uint8_t *end,
   const uint8_t *ptr;
 
   ptr = ber_decode_tag(&tag, *pptr, end - *pptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
 
-  if (ber_id_octet_constructed(tag.ber_id)) return 0;
+  if (ber_id_octet_constructed(tag.ber_id))
+    return 0;
 
   result->ptr = ptr;
   result->len = tag.ber_len;
@@ -2910,29 +2790,42 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   PEM *pem;
 
   pem = pem_load(file, PEM_SIG_KEY);
-  if (NULL == pem) goto out;
+  if (NULL == pem)
+    goto out;
 
   ptr = ber_decode_tag(&tag, pem->obj[0].der, pem->obj[0].der_len);
-  if (NULL == ptr) goto decode_err;
+  if (NULL == ptr)
+    goto decode_err;
 
-  if (!ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+  if (!ber_id_octet_constructed(tag.ber_id))
+    goto decode_err;
 
   end = ptr + tag.ber_len;
 
   /* eat the version */
-  if (!decode_int(&ptr, end, &vers)) goto decode_err;
-  if (!decode_int(&ptr, end, &n)) goto decode_err;
-  if (!decode_int(&ptr, end, &e)) goto decode_err;
-  if (!decode_int(&ptr, end, &d)) goto decode_err;
-  if (!decode_int(&ptr, end, &p)) goto decode_err;
-  if (!decode_int(&ptr, end, &q)) goto decode_err;
-  if (!decode_int(&ptr, end, &e1)) goto decode_err;
-  if (!decode_int(&ptr, end, &e2)) goto decode_err;
-  if (!decode_int(&ptr, end, &c)) goto decode_err;
+  if (!decode_int(&ptr, end, &vers))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &n))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &e))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &d))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &p))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &q))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &e1))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &e2))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &c))
+    goto decode_err;
 
   RSA_priv_key_new(&rsa, n.ptr, n.len, e.ptr, e.len, d.ptr, d.len, p.ptr, p.len,
                    q.ptr, q.len, e1.ptr, e1.len, e2.ptr, e2.len, c.ptr, c.len);
-  if (NULL == rsa) goto out_free_pem;
+  if (NULL == rsa)
+    goto out_free_pem;
 
   RSA_free(ctx->rsa_privkey);
   ctx->rsa_privkey = rsa;
@@ -2968,8 +2861,10 @@ void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen) {
   size_t i, j;
   size_t line;
 
-  if (NULL == f || 0 == len) return;
-  if (!llen) llen = 0x10;
+  if (NULL == f || 0 == len)
+    return;
+  if (!llen)
+    llen = 0x10;
 
   for (j = 0; j < len; j += line, tmp += line) {
     if (j + llen > len) {
@@ -2988,9 +2883,11 @@ void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen) {
       }
     }
 
-    for (; i < llen; i++) fprintf(f, " ");
+    for (; i < llen; i++)
+      fprintf(f, " ");
 
-    for (i = 0; i < line; i++) fprintf(f, " %02x", tmp[i]);
+    for (i = 0; i < line; i++)
+      fprintf(f, " %02x", tmp[i]);
 
     fprintf(f, "\n");
   }
@@ -3003,19 +2900,19 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
 #endif
 /*
  * Copyright (c) 2007, Cameron Rich
- * 
+ *
  * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without 
+ *
+ * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * Redistributions of source code must retain the above copyright notice, 
+ * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software 
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -3036,8 +2933,6 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
  * See http://www.ietf.org/rfc/rfc2104.txt and
  * http://www.faqs.org/rfcs/rfc2202.html
  */
-
-#include <string.h>
 
 
 /**
@@ -3112,19 +3007,19 @@ void hmac_md5(const uint8_t *key, size_t key_len,
 }
 /*
  * Copyright (c) 2007, Cameron Rich
- * 
+ *
  * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without 
+ *
+ * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * Redistributions of source code must retain the above copyright notice, 
+ * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software 
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -3144,7 +3039,6 @@ void hmac_md5(const uint8_t *key, size_t key_len,
  * This file implements the MD5 algorithm as defined in RFC1321
  */
 
-#include <string.h>
 
 /* Constants for MD5Transform routine.
  */
@@ -3170,7 +3064,7 @@ static void MD5Transform(uint32_t state[4], const uint8_t block[64]);
 static void Encode(uint8_t *output, uint32_t *input, uint32_t len);
 static void Decode(uint32_t *output, const uint8_t *input, uint32_t len);
 
-static const uint8_t PADDING[64] = 
+static const uint8_t PADDING[64] =
 {
     0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -3244,7 +3138,7 @@ void MD5_Update(MD5_CTX *ctx, const uint8_t * msg, int len)
     partLen = 64 - x;
 
     /* Transform as many times as possible.  */
-    if (len >= partLen) 
+    if (len >= partLen)
     {
         memcpy(&ctx->buffer[x], msg, partLen);
         MD5Transform(ctx->state, ctx->buffer);
@@ -3290,7 +3184,7 @@ void MD5_Final(uint8_t *digest, MD5_CTX *ctx)
  */
 static void MD5Transform(uint32_t state[4], const uint8_t block[64])
 {
-    uint32_t a = state[0], b = state[1], c = state[2], 
+    uint32_t a = state[0], b = state[1], c = state[2],
              d = state[3], x[MD5_SIZE];
 
     Decode(x, block, 64);
@@ -3381,7 +3275,7 @@ static void Encode(uint8_t *output, uint32_t *input, uint32_t len)
 {
     uint32_t i, j;
 
-    for (i = 0, j = 0; j < len; i++, j += 4) 
+    for (i = 0, j = 0; j < len; i++, j += 4)
     {
         output[j] = (uint8_t)(input[i] & 0xff);
         output[j+1] = (uint8_t)((input[i] >> 8) & 0xff);
@@ -3412,12 +3306,24 @@ const SSL_METHOD meth = {0, 0};
 const SSL_METHOD sv_meth = {0, 1};
 const SSL_METHOD cl_meth = {1, 0};
 
-const SSL_METHOD *TLSv1_2_method(void) { return &meth; }
-const SSL_METHOD *TLSv1_2_server_method(void) { return &sv_meth; }
-const SSL_METHOD *TLSv1_2_client_method(void) { return &cl_meth; }
-const SSL_METHOD *SSLv23_method(void) { return &meth; }
-const SSL_METHOD *SSLv23_server_method(void) { return &sv_meth; }
-const SSL_METHOD *SSLv23_client_method(void) { return &cl_meth; }
+const SSL_METHOD *TLSv1_2_method(void) {
+  return &meth;
+}
+const SSL_METHOD *TLSv1_2_server_method(void) {
+  return &sv_meth;
+}
+const SSL_METHOD *TLSv1_2_client_method(void) {
+  return &cl_meth;
+}
+const SSL_METHOD *SSLv23_method(void) {
+  return &meth;
+}
+const SSL_METHOD *SSLv23_server_method(void) {
+  return &sv_meth;
+}
+const SSL_METHOD *SSLv23_client_method(void) {
+  return &cl_meth;
+}
 
 long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long mode, void *ptr) {
   (void)ctx;
@@ -3430,8 +3336,6 @@ long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long mode, void *ptr) {
  * All rights reserved
  */
 
-#include <errno.h>
-#include <stdio.h>
 
 #define DER_INCREMENT 1024
 #define OBJ_INCREMENT 4
@@ -3439,10 +3343,12 @@ long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long mode, void *ptr) {
 static int check_end_marker(const char *str, int sig_type) {
   switch (sig_type) {
     case PEM_SIG_CERT:
-      if (!strcmp(str, "-----END CERTIFICATE-----")) return 1;
+      if (!strcmp(str, "-----END CERTIFICATE-----"))
+        return 1;
       break;
     case PEM_SIG_KEY:
-      if (!strcmp(str, "-----END RSA PRIVATE KEY-----")) return 1;
+      if (!strcmp(str, "-----END RSA PRIVATE KEY-----"))
+        return 1;
       break;
     default:
       assert(0);
@@ -3500,7 +3406,8 @@ static int add_object(PEM *p) {
     max = p->max_obj + OBJ_INCREMENT;
 
     new = realloc(p->obj, sizeof(*p->obj) * max);
-    if (NULL == new) return 0;
+    if (NULL == new)
+      return 0;
 
     p->obj = new;
     p->max_obj = max;
@@ -3538,7 +3445,8 @@ PEM *pem_load(const char *fn, int type_mask) {
       case 0: /* begin marker */
         if (check_begin_marker(buf, &got)) {
           if (got & type_mask) {
-            if (!add_object(p)) goto out_close;
+            if (!add_object(p))
+              goto out_close;
             cur = p->num_obj++;
             p->obj[cur].der_type = got;
             p->obj[cur].der_len = 0;
@@ -3612,25 +3520,28 @@ void pem_free(PEM *p) {
  * All rights reserved
  */
 
-#include <string.h>
 
 /* TLS1.2 Pseudo-Random-Function */
 NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
                      int seed_len, uint8_t *out, int olen) {
-  uint8_t A1[SHA256_SIZE + seed_len];
+  size_t A1_len = SHA256_SIZE + seed_len;
+  uint8_t A1[128];
+
+  assert(A1_len < sizeof(A1));  /* TODO(lsm): fix this */
 
   hmac_sha256(seed, seed_len, sec, sec_len, A1);
   memcpy(A1 + SHA256_SIZE, seed, seed_len);
 
   for (;;) {
     if (olen >= SHA256_SIZE) {
-      hmac_sha256(A1, sizeof(A1), sec, sec_len, out);
+      hmac_sha256(A1, A1_len, sec, sec_len, out);
       out += SHA256_SIZE;
       olen -= SHA256_SIZE;
-      if (olen) hmac_sha256(A1, SHA256_SIZE, sec, sec_len, A1);
+      if (olen)
+        hmac_sha256(A1, SHA256_SIZE, sec, sec_len, A1);
     } else {
       uint8_t tmp[SHA256_SIZE];
-      hmac_sha256(A1, sizeof(A1), sec, sec_len, tmp);
+      hmac_sha256(A1, A1_len, sec, sec_len, tmp);
       memcpy(out, tmp, olen);
       break;
     }
@@ -3642,22 +3553,21 @@ NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
  */
 
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-
 #define RANDOM_SOURCE "/dev/urandom"
 int get_random(uint8_t *out, size_t len) {
-  static int rfd = -1;
-  ssize_t ret;
-  if (rfd < 0) {
-    rfd = open(RANDOM_SOURCE, O_RDONLY);
-    if (rfd < 0) return 0;
+  static FILE *fp = NULL;
+  size_t ret = 0;
+
+  if (fp == NULL) {
+    fp = fopen(RANDOM_SOURCE, "rb");
   }
 
-  ret = read(rfd, out, len);
-  if (ret < 0 || (size_t)ret != len) return 0;
+  if (fp != NULL) {
+    ret = fread(out, 1, len, fp);
+  }
+
+  if (ret < 0 || ret != len)
+    return 0;
 
   return 1;
 }
@@ -3665,11 +3575,13 @@ int get_random(uint8_t *out, size_t len) {
 int get_random_nonzero(uint8_t *out, size_t len) {
   size_t i;
 
-  if (!get_random(out, len)) return 0;
+  if (!get_random(out, len))
+    return 0;
 
   for (i = 0; i < len; i++) {
     while (out[i] == 0) {
-      if (!get_random(out + i, 1)) return 0;
+      if (!get_random(out + i, 1))
+        return 0;
     }
   }
 
@@ -3677,19 +3589,19 @@ int get_random_nonzero(uint8_t *out, size_t len) {
 }
 /*
  * Copyright (c) 2007, Cameron Rich
- * 
+ *
  * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without 
+ *
+ * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * Redistributions of source code must retain the above copyright notice, 
+ * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software 
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -3710,7 +3622,6 @@ int get_random_nonzero(uint8_t *out, size_t len) {
  * Originally written by Christophe Devine.
  */
 
-#include <string.h>
 
 /**
  * Get ready for an encrypt/decrypt operation
@@ -3731,10 +3642,10 @@ void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length)
     {
         a = m[i];
         j = (uint8_t)(j + a + key[k]);
-        m[i] = m[j]; 
+        m[i] = m[j];
         m[j] = a;
 
-        if (++k >= length) 
+        if (++k >= length)
             k = 0;
     }
 }
@@ -3745,7 +3656,7 @@ void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length)
  * NOTE: *msg and *out must be the same pointer (performance tweak)
  */
 void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length)
-{ 
+{
     int i;
     uint8_t *m, x, y, a, b;
 
@@ -3801,10 +3712,7 @@ void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length)
  */
 
 #define CONFIG_SSL_CERT_VERIFICATION 1
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include <stdlib.h>
+
 
 struct _RSA_CTX
 {
@@ -4058,10 +3966,6 @@ int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
  * This was initially based on the Mozilla SHA1 implementation, although
  * none of the original Mozilla code remains.
  */
-
-/* this is only to get definitions for memcpy(), be32toh() and htobe32() */
-#include <string.h>
-#include <stdint.h>
 
 
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
@@ -4367,8 +4271,6 @@ void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx)
  *
  */
 
-#include <string.h>	/* memcpy()/memset() or bcopy()/bzero() */
-#include <assert.h>	/* assert() */
 
 /*
  * ASSERT NOTE:
@@ -4459,10 +4361,10 @@ typedef uint64_t sha2_word64;	/* Exactly 8 bytes */
 #define REVERSE64(w,x)	{ \
 	sha2_word64 tmp = (w); \
 	tmp = (tmp >> 32) | (tmp << 32); \
-	tmp = ((tmp & 0xff00ff00ff00ff00ULL) >> 8) | \
-	      ((tmp & 0x00ff00ff00ff00ffULL) << 8); \
-	(x) = ((tmp & 0xffff0000ffff0000ULL) >> 16) | \
-	      ((tmp & 0x0000ffff0000ffffULL) << 16); \
+	tmp = ((tmp & (uint64_t) 0xff00ff00ff00ff00) >> 8) | \
+	      ((tmp & (uint64_t) 0x00ff00ff00ff00ff) << 8); \
+	(x) = ((tmp & (uint64_t) 0xffff0000ffff0000) >> 16) | \
+	      ((tmp & (uint64_t) 0x0000ffff0000ffff) << 16); \
 }
 #endif /* BYTE_ORDER == LITTLE_ENDIAN */
 
@@ -4581,70 +4483,70 @@ const static sha2_word32 sha256_initial_hash_value[8] = {
 
 /* Hash constant words K for SHA-384 and SHA-512: */
 const static sha2_word64 K512[80] = {
-	0x428a2f98d728ae22ULL, 0x7137449123ef65cdULL,
-	0xb5c0fbcfec4d3b2fULL, 0xe9b5dba58189dbbcULL,
-	0x3956c25bf348b538ULL, 0x59f111f1b605d019ULL,
-	0x923f82a4af194f9bULL, 0xab1c5ed5da6d8118ULL,
-	0xd807aa98a3030242ULL, 0x12835b0145706fbeULL,
-	0x243185be4ee4b28cULL, 0x550c7dc3d5ffb4e2ULL,
-	0x72be5d74f27b896fULL, 0x80deb1fe3b1696b1ULL,
-	0x9bdc06a725c71235ULL, 0xc19bf174cf692694ULL,
-	0xe49b69c19ef14ad2ULL, 0xefbe4786384f25e3ULL,
-	0x0fc19dc68b8cd5b5ULL, 0x240ca1cc77ac9c65ULL,
-	0x2de92c6f592b0275ULL, 0x4a7484aa6ea6e483ULL,
-	0x5cb0a9dcbd41fbd4ULL, 0x76f988da831153b5ULL,
-	0x983e5152ee66dfabULL, 0xa831c66d2db43210ULL,
-	0xb00327c898fb213fULL, 0xbf597fc7beef0ee4ULL,
-	0xc6e00bf33da88fc2ULL, 0xd5a79147930aa725ULL,
-	0x06ca6351e003826fULL, 0x142929670a0e6e70ULL,
-	0x27b70a8546d22ffcULL, 0x2e1b21385c26c926ULL,
-	0x4d2c6dfc5ac42aedULL, 0x53380d139d95b3dfULL,
-	0x650a73548baf63deULL, 0x766a0abb3c77b2a8ULL,
-	0x81c2c92e47edaee6ULL, 0x92722c851482353bULL,
-	0xa2bfe8a14cf10364ULL, 0xa81a664bbc423001ULL,
-	0xc24b8b70d0f89791ULL, 0xc76c51a30654be30ULL,
-	0xd192e819d6ef5218ULL, 0xd69906245565a910ULL,
-	0xf40e35855771202aULL, 0x106aa07032bbd1b8ULL,
-	0x19a4c116b8d2d0c8ULL, 0x1e376c085141ab53ULL,
-	0x2748774cdf8eeb99ULL, 0x34b0bcb5e19b48a8ULL,
-	0x391c0cb3c5c95a63ULL, 0x4ed8aa4ae3418acbULL,
-	0x5b9cca4f7763e373ULL, 0x682e6ff3d6b2b8a3ULL,
-	0x748f82ee5defb2fcULL, 0x78a5636f43172f60ULL,
-	0x84c87814a1f0ab72ULL, 0x8cc702081a6439ecULL,
-	0x90befffa23631e28ULL, 0xa4506cebde82bde9ULL,
-	0xbef9a3f7b2c67915ULL, 0xc67178f2e372532bULL,
-	0xca273eceea26619cULL, 0xd186b8c721c0c207ULL,
-	0xeada7dd6cde0eb1eULL, 0xf57d4f7fee6ed178ULL,
-	0x06f067aa72176fbaULL, 0x0a637dc5a2c898a6ULL,
-	0x113f9804bef90daeULL, 0x1b710b35131c471bULL,
-	0x28db77f523047d84ULL, 0x32caab7b40c72493ULL,
-	0x3c9ebe0a15c9bebcULL, 0x431d67c49c100d4cULL,
-	0x4cc5d4becb3e42b6ULL, 0x597f299cfc657e2aULL,
-	0x5fcb6fab3ad6faecULL, 0x6c44198c4a475817ULL
+	(uint64_t) 0x428a2f98d728ae22, (uint64_t) 0x7137449123ef65cd,
+	(uint64_t) 0xb5c0fbcfec4d3b2f, (uint64_t) 0xe9b5dba58189dbbc,
+	(uint64_t) 0x3956c25bf348b538, (uint64_t) 0x59f111f1b605d019,
+	(uint64_t) 0x923f82a4af194f9b, (uint64_t) 0xab1c5ed5da6d8118,
+	(uint64_t) 0xd807aa98a3030242, (uint64_t) 0x12835b0145706fbe,
+	(uint64_t) 0x243185be4ee4b28c, (uint64_t) 0x550c7dc3d5ffb4e2,
+	(uint64_t) 0x72be5d74f27b896f, (uint64_t) 0x80deb1fe3b1696b1,
+	(uint64_t) 0x9bdc06a725c71235, (uint64_t) 0xc19bf174cf692694,
+	(uint64_t) 0xe49b69c19ef14ad2, (uint64_t) 0xefbe4786384f25e3,
+	(uint64_t) 0x0fc19dc68b8cd5b5, (uint64_t) 0x240ca1cc77ac9c65,
+	(uint64_t) 0x2de92c6f592b0275, (uint64_t) 0x4a7484aa6ea6e483,
+	(uint64_t) 0x5cb0a9dcbd41fbd4, (uint64_t) 0x76f988da831153b5,
+	(uint64_t) 0x983e5152ee66dfab, (uint64_t) 0xa831c66d2db43210,
+	(uint64_t) 0xb00327c898fb213f, (uint64_t) 0xbf597fc7beef0ee4,
+	(uint64_t) 0xc6e00bf33da88fc2, (uint64_t) 0xd5a79147930aa725,
+	(uint64_t) 0x06ca6351e003826f, (uint64_t) 0x142929670a0e6e70,
+	(uint64_t) 0x27b70a8546d22ffc, (uint64_t) 0x2e1b21385c26c926,
+	(uint64_t) 0x4d2c6dfc5ac42aed, (uint64_t) 0x53380d139d95b3df,
+	(uint64_t) 0x650a73548baf63de, (uint64_t) 0x766a0abb3c77b2a8,
+	(uint64_t) 0x81c2c92e47edaee6, (uint64_t) 0x92722c851482353b,
+	(uint64_t) 0xa2bfe8a14cf10364, (uint64_t) 0xa81a664bbc423001,
+	(uint64_t) 0xc24b8b70d0f89791, (uint64_t) 0xc76c51a30654be30,
+	(uint64_t) 0xd192e819d6ef5218, (uint64_t) 0xd69906245565a910,
+	(uint64_t) 0xf40e35855771202a, (uint64_t) 0x106aa07032bbd1b8,
+	(uint64_t) 0x19a4c116b8d2d0c8, (uint64_t) 0x1e376c085141ab53,
+	(uint64_t) 0x2748774cdf8eeb99, (uint64_t) 0x34b0bcb5e19b48a8,
+	(uint64_t) 0x391c0cb3c5c95a63, (uint64_t) 0x4ed8aa4ae3418acb,
+	(uint64_t) 0x5b9cca4f7763e373, (uint64_t) 0x682e6ff3d6b2b8a3,
+	(uint64_t) 0x748f82ee5defb2fc, (uint64_t) 0x78a5636f43172f60,
+	(uint64_t) 0x84c87814a1f0ab72, (uint64_t) 0x8cc702081a6439ec,
+	(uint64_t) 0x90befffa23631e28, (uint64_t) 0xa4506cebde82bde9,
+	(uint64_t) 0xbef9a3f7b2c67915, (uint64_t) 0xc67178f2e372532b,
+	(uint64_t) 0xca273eceea26619c, (uint64_t) 0xd186b8c721c0c207,
+	(uint64_t) 0xeada7dd6cde0eb1e, (uint64_t) 0xf57d4f7fee6ed178,
+	(uint64_t) 0x06f067aa72176fba, (uint64_t) 0x0a637dc5a2c898a6,
+	(uint64_t) 0x113f9804bef90dae, (uint64_t) 0x1b710b35131c471b,
+	(uint64_t) 0x28db77f523047d84, (uint64_t) 0x32caab7b40c72493,
+	(uint64_t) 0x3c9ebe0a15c9bebc, (uint64_t) 0x431d67c49c100d4c,
+	(uint64_t) 0x4cc5d4becb3e42b6, (uint64_t) 0x597f299cfc657e2a,
+	(uint64_t) 0x5fcb6fab3ad6faec, (uint64_t) 0x6c44198c4a475817
 };
 
 /* Initial hash value H for SHA-384 */
 const static sha2_word64 sha384_initial_hash_value[8] = {
-	0xcbbb9d5dc1059ed8ULL,
-	0x629a292a367cd507ULL,
-	0x9159015a3070dd17ULL,
-	0x152fecd8f70e5939ULL,
-	0x67332667ffc00b31ULL,
-	0x8eb44a8768581511ULL,
-	0xdb0c2e0d64f98fa7ULL,
-	0x47b5481dbefa4fa4ULL
+	(uint64_t) 0xcbbb9d5dc1059ed8,
+	(uint64_t) 0x629a292a367cd507,
+	(uint64_t) 0x9159015a3070dd17,
+	(uint64_t) 0x152fecd8f70e5939,
+	(uint64_t) 0x67332667ffc00b31,
+	(uint64_t) 0x8eb44a8768581511,
+	(uint64_t) 0xdb0c2e0d64f98fa7,
+	(uint64_t) 0x47b5481dbefa4fa4
 };
 
 /* Initial hash value H for SHA-512 */
 const static sha2_word64 sha512_initial_hash_value[8] = {
-	0x6a09e667f3bcc908ULL,
-	0xbb67ae8584caa73bULL,
-	0x3c6ef372fe94f82bULL,
-	0xa54ff53a5f1d36f1ULL,
-	0x510e527fade682d1ULL,
-	0x9b05688c2b3e6c1fULL,
-	0x1f83d9abfb41bd6bULL,
-	0x5be0cd19137e2179ULL
+	(uint64_t) 0x6a09e667f3bcc908,
+	(uint64_t) 0xbb67ae8584caa73b,
+	(uint64_t) 0x3c6ef372fe94f82b,
+	(uint64_t) 0xa54ff53a5f1d36f1,
+	(uint64_t) 0x510e527fade682d1,
+	(uint64_t) 0x9b05688c2b3e6c1f,
+	(uint64_t) 0x1f83d9abfb41bd6b,
+	(uint64_t) 0x5be0cd19137e2179
 };
 
 
@@ -4885,6 +4787,7 @@ void SHA256_Update(SHA256_CTX* context, const sha2_byte *data, size_t len) {
 void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
 	sha2_word32	*d = (sha2_word32*)digest;
 	unsigned int	usedspace;
+	char *ptr;
 
 	/* Sanity check: */
 	assert(context != (SHA256_CTX*)0);
@@ -4921,8 +4824,8 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
 			*context->buffer = 0x80;
 		}
 		/* Set the bit count: */
-		char *ptr = (char *)&context->buffer[SHA256_SHORT_BLOCK_LENGTH];
-		*(sha2_word64*)ptr = context->bitcount;
+		ptr = (char *)&context->buffer[SHA256_SHORT_BLOCK_LENGTH];
+		*(sha2_word64*) ptr = context->bitcount;
 
 		/* Final transform: */
 		SHA256_Transform(context, (sha2_word32*)context->buffer);
@@ -4951,21 +4854,20 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
  */
 
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <errno.h>
-
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
 #endif
 
-int SSL_library_init(void) { return 1; }
+int SSL_library_init(void) {
+  return 1;
+}
 
 SSL *SSL_new(SSL_CTX *ctx) {
   SSL *ssl;
 
   ssl = calloc(1, sizeof(*ssl));
-  if (NULL == ssl) goto out;
+  if (NULL == ssl)
+    goto out;
 
   assert(ctx != NULL);
 
@@ -4990,7 +4892,9 @@ int SSL_set_fd(SSL *ssl, int fd) {
   return 1;
 }
 
-int SSL_get_fd(SSL *ssl) { return ssl->fd; }
+int SSL_get_fd(SSL *ssl) {
+  return ssl->fd;
+}
 
 static int do_send(SSL *ssl) {
   const uint8_t *buf;
@@ -5012,7 +4916,7 @@ again:
   ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
 #endif
   if (ret < 0) {
-    if (errno == EAGAIN) {
+    if (errno == EWOULDBLOCK) {
       goto shuffle;
     }
     dprintf("send: %s\n", strerror(errno));
@@ -5115,7 +5019,8 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   }
 
   /* In case any alerts are queued */
-  if (!do_send(ssl)) return 0;
+  if (!do_send(ssl))
+    return 0;
 
 #if KRYPTON_DEBUG_NONBLOCKING
   if (ssl->rx_len) {
@@ -5144,7 +5049,8 @@ int SSL_accept(SSL *ssl) {
   }
 
   while (ssl->tx_len) {
-    if (!do_send(ssl)) return -1;
+    if (!do_send(ssl))
+      return -1;
   }
 
   switch (ssl->state) {
@@ -5168,7 +5074,8 @@ int SSL_accept(SSL *ssl) {
       }
 
       ssl->state = STATE_SV_HELLO_SENT;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
     case STATE_SV_HELLO_SENT:
@@ -5185,7 +5092,8 @@ int SSL_accept(SSL *ssl) {
       }
 
       ssl->state = STATE_ESTABLISHED;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
     default:
@@ -5215,7 +5123,8 @@ int SSL_connect(SSL *ssl) {
   }
 
   while (ssl->tx_len) {
-    if (!do_send(ssl)) return -1;
+    if (!do_send(ssl))
+      return -1;
   }
 
   switch (ssl->state) {
@@ -5237,7 +5146,8 @@ int SSL_connect(SSL *ssl) {
       }
 
       ssl->state = STATE_CL_HELLO_SENT;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
 
@@ -5259,7 +5169,8 @@ int SSL_connect(SSL *ssl) {
       }
 
       ssl->state = STATE_CLIENT_FINISHED;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
     case STATE_CLIENT_FINISHED:
@@ -5295,7 +5206,8 @@ int SSL_read(SSL *ssl, void *buf, int num) {
       } else {
         ret = SSL_connect(ssl);
       }
-      if (ret <= 0) return ret;
+      if (ret <= 0)
+        return ret;
     }
 
     if (!do_recv(ssl, buf, num)) {
@@ -5324,7 +5236,8 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
     } else {
       ret = SSL_connect(ssl);
     }
-    if (ret <= 0) return ret;
+    if (ret <= 0)
+      return ret;
   }
 
   /* Assume sender is retrying the same data since he
@@ -5339,13 +5252,16 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
     }
     ssl->write_pending = 1;
   }
-  if (!do_send(ssl)) return -1;
+  if (!do_send(ssl))
+    return -1;
 
   ssl_err(ssl, SSL_ERROR_NONE);
   return num;
 }
 
-int SSL_get_error(const SSL *ssl, int ret) { return ssl->err; }
+int SSL_get_error(const SSL *ssl, int ret) {
+  return ssl->err;
+}
 
 int SSL_shutdown(SSL *ssl) {
   if (ssl->fatal) {
@@ -5361,7 +5277,8 @@ int SSL_shutdown(SSL *ssl) {
         }
 
         ssl->state = STATE_CLOSING;
-        if (!do_send(ssl)) return -1;
+        if (!do_send(ssl))
+          return -1;
       /* fall through */
 
       case STATE_CLOSING:
@@ -5418,7 +5335,8 @@ NS_INTERNAL tls_sec_t tls_new_security(void) {
   struct tls_security *sec;
 
   sec = calloc(1, sizeof(*sec));
-  if (NULL == sec) return NULL;
+  if (NULL == sec)
+    return NULL;
 
   SHA256_Init(&sec->handshakes_hash);
 
@@ -5453,8 +5371,10 @@ NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
 NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
-  uint8_t check[vrfy_len];
+  uint8_t check[128];  /* TODO(lsm): fix this, and assert below */
   SHA256_CTX tmp_hash;
+
+  assert(sizeof(check) > vrfy_len);
 
   /* don't interfere with running hash */
   memcpy(&tmp_hash, &sec->handshakes_hash, sizeof(tmp_hash));
@@ -5463,7 +5383,7 @@ NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
   SHA256_Final(buf + 15, &tmp_hash);
 
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf), check,
-      sizeof(check));
+      vrfy_len);
 
   return !memcmp(check, vrfy, sizeof(check));
 }
@@ -5471,8 +5391,10 @@ NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
 NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
-  uint8_t check[vrfy_len];
+  uint8_t check[128];  /* TODO(lsm): fix this, and assert below */
   SHA256_CTX tmp_hash;
+
+  assert(sizeof(check) > vrfy_len);
 
   /* don't interfere with running hash */
   memcpy(&tmp_hash, &sec->handshakes_hash, sizeof(tmp_hash));
@@ -5481,9 +5403,9 @@ NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
   SHA256_Final(buf + 15, &tmp_hash);
 
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf), check,
-      sizeof(check));
+      vrfy_len);
 
-  return !memcmp(check, vrfy, sizeof(check));
+  return !memcmp(check, vrfy, vrfy_len);
 }
 
 NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
@@ -5571,10 +5493,12 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   hdr.vers = htobe16(0x0303);
   hdr.len = htobe16(len + mac_len);
 
-  if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
+  if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
+    return 0;
 
   buf_ofs = ssl->tx_len;
-  if (!tls_tx_push(ssl, buf, len)) return 0;
+  if (!tls_tx_push(ssl, buf, len))
+    return 0;
 
   if (ssl->tx_enc) {
     if (ssl->is_server) {
@@ -5593,7 +5517,8 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
                len, digest);
     }
 
-    if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;
+    if (!tls_tx_push(ssl, digest, sizeof(digest)))
+      return 0;
 
     if (ssl->is_server) {
       ssl->cur->server_write_seq++;
@@ -5625,14 +5550,17 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
 
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
   /* FIXME: break up in to max-sized packets */
-  if (!tls_send(ssl, TLS_APP_DATA, buf, sz)) return -1;
+  if (!tls_send(ssl, TLS_APP_DATA, buf, sz))
+    return -1;
   return sz;
 }
 
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   struct tls_alert alert;
-  if (ssl->fatal) return 1;
-  if (level == ALERT_LEVEL_FATAL) ssl->fatal = 1;
+  if (ssl->fatal)
+    return 1;
+  if (level == ALERT_LEVEL_FATAL)
+    ssl->fatal = 1;
   alert.level = level;
   alert.desc = desc;
   return tls_send(ssl, TLS_ALERT, &alert, sizeof(alert));
@@ -5682,7 +5610,8 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello))) return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
+    return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
 
   /* store the random we generated */
@@ -5699,17 +5628,11 @@ static void set16(unsigned char *p, uint16_t v) {
 NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;
-#if 0
-	struct {
-		uint8_t type;
-		uint8_t len_hi;
-		uint16_t len;
-		uint16_t ilen;
-		uint8_t out[RSA_block_size(ssl->nxt->svr_key)];
-	}__attribute__((packed)) key_exch;
-#endif
-  unsigned char buf[6 + RSA_block_size(ssl->nxt->svr_key)];
+  size_t buf_len = 6 + RSA_block_size(ssl->nxt->svr_key);
+  unsigned char buf[128];
   struct tls_premaster_secret in;
+
+  assert(buf_len < sizeof(buf));  /* Fix this */
 
   in.version = htobe16(0x0303);
   if (!get_random(in.opaque, sizeof(in.opaque))) {
@@ -5729,14 +5652,16 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
 
   buf[0] = HANDSHAKE_CLIENT_KEY_EXCH;
   buf[1] = 0;
-  set16(buf + 2, sizeof(buf) + 2);
-  set16(buf + 4, sizeof(buf));
-  if (!tls_send(ssl, TLS_HANDSHAKE, &buf, sizeof(buf))) return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, buf, sizeof(buf));
+  set16(buf + 2, buf_len + 2);
+  set16(buf + 4, buf_len);
+  if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len))
+    return 0;
+  SHA256_Update(&ssl->nxt->handshakes_hash, buf, buf_len);
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher))) return 0;
+  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
+    return 0;
 
   if (ssl->cur) {
     tls_free_security(ssl->cur);
@@ -5752,7 +5677,8 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   memset(finished.vrfy, 0, sizeof(finished.vrfy));
   tls_generate_client_finished(ssl->cur, finished.vrfy, sizeof(finished.vrfy));
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished))) return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished)))
+    return 0;
 
   SHA256_Update(&ssl->cur->handshakes_hash, ((uint8_t *)&finished),
                 sizeof(finished));
@@ -5787,7 +5713,8 @@ static int check_compressor(uint8_t compressor) {
 }
 
 static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
-  if (ssl->nxt->cipher_negotiated) return;
+  if (ssl->nxt->cipher_negotiated)
+    return;
   switch (suite) {
 #if ALLOW_NULL_CIPHERS
     case CIPHER_TLS_NULL_MD5:
@@ -5802,7 +5729,8 @@ static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
 }
 
 static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
-  if (ssl->nxt->compressor_negotiated) return;
+  if (ssl->nxt->compressor_negotiated)
+    return;
   switch (compressor) {
     case COMPRESSOR_NULL:
       break;
@@ -5829,7 +5757,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_NO_RENEGOTIATION);
     return 1;
   }
-  if (buf + 6 > end) goto err;
+  if (buf + 6 > end)
+    goto err;
 
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
   buf += 4;
@@ -5850,25 +5779,30 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   /* peer random */
-  if (buf + sizeof(struct tls_random) > end) goto err;
+  if (buf + sizeof(struct tls_random) > end)
+    goto err;
   rand = buf;
   buf += sizeof(struct tls_random);
 
   /* skip over session id len + session id */
-  if (buf + 1 > end) goto err;
+  if (buf + 1 > end)
+    goto err;
   sess_id_len = buf[0];
 
   buf += 1 + sess_id_len;
-  if (buf > end) goto err;
+  if (buf > end)
+    goto err;
 
   if (ssl->is_server) {
     uint16_t cipher_suites_len;
 
-    if (buf + sizeof(cipher_suites_len) > end) goto err;
+    if (buf + sizeof(cipher_suites_len) > end)
+      goto err;
     cipher_suites_len = be16toh(*(uint16_t *)buf);
     buf += 2;
 
-    if (buf + cipher_suites_len > end) goto err;
+    if (buf + cipher_suites_len > end)
+      goto err;
     cipher_suites = (uint16_t *)buf;
     num_ciphers = cipher_suites_len / 2;
     buf += cipher_suites_len;
@@ -5879,11 +5813,13 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   if (ssl->is_server) {
-    if (buf + 1 > end) goto err;
+    if (buf + 1 > end)
+      goto err;
     num_compressions = buf[0];
     buf++;
 
-    if (buf + num_compressions > end) goto err;
+    if (buf + num_compressions > end)
+      goto err;
 
     compressions = buf;
     buf += num_compressions;
@@ -5893,10 +5829,12 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     buf += num_compressions;
   }
 
-  if (buf + 2 > end) goto err;
+  if (buf + 2 > end)
+    goto err;
   ext_len = htobe16(*(uint16_t *)buf);
   buf += 2;
-  if (buf + ext_len < end) end = buf + ext_len;
+  if (buf + ext_len < end)
+    end = buf + ext_len;
 
   while (buf + 4 <= end) {
     /* const uint8_t *ext_end; */
@@ -5908,7 +5846,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     ext_len = be16toh(*(uint16_t *)buf);
     buf += 2;
 
-    if (buf + ext_len > end) goto err;
+    if (buf + ext_len > end)
+      goto err;
 
     /* ext_end = buf + ext_len; */
 
@@ -6024,12 +5963,15 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
 
   cert = (struct tls_cert *)buf;
   buf += sizeof(*cert);
-  if (buf > end) goto err;
+  if (buf > end)
+    goto err;
 
   ilen = ((size_t)cert->len_hi << 16) | be16toh(cert->len);
   clen = ((size_t)cert->certs_len_hi << 16) | be16toh(cert->certs_len);
-  if (buf + ilen < end) end = buf + ilen;
-  if (buf + clen < end) end = buf + clen;
+  if (buf + ilen < end)
+    end = buf + ilen;
+  if (buf + clen < end)
+    end = buf + clen;
 
   for (chain = NULL, depth = 0; buf < end; depth++) {
     X509 *cert;
@@ -6068,7 +6010,8 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
     buf += clen;
   }
 
-  if (!chain) goto err;
+  if (!chain)
+    goto err;
 
   if (!ssl->is_server) {
     ssl->state = STATE_SV_CERT_RCVD;
@@ -6098,22 +6041,28 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
                            const uint8_t *buf, const uint8_t *end) {
   uint32_t len;
   uint16_t ilen;
-  uint8_t out[RSA_block_size(ssl->ctx->rsa_privkey)];
+  size_t out_size = RSA_block_size(ssl->ctx->rsa_privkey);
+  uint8_t out[300];
   int ret;
 
-  if (buf + sizeof(len) > end) goto err;
+  assert(out_size < sizeof(out)); /* TODO(lsm): fix this */
+
+  if (buf + sizeof(len) > end)
+    goto err;
 
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
   buf += sizeof(len);
 
-  if (buf + len > end) goto err;
+  if (buf + len > end)
+    goto err;
 
   ilen = be16toh(*(uint16_t *)buf);
   buf += 2;
-  if (buf + ilen > end) goto err;
+  if (buf + ilen > end)
+    goto err;
 
-  memset(out, 0, sizeof(out));
-  ret = RSA_decrypt(ssl->ctx->rsa_privkey, buf, out, sizeof(out), 1);
+  memset(out, 0, out_size);
+  ret = RSA_decrypt(ssl->ctx->rsa_privkey, buf, out, out_size, 1);
 #if 0
   printf(" + Got %u byte RSA premaster secret\n", ilen);
   hex_dump(buf, ilen, 0);
@@ -6142,12 +6091,14 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   uint32_t len;
   int ret = 0;
 
-  if (buf + sizeof(len) > end) goto err;
+  if (buf + sizeof(len) > end)
+    goto err;
 
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
   buf += sizeof(len);
 
-  if (buf + len > end) goto err;
+  if (buf + len > end)
+    goto err;
 
   if (NULL == ssl->cur) {
     dprintf("No change cipher-spec before finished\n");
@@ -6178,7 +6129,8 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
   uint8_t type;
   int ret = 1;
 
-  if (buf + 1 > end) return 0;
+  if (buf + 1 > end)
+    return 0;
 
   type = buf[0];
 
@@ -6217,7 +6169,8 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
   uint8_t type;
   int ret = 1;
 
-  if (buf + 1 > end) return 0;
+  if (buf + 1 > end)
+    return 0;
 
   type = buf[0];
 
@@ -6325,7 +6278,8 @@ static int handle_appdata(SSL *ssl, struct vec *vec, uint8_t *out, size_t len) {
 
 static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
                         size_t len) {
-  if (len < 2) return 0;
+  if (len < 2)
+    return 0;
 
   switch (buf[1]) {
     case ALERT_CLOSE_NOTIFY:
@@ -6510,7 +6464,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   ret = 1;
 
 out:
-  if (buf == ssl->rx_buf) return ret;
+  if (buf == ssl->rx_buf)
+    return ret;
 
   if (buf < end) {
     dprintf("shuffle buffer down: %zu left\n", end - buf);
@@ -6544,7 +6499,8 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hello.len = htobe16(sizeof(hello) - 4);
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
-  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) return 0;
+  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque)))
+    return 0;
   hello.sess_id_len = 0;
   hello.cipher_suite = htobe16(ssl->nxt->cipher_suite);
   hello.compressor = ssl->nxt->compressor;
@@ -6554,7 +6510,8 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello))) return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
+    return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
 
   /* certificate */
@@ -6563,7 +6520,8 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hdr.len = htobe16(sizeof(cert) + sizeof(chdr) * ssl->ctx->pem_cert->num_obj +
                     ssl->ctx->pem_cert->tot_len);
 
-  if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
+  if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
+    return 0;
 
   cert.type = HANDSHAKE_CERTIFICATE;
   cert.len_hi = 0;
@@ -6573,7 +6531,8 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   cert.certs_len = htobe16(sizeof(chdr) * ssl->ctx->pem_cert->num_obj +
                            ssl->ctx->pem_cert->tot_len);
 
-  if (!tls_tx_push(ssl, &cert, sizeof(cert))) return 0;
+  if (!tls_tx_push(ssl, &cert, sizeof(cert)))
+    return 0;
 
   SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&cert), sizeof(cert));
 
@@ -6583,8 +6542,10 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
     chdr.cert_len_hi = 0;
     chdr.cert_len = htobe16(d->der_len);
 
-    if (!tls_tx_push(ssl, &chdr, sizeof(chdr))) return 0;
-    if (!tls_tx_push(ssl, d->der, d->der_len)) return 0;
+    if (!tls_tx_push(ssl, &chdr, sizeof(chdr)))
+      return 0;
+    if (!tls_tx_push(ssl, d->der, d->der_len))
+      return 0;
     SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&chdr), sizeof(chdr));
     SHA256_Update(&ssl->nxt->handshakes_hash, d->der, d->der_len);
   }
@@ -6593,7 +6554,8 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   done.type = HANDSHAKE_SERVER_HELLO_DONE;
   done.len_hi = 0;
   done.len = 0;
-  if (!tls_send(ssl, TLS_HANDSHAKE, &done, sizeof(done))) return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &done, sizeof(done)))
+    return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&done), sizeof(done));
 
   /* store the random we generated */
@@ -6608,7 +6570,8 @@ NS_INTERNAL int tls_sv_finish(SSL *ssl) {
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher))) return 0;
+  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
+    return 0;
 
   ssl->tx_enc = 1;
 
@@ -6657,24 +6620,28 @@ static int parse_pubkey(X509 *cert, const uint8_t *ptr, size_t len) {
   }
 
   ptr = ber_decode_tag(&tag, ptr, len);
-  if (NULL == ptr) goto bad_key;
+  if (NULL == ptr)
+    goto bad_key;
   end = ptr + tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr || tag.ber_len < 1) goto bad_key;
+  if (NULL == ptr || tag.ber_len < 1)
+    goto bad_key;
   mod.ptr = ptr + 1;
   mod.len = tag.ber_len - 1;
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr || !tag.ber_len) goto bad_key;
+  if (NULL == ptr || !tag.ber_len)
+    goto bad_key;
   exp.ptr = ptr;
   exp.len = tag.ber_len;
 
   switch (cert->enc_alg) {
     case X509_ENC_ALG_RSA:
       RSA_pub_key_new(&cert->pub_key, mod.ptr, mod.len, exp.ptr, exp.len);
-      if (NULL == cert->pub_key) goto bad_key;
+      if (NULL == cert->pub_key)
+        goto bad_key;
       break;
     default:
       dprintf("Unknown algorithm\n");
@@ -6694,10 +6661,13 @@ static int parse_sig_alg(X509 *cert, const uint8_t *ptr, size_t len,
   struct gber_tag tag;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
 
-  if (tag.ber_len != 9) return 0;
-  if (memcmp(ptr, rsaWithX, 8)) return 0;
+  if (tag.ber_len != 9)
+    return 0;
+  if (memcmp(ptr, rsaWithX, 8))
+    return 0;
 
   *alg = ptr[8];
 
@@ -6709,13 +6679,17 @@ static int parse_pubkey_info(X509 *cert, const uint8_t *ptr, size_t len) {
   struct gber_tag tag;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_enc_alg(cert, ptr, tag.ber_len)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_enc_alg(cert, ptr, tag.ber_len))
+    return 0;
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_pubkey(cert, ptr, tag.ber_len)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_pubkey(cert, ptr, tag.ber_len))
+    return 0;
   ptr += tag.ber_len;
 
   return 1;
@@ -6726,49 +6700,60 @@ static int parse_tbs_cert(X509 *cert, const uint8_t *ptr, size_t len) {
   struct gber_tag tag;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
 
   /* if explicit tag, version number is present */
   if (tag.ber_tag == 0xa0) {
     ptr += tag.ber_len;
     ptr = ber_decode_tag(&tag, ptr, end - ptr);
-    if (NULL == ptr) return 0;
+    if (NULL == ptr)
+      return 0;
   }
 
   /* int:serial number */
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->hash_alg)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->hash_alg))
+    return 0;
   ptr += tag.ber_len;
 
   /* name: issuer */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
   cert->issuer.ptr = malloc(tag.ber_len);
-  if (NULL == cert->issuer.ptr) return 0;
+  if (NULL == cert->issuer.ptr)
+    return 0;
   memcpy(cert->issuer.ptr, ptr, tag.ber_len);
   cert->issuer.len = tag.ber_len;
   ptr += tag.ber_len;
 
   /* validity (dates) */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
   ptr += tag.ber_len;
 
   /* name: subject */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
   cert->subject.ptr = malloc(tag.ber_len);
-  if (NULL == cert->subject.ptr) return 0;
+  if (NULL == cert->subject.ptr)
+    return 0;
   memcpy(cert->subject.ptr, ptr, tag.ber_len);
   cert->subject.len = tag.ber_len;
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_pubkey_info(cert, ptr, tag.ber_len)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_pubkey_info(cert, ptr, tag.ber_len))
+    return 0;
   ptr += tag.ber_len;
 
   /* skip the rest... although apparently there's an alternate DNS-name
@@ -6800,16 +6785,19 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   X509 *cert;
 
   cert = calloc(1, sizeof(*cert));
-  if (NULL == cert) return NULL;
+  if (NULL == cert)
+    return NULL;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
+  if (NULL == ptr)
+    goto bad_cert;
   end = ptr + tag.ber_len;
 
   /* tbsCertificate - to be signed */
   tbs.ptr = ptr;
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
+  if (NULL == ptr)
+    goto bad_cert;
   tbs.len = (ptr + tag.ber_len) - tbs.ptr;
   if (!parse_tbs_cert(cert, ptr, tag.ber_len)) {
     goto bad_cert;
@@ -6818,20 +6806,24 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
 
   /* signatureAlgorithm */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
-  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->issuer_hash_alg)) return 0;
+  if (NULL == ptr)
+    goto bad_cert;
+  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->issuer_hash_alg))
+    return 0;
   ptr += tag.ber_len;
 
   /* signatureValue */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
+  if (NULL == ptr)
+    goto bad_cert;
   if (tag.ber_len && !ptr[0]) {
     /* strip sign-forcing byte */
     ptr++;
     tag.ber_len--;
   }
   cert->sig.ptr = malloc(tag.ber_len);
-  if (NULL == cert->sig.ptr) return 0;
+  if (NULL == cert->sig.ptr)
+    return 0;
   memcpy(cert->sig.ptr, ptr, tag.ber_len);
   cert->sig.len = tag.ber_len;
   ptr += tag.ber_len;
@@ -6884,14 +6876,16 @@ void X509_free(X509 *cert) {
 
 
 static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
-                          uint8_t digest[static MAX_DIGEST_SIZE],
+                          uint8_t *digest,
                           size_t *dlen) {
-  uint8_t buf[sig->len];
+  uint8_t buf[128];
   struct gber_tag tag;
   const uint8_t *ptr, *end;
   int ret;
 
-  ret = RSA_decrypt(rsa, sig->ptr, buf, sizeof(buf), 0);
+  assert(sig->len < sizeof(buf)); /* TODO(lsm): fix this */
+
+  ret = RSA_decrypt(rsa, sig->ptr, buf, sig->len, 0);
   if (ret <= 0) {
     dprintf("RSA signature check failed\n");
     return 0;
@@ -6915,7 +6909,8 @@ static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
     goto err;
   }
 
-  if (tag.ber_len > MAX_DIGEST_SIZE) goto err;
+  if (tag.ber_len > MAX_DIGEST_SIZE)
+    goto err;
 
   memcpy(digest, ptr, tag.ber_len);
   *dlen = tag.ber_len;
@@ -6960,7 +6955,8 @@ again:
           nxt->sig.len);
 #endif
 
-  if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len)) return 0;
+  if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len))
+    return 0;
 #if DEBUG_VERIFY
   dprintf("%zu byte digest:\n", digest_len);
   hex_dump(digest, digest_len, 0);
@@ -6992,8 +6988,7 @@ again:
       return 0;
     }
     goto again;
-  } else {
-    /* TODO: check expiry date on nxt */
+  } else { /* TODO: check expiry date on nxt */
   }
 
   return 1;

@@ -3,27 +3,22 @@
  * All rights reserved
  */
 
-#include "../openssl/ssl.h"
 #include "ktypes.h"
-#include "crypto.h"
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
 
 #define RANDOM_SOURCE "/dev/urandom"
 int get_random(uint8_t *out, size_t len) {
-  static int rfd = -1;
-  ssize_t ret;
-  if (rfd < 0) {
-    rfd = open(RANDOM_SOURCE, O_RDONLY);
-    if (rfd < 0)
-      return 0;
+  static FILE *fp = NULL;
+  size_t ret = 0;
+
+  if (fp == NULL) {
+    fp = fopen(RANDOM_SOURCE, "rb");
   }
 
-  ret = read(rfd, out, len);
-  if (ret < 0 || (size_t)ret != len)
+  if (fp != NULL) {
+    ret = fread(out, 1, len, fp);
+  }
+
+  if (ret < 0 || ret != len)
     return 0;
 
   return 1;

@@ -61,17 +61,11 @@ static void set16(unsigned char *p, uint16_t v) {
 NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;
-#if 0
-	struct {
-		uint8_t type;
-		uint8_t len_hi;
-		uint16_t len;
-		uint16_t ilen;
-		uint8_t out[RSA_block_size(ssl->nxt->svr_key)];
-	}__attribute__((packed)) key_exch;
-#endif
-  unsigned char buf[6 + RSA_block_size(ssl->nxt->svr_key)];
+  size_t buf_len = 6 + RSA_block_size(ssl->nxt->svr_key);
+  unsigned char buf[128];
   struct tls_premaster_secret in;
+
+  assert(buf_len < sizeof(buf));  /* Fix this */
 
   in.version = htobe16(0x0303);
   if (!get_random(in.opaque, sizeof(in.opaque))) {
@@ -91,11 +85,11 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
 
   buf[0] = HANDSHAKE_CLIENT_KEY_EXCH;
   buf[1] = 0;
-  set16(buf + 2, sizeof(buf) + 2);
-  set16(buf + 4, sizeof(buf));
-  if (!tls_send(ssl, TLS_HANDSHAKE, &buf, sizeof(buf)))
+  set16(buf + 2, buf_len + 2);
+  set16(buf + 4, buf_len);
+  if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len))
     return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, buf, sizeof(buf));
+  SHA256_Update(&ssl->nxt->handshakes_hash, buf, buf_len);
 
   /* change cipher spec */
   cipher.one = 1;

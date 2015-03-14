@@ -4,8 +4,6 @@
  */
 
 #include "ktypes.h"
-#include "ber.h"
-#include <ctype.h>
 
 #if KRYPTON_DEBUG
 static void hex_dumpf_r(FILE *f, const uint8_t *tmp, size_t len, size_t llen,
@@ -78,8 +76,9 @@ NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
 }
 
 NS_INTERNAL const char *const ber_id_octet_clsname(uint8_t id) {
-  static const char *const clsname[] = {"universal",        "application",
-                                        "context-specific", "private", };
+  static const char *const clsname[] = {
+      "universal", "application", "context-specific", "private",
+  };
   return clsname[(id & 0xc0) >> 6];
 }
 #endif
@@ -87,7 +86,7 @@ NS_INTERNAL const char *const ber_id_octet_clsname(uint8_t id) {
 #if 0
 NS_INTERNAL unsigned int ber_id_octet_class(uint8_t id)
 {
-	return (id & 0xc0) >> 6;
+  return (id & 0xc0) >> 6;
 }
 #endif
 
@@ -147,9 +146,9 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
 
 #if 0
 NS_INTERNAL const uint8_t *ber_tag_info(struct gber_tag *tag,
-				const uint8_t *ptr, size_t len)
+        const uint8_t *ptr, size_t len)
 {
-	return do_decode_tag(tag, ptr, len);
+  return do_decode_tag(tag, ptr, len);
 }
 #endif
 

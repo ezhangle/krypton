@@ -6,11 +6,7 @@
  * none of the original Mozilla code remains.
  */
 
-/* this is only to get definitions for memcpy(), be32toh() and htobe32() */
-#include <string.h>
-#include <stdint.h>
-
-#include "crypto.h"
+#include "ktypes.h"
 
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
 

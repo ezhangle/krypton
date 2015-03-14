@@ -6,8 +6,6 @@
 #ifndef _KRYPTON_H
 #define _KRYPTON_H
 
-#include <stdint.h>
-
 typedef struct x509_store_ctx_st X509_STORE_CTX;
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;

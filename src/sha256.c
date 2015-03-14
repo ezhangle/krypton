@@ -31,9 +31,6 @@
  *
  */
 
-#include <string.h>	/* memcpy()/memset() or bcopy()/bzero() */
-#include <assert.h>	/* assert() */
-#include "crypto.h"
 #include "ktypes.h"
 
 /*
@@ -125,10 +122,10 @@ typedef uint64_t sha2_word64;	/* Exactly 8 bytes */
 #define REVERSE64(w,x)	{ \
 	sha2_word64 tmp = (w); \
 	tmp = (tmp >> 32) | (tmp << 32); \
-	tmp = ((tmp & 0xff00ff00ff00ff00ULL) >> 8) | \
-	      ((tmp & 0x00ff00ff00ff00ffULL) << 8); \
-	(x) = ((tmp & 0xffff0000ffff0000ULL) >> 16) | \
-	      ((tmp & 0x0000ffff0000ffffULL) << 16); \
+	tmp = ((tmp & (uint64_t) 0xff00ff00ff00ff00) >> 8) | \
+	      ((tmp & (uint64_t) 0x00ff00ff00ff00ff) << 8); \
+	(x) = ((tmp & (uint64_t) 0xffff0000ffff0000) >> 16) | \
+	      ((tmp & (uint64_t) 0x0000ffff0000ffff) << 16); \
 }
 #endif /* BYTE_ORDER == LITTLE_ENDIAN */
 
@@ -247,70 +244,70 @@ const static sha2_word32 sha256_initial_hash_value[8] = {
 
 /* Hash constant words K for SHA-384 and SHA-512: */
 const static sha2_word64 K512[80] = {
-	0x428a2f98d728ae22ULL, 0x7137449123ef65cdULL,
-	0xb5c0fbcfec4d3b2fULL, 0xe9b5dba58189dbbcULL,
-	0x3956c25bf348b538ULL, 0x59f111f1b605d019ULL,
-	0x923f82a4af194f9bULL, 0xab1c5ed5da6d8118ULL,
-	0xd807aa98a3030242ULL, 0x12835b0145706fbeULL,
-	0x243185be4ee4b28cULL, 0x550c7dc3d5ffb4e2ULL,
-	0x72be5d74f27b896fULL, 0x80deb1fe3b1696b1ULL,
-	0x9bdc06a725c71235ULL, 0xc19bf174cf692694ULL,
-	0xe49b69c19ef14ad2ULL, 0xefbe4786384f25e3ULL,
-	0x0fc19dc68b8cd5b5ULL, 0x240ca1cc77ac9c65ULL,
-	0x2de92c6f592b0275ULL, 0x4a7484aa6ea6e483ULL,
-	0x5cb0a9dcbd41fbd4ULL, 0x76f988da831153b5ULL,
-	0x983e5152ee66dfabULL, 0xa831c66d2db43210ULL,
-	0xb00327c898fb213fULL, 0xbf597fc7beef0ee4ULL,
-	0xc6e00bf33da88fc2ULL, 0xd5a79147930aa725ULL,
-	0x06ca6351e003826fULL, 0x142929670a0e6e70ULL,
-	0x27b70a8546d22ffcULL, 0x2e1b21385c26c926ULL,
-	0x4d2c6dfc5ac42aedULL, 0x53380d139d95b3dfULL,
-	0x650a73548baf63deULL, 0x766a0abb3c77b2a8ULL,
-	0x81c2c92e47edaee6ULL, 0x92722c851482353bULL,
-	0xa2bfe8a14cf10364ULL, 0xa81a664bbc423001ULL,
-	0xc24b8b70d0f89791ULL, 0xc76c51a30654be30ULL,
-	0xd192e819d6ef5218ULL, 0xd69906245565a910ULL,
-	0xf40e35855771202aULL, 0x106aa07032bbd1b8ULL,
-	0x19a4c116b8d2d0c8ULL, 0x1e376c085141ab53ULL,
-	0x2748774cdf8eeb99ULL, 0x34b0bcb5e19b48a8ULL,
-	0x391c0cb3c5c95a63ULL, 0x4ed8aa4ae3418acbULL,
-	0x5b9cca4f7763e373ULL, 0x682e6ff3d6b2b8a3ULL,
-	0x748f82ee5defb2fcULL, 0x78a5636f43172f60ULL,
-	0x84c87814a1f0ab72ULL, 0x8cc702081a6439ecULL,
-	0x90befffa23631e28ULL, 0xa4506cebde82bde9ULL,
-	0xbef9a3f7b2c67915ULL, 0xc67178f2e372532bULL,
-	0xca273eceea26619cULL, 0xd186b8c721c0c207ULL,
-	0xeada7dd6cde0eb1eULL, 0xf57d4f7fee6ed178ULL,
-	0x06f067aa72176fbaULL, 0x0a637dc5a2c898a6ULL,
-	0x113f9804bef90daeULL, 0x1b710b35131c471bULL,
-	0x28db77f523047d84ULL, 0x32caab7b40c72493ULL,
-	0x3c9ebe0a15c9bebcULL, 0x431d67c49c100d4cULL,
-	0x4cc5d4becb3e42b6ULL, 0x597f299cfc657e2aULL,
-	0x5fcb6fab3ad6faecULL, 0x6c44198c4a475817ULL
+	(uint64_t) 0x428a2f98d728ae22, (uint64_t) 0x7137449123ef65cd,
+	(uint64_t) 0xb5c0fbcfec4d3b2f, (uint64_t) 0xe9b5dba58189dbbc,
+	(uint64_t) 0x3956c25bf348b538, (uint64_t) 0x59f111f1b605d019,
+	(uint64_t) 0x923f82a4af194f9b, (uint64_t) 0xab1c5ed5da6d8118,
+	(uint64_t) 0xd807aa98a3030242, (uint64_t) 0x12835b0145706fbe,
+	(uint64_t) 0x243185be4ee4b28c, (uint64_t) 0x550c7dc3d5ffb4e2,
+	(uint64_t) 0x72be5d74f27b896f, (uint64_t) 0x80deb1fe3b1696b1,
+	(uint64_t) 0x9bdc06a725c71235, (uint64_t) 0xc19bf174cf692694,
+	(uint64_t) 0xe49b69c19ef14ad2, (uint64_t) 0xefbe4786384f25e3,
+	(uint64_t) 0x0fc19dc68b8cd5b5, (uint64_t) 0x240ca1cc77ac9c65,
+	(uint64_t) 0x2de92c6f592b0275, (uint64_t) 0x4a7484aa6ea6e483,
+	(uint64_t) 0x5cb0a9dcbd41fbd4, (uint64_t) 0x76f988da831153b5,
+	(uint64_t) 0x983e5152ee66dfab, (uint64_t) 0xa831c66d2db43210,
+	(uint64_t) 0xb00327c898fb213f, (uint64_t) 0xbf597fc7beef0ee4,
+	(uint64_t) 0xc6e00bf33da88fc2, (uint64_t) 0xd5a79147930aa725,
+	(uint64_t) 0x06ca6351e003826f, (uint64_t) 0x142929670a0e6e70,
+	(uint64_t) 0x27b70a8546d22ffc, (uint64_t) 0x2e1b21385c26c926,
+	(uint64_t) 0x4d2c6dfc5ac42aed, (uint64_t) 0x53380d139d95b3df,
+	(uint64_t) 0x650a73548baf63de, (uint64_t) 0x766a0abb3c77b2a8,
+	(uint64_t) 0x81c2c92e47edaee6, (uint64_t) 0x92722c851482353b,
+	(uint64_t) 0xa2bfe8a14cf10364, (uint64_t) 0xa81a664bbc423001,
+	(uint64_t) 0xc24b8b70d0f89791, (uint64_t) 0xc76c51a30654be30,
+	(uint64_t) 0xd192e819d6ef5218, (uint64_t) 0xd69906245565a910,
+	(uint64_t) 0xf40e35855771202a, (uint64_t) 0x106aa07032bbd1b8,
+	(uint64_t) 0x19a4c116b8d2d0c8, (uint64_t) 0x1e376c085141ab53,
+	(uint64_t) 0x2748774cdf8eeb99, (uint64_t) 0x34b0bcb5e19b48a8,
+	(uint64_t) 0x391c0cb3c5c95a63, (uint64_t) 0x4ed8aa4ae3418acb,
+	(uint64_t) 0x5b9cca4f7763e373, (uint64_t) 0x682e6ff3d6b2b8a3,
+	(uint64_t) 0x748f82ee5defb2fc, (uint64_t) 0x78a5636f43172f60,
+	(uint64_t) 0x84c87814a1f0ab72, (uint64_t) 0x8cc702081a6439ec,
+	(uint64_t) 0x90befffa23631e28, (uint64_t) 0xa4506cebde82bde9,
+	(uint64_t) 0xbef9a3f7b2c67915, (uint64_t) 0xc67178f2e372532b,
+	(uint64_t) 0xca273eceea26619c, (uint64_t) 0xd186b8c721c0c207,
+	(uint64_t) 0xeada7dd6cde0eb1e, (uint64_t) 0xf57d4f7fee6ed178,
+	(uint64_t) 0x06f067aa72176fba, (uint64_t) 0x0a637dc5a2c898a6,
+	(uint64_t) 0x113f9804bef90dae, (uint64_t) 0x1b710b35131c471b,
+	(uint64_t) 0x28db77f523047d84, (uint64_t) 0x32caab7b40c72493,
+	(uint64_t) 0x3c9ebe0a15c9bebc, (uint64_t) 0x431d67c49c100d4c,
+	(uint64_t) 0x4cc5d4becb3e42b6, (uint64_t) 0x597f299cfc657e2a,
+	(uint64_t) 0x5fcb6fab3ad6faec, (uint64_t) 0x6c44198c4a475817
 };
 
 /* Initial hash value H for SHA-384 */
 const static sha2_word64 sha384_initial_hash_value[8] = {
-	0xcbbb9d5dc1059ed8ULL,
-	0x629a292a367cd507ULL,
-	0x9159015a3070dd17ULL,
-	0x152fecd8f70e5939ULL,
-	0x67332667ffc00b31ULL,
-	0x8eb44a8768581511ULL,
-	0xdb0c2e0d64f98fa7ULL,
-	0x47b5481dbefa4fa4ULL
+	(uint64_t) 0xcbbb9d5dc1059ed8,
+	(uint64_t) 0x629a292a367cd507,
+	(uint64_t) 0x9159015a3070dd17,
+	(uint64_t) 0x152fecd8f70e5939,
+	(uint64_t) 0x67332667ffc00b31,
+	(uint64_t) 0x8eb44a8768581511,
+	(uint64_t) 0xdb0c2e0d64f98fa7,
+	(uint64_t) 0x47b5481dbefa4fa4
 };
 
 /* Initial hash value H for SHA-512 */
 const static sha2_word64 sha512_initial_hash_value[8] = {
-	0x6a09e667f3bcc908ULL,
-	0xbb67ae8584caa73bULL,
-	0x3c6ef372fe94f82bULL,
-	0xa54ff53a5f1d36f1ULL,
-	0x510e527fade682d1ULL,
-	0x9b05688c2b3e6c1fULL,
-	0x1f83d9abfb41bd6bULL,
-	0x5be0cd19137e2179ULL
+	(uint64_t) 0x6a09e667f3bcc908,
+	(uint64_t) 0xbb67ae8584caa73b,
+	(uint64_t) 0x3c6ef372fe94f82b,
+	(uint64_t) 0xa54ff53a5f1d36f1,
+	(uint64_t) 0x510e527fade682d1,
+	(uint64_t) 0x9b05688c2b3e6c1f,
+	(uint64_t) 0x1f83d9abfb41bd6b,
+	(uint64_t) 0x5be0cd19137e2179
 };
 
 
@@ -551,6 +548,7 @@ void SHA256_Update(SHA256_CTX* context, const sha2_byte *data, size_t len) {
 void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
 	sha2_word32	*d = (sha2_word32*)digest;
 	unsigned int	usedspace;
+	char *ptr;
 
 	/* Sanity check: */
 	assert(context != (SHA256_CTX*)0);
@@ -587,8 +585,8 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
 			*context->buffer = 0x80;
 		}
 		/* Set the bit count: */
-		char *ptr = (char *)&context->buffer[SHA256_SHORT_BLOCK_LENGTH];
-		*(sha2_word64*)ptr = context->bitcount;
+		ptr = (char *)&context->buffer[SHA256_SHORT_BLOCK_LENGTH];
+		*(sha2_word64*) ptr = context->bitcount;
 
 		/* Final transform: */
 		SHA256_Transform(context, (sha2_word32*)context->buffer);

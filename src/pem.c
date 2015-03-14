@@ -3,12 +3,7 @@
  * All rights reserved
  */
 
-#include "../openssl/ssl.h"
-#include <errno.h>
-#include <stdio.h>
 #include "ktypes.h"
-#include "ber.h"
-#include "pem.h"
 
 #define DER_INCREMENT 1024
 #define OBJ_INCREMENT 4
