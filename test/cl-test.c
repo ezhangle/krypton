@@ -30,7 +30,8 @@ static SSL_CTX *setup_ctx(const char *cert_chain) {
   SSL_CTX *ctx;
 
   ctx = SSL_CTX_new(TLSv1_2_client_method());
-  if (NULL == ctx) goto out;
+  if (NULL == ctx)
+    goto out;
 
   SSL_CTX_set_mode(ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
@@ -38,7 +39,8 @@ static SSL_CTX *setup_ctx(const char *cert_chain) {
   SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
                      NULL);
 
-  if (!SSL_CTX_load_verify_locations(ctx, cert_chain, NULL)) goto out_free;
+  if (!SSL_CTX_load_verify_locations(ctx, cert_chain, NULL))
+    goto out_free;
 
 #if !USE_KRYPTON
   SSL_CTX_set_cipher_list(ctx, "RC4-MD5,NULL-MD5");
@@ -72,7 +74,8 @@ static int waitforit(SSL *ssl) {
   }
 
   ret = poll(&pfd, 1, -1);
-  if (ret != 1 || !(pfd.revents & pfd.events)) return 0;
+  if (ret != 1 || !(pfd.revents & pfd.events))
+    return 0;
 
   return 1;
 }
@@ -148,10 +151,12 @@ static int test_content(SSL *ssl) {
   int ret;
 
   ret = do_write(ssl, str1, strlen(str1));
-  if (ret < 0 || (size_t)ret != strlen(str1)) return 0;
+  if (ret < 0 || (size_t)ret != strlen(str1))
+    return 0;
 
   ret = do_read(ssl, buf, sizeof(buf));
-  if (ret < 0 || (size_t)ret != strlen(str2)) return 0;
+  if (ret < 0 || (size_t)ret != strlen(str2))
+    return 0;
   printf("Got: %.*s\n", ret, buf);
 
   return !memcmp(buf, str2, ret);
@@ -166,10 +171,12 @@ static int do_test(const char *cert_chain) {
   int fd;
 
   ctx = setup_ctx(cert_chain);
-  if (NULL == ctx) goto out;
+  if (NULL == ctx)
+    goto out;
 
   ssl = SSL_new(ctx);
-  if (NULL == ssl) goto out_ctx;
+  if (NULL == ssl)
+    goto out_ctx;
 
   fd = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
   if (fd < 0) {
@@ -177,7 +184,8 @@ static int do_test(const char *cert_chain) {
     goto out_ssl;
   }
 
-  if (!SSL_set_fd(ssl, fd)) goto out_close;
+  if (!SSL_set_fd(ssl, fd))
+    goto out_close;
 
   sa.sin_family = AF_INET;
   sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -229,6 +237,7 @@ out:
 
 int main(int argc, char **argv) {
   SSL_library_init();
-  if (!do_test("ca.crt")) return EXIT_FAILURE;
+  if (!do_test("ca.crt"))
+    return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }

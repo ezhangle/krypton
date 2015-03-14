@@ -43,7 +43,8 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello))) return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
+    return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
 
   /* store the random we generated */
@@ -92,12 +93,14 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   buf[1] = 0;
   set16(buf + 2, sizeof(buf) + 2);
   set16(buf + 4, sizeof(buf));
-  if (!tls_send(ssl, TLS_HANDSHAKE, &buf, sizeof(buf))) return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &buf, sizeof(buf)))
+    return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, buf, sizeof(buf));
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher))) return 0;
+  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
+    return 0;
 
   if (ssl->cur) {
     tls_free_security(ssl->cur);
@@ -113,7 +116,8 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   memset(finished.vrfy, 0, sizeof(finished.vrfy));
   tls_generate_client_finished(ssl->cur, finished.vrfy, sizeof(finished.vrfy));
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished))) return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished)))
+    return 0;
 
   SHA256_Update(&ssl->cur->handshakes_hash, ((uint8_t *)&finished),
                 sizeof(finished));

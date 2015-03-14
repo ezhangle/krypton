@@ -30,7 +30,8 @@ static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
   SSL_CTX *ctx;
 
   ctx = SSL_CTX_new(TLSv1_2_server_method());
-  if (NULL == ctx) goto out;
+  if (NULL == ctx)
+    goto out;
 
   SSL_CTX_set_mode(ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
@@ -75,7 +76,8 @@ static int waitforit(SSL *ssl) {
   }
 
   ret = poll(&pfd, 1, -1);
-  if (ret != 1 || !(pfd.revents & pfd.events)) return 0;
+  if (ret != 1 || !(pfd.revents & pfd.events))
+    return 0;
 
   return 1;
 }
@@ -151,7 +153,8 @@ static int test_content(SSL *ssl) {
   int ret;
 
   ret = do_read(ssl, buf, sizeof(buf));
-  if (ret < 0 || (size_t)ret != strlen(str1)) return 0;
+  if (ret < 0 || (size_t)ret != strlen(str1))
+    return 0;
 
   printf("Got: %.*s\n", ret, buf);
   if (memcmp(buf, str1, ret)) {
@@ -159,7 +162,8 @@ static int test_content(SSL *ssl) {
   }
 
   ret = do_write(ssl, str2, strlen(str2));
-  if (ret < 0 || (size_t)ret != strlen(str2)) return 0;
+  if (ret < 0 || (size_t)ret != strlen(str2))
+    return 0;
 
   return 1;
 }
@@ -173,10 +177,12 @@ static int do_test(const char *cert_file, const char *key_file) {
   int fd, cfd;
 
   ctx = setup_ctx(cert_file, key_file);
-  if (NULL == ctx) goto out;
+  if (NULL == ctx)
+    goto out;
 
   ssl = SSL_new(ctx);
-  if (NULL == ssl) goto out_ctx;
+  if (NULL == ssl)
+    goto out_ctx;
 
   fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (fd < 0) {
@@ -210,7 +216,8 @@ static int do_test(const char *cert_file, const char *key_file) {
     goto out_close;
   }
 
-  if (!SSL_set_fd(ssl, cfd)) goto out_close_cl;
+  if (!SSL_set_fd(ssl, cfd))
+    goto out_close_cl;
 
   printf("Got connection\n");
   if (do_accept(ssl) <= 0) {
@@ -249,6 +256,7 @@ out:
 
 int main(int argc, char **argv) {
   SSL_library_init();
-  if (!do_test("server.crt", "server.key")) return EXIT_FAILURE;
+  if (!do_test("server.crt", "server.key"))
+    return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }

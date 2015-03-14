@@ -32,7 +32,8 @@ static int check_compressor(uint8_t compressor) {
 }
 
 static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
-  if (ssl->nxt->cipher_negotiated) return;
+  if (ssl->nxt->cipher_negotiated)
+    return;
   switch (suite) {
 #if ALLOW_NULL_CIPHERS
     case CIPHER_TLS_NULL_MD5:
@@ -47,7 +48,8 @@ static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
 }
 
 static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
-  if (ssl->nxt->compressor_negotiated) return;
+  if (ssl->nxt->compressor_negotiated)
+    return;
   switch (compressor) {
     case COMPRESSOR_NULL:
       break;
@@ -74,7 +76,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_NO_RENEGOTIATION);
     return 1;
   }
-  if (buf + 6 > end) goto err;
+  if (buf + 6 > end)
+    goto err;
 
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
   buf += 4;
@@ -95,25 +98,30 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   /* peer random */
-  if (buf + sizeof(struct tls_random) > end) goto err;
+  if (buf + sizeof(struct tls_random) > end)
+    goto err;
   rand = buf;
   buf += sizeof(struct tls_random);
 
   /* skip over session id len + session id */
-  if (buf + 1 > end) goto err;
+  if (buf + 1 > end)
+    goto err;
   sess_id_len = buf[0];
 
   buf += 1 + sess_id_len;
-  if (buf > end) goto err;
+  if (buf > end)
+    goto err;
 
   if (ssl->is_server) {
     uint16_t cipher_suites_len;
 
-    if (buf + sizeof(cipher_suites_len) > end) goto err;
+    if (buf + sizeof(cipher_suites_len) > end)
+      goto err;
     cipher_suites_len = be16toh(*(uint16_t *)buf);
     buf += 2;
 
-    if (buf + cipher_suites_len > end) goto err;
+    if (buf + cipher_suites_len > end)
+      goto err;
     cipher_suites = (uint16_t *)buf;
     num_ciphers = cipher_suites_len / 2;
     buf += cipher_suites_len;
@@ -124,11 +132,13 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   if (ssl->is_server) {
-    if (buf + 1 > end) goto err;
+    if (buf + 1 > end)
+      goto err;
     num_compressions = buf[0];
     buf++;
 
-    if (buf + num_compressions > end) goto err;
+    if (buf + num_compressions > end)
+      goto err;
 
     compressions = buf;
     buf += num_compressions;
@@ -138,10 +148,12 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     buf += num_compressions;
   }
 
-  if (buf + 2 > end) goto err;
+  if (buf + 2 > end)
+    goto err;
   ext_len = htobe16(*(uint16_t *)buf);
   buf += 2;
-  if (buf + ext_len < end) end = buf + ext_len;
+  if (buf + ext_len < end)
+    end = buf + ext_len;
 
   while (buf + 4 <= end) {
     /* const uint8_t *ext_end; */
@@ -153,7 +165,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     ext_len = be16toh(*(uint16_t *)buf);
     buf += 2;
 
-    if (buf + ext_len > end) goto err;
+    if (buf + ext_len > end)
+      goto err;
 
     /* ext_end = buf + ext_len; */
 
@@ -269,12 +282,15 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
 
   cert = (struct tls_cert *)buf;
   buf += sizeof(*cert);
-  if (buf > end) goto err;
+  if (buf > end)
+    goto err;
 
   ilen = ((size_t)cert->len_hi << 16) | be16toh(cert->len);
   clen = ((size_t)cert->certs_len_hi << 16) | be16toh(cert->certs_len);
-  if (buf + ilen < end) end = buf + ilen;
-  if (buf + clen < end) end = buf + clen;
+  if (buf + ilen < end)
+    end = buf + ilen;
+  if (buf + clen < end)
+    end = buf + clen;
 
   for (chain = NULL, depth = 0; buf < end; depth++) {
     X509 *cert;
@@ -313,7 +329,8 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
     buf += clen;
   }
 
-  if (!chain) goto err;
+  if (!chain)
+    goto err;
 
   if (!ssl->is_server) {
     ssl->state = STATE_SV_CERT_RCVD;
@@ -346,16 +363,19 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   uint8_t out[RSA_block_size(ssl->ctx->rsa_privkey)];
   int ret;
 
-  if (buf + sizeof(len) > end) goto err;
+  if (buf + sizeof(len) > end)
+    goto err;
 
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
   buf += sizeof(len);
 
-  if (buf + len > end) goto err;
+  if (buf + len > end)
+    goto err;
 
   ilen = be16toh(*(uint16_t *)buf);
   buf += 2;
-  if (buf + ilen > end) goto err;
+  if (buf + ilen > end)
+    goto err;
 
   memset(out, 0, sizeof(out));
   ret = RSA_decrypt(ssl->ctx->rsa_privkey, buf, out, sizeof(out), 1);
@@ -387,12 +407,14 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   uint32_t len;
   int ret = 0;
 
-  if (buf + sizeof(len) > end) goto err;
+  if (buf + sizeof(len) > end)
+    goto err;
 
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
   buf += sizeof(len);
 
-  if (buf + len > end) goto err;
+  if (buf + len > end)
+    goto err;
 
   if (NULL == ssl->cur) {
     dprintf("No change cipher-spec before finished\n");
@@ -423,7 +445,8 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
   uint8_t type;
   int ret = 1;
 
-  if (buf + 1 > end) return 0;
+  if (buf + 1 > end)
+    return 0;
 
   type = buf[0];
 
@@ -462,7 +485,8 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
   uint8_t type;
   int ret = 1;
 
-  if (buf + 1 > end) return 0;
+  if (buf + 1 > end)
+    return 0;
 
   type = buf[0];
 
@@ -570,7 +594,8 @@ static int handle_appdata(SSL *ssl, struct vec *vec, uint8_t *out, size_t len) {
 
 static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
                         size_t len) {
-  if (len < 2) return 0;
+  if (len < 2)
+    return 0;
 
   switch (buf[1]) {
     case ALERT_CLOSE_NOTIFY:
@@ -755,7 +780,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   ret = 1;
 
 out:
-  if (buf == ssl->rx_buf) return ret;
+  if (buf == ssl->rx_buf)
+    return ret;
 
   if (buf < end) {
     dprintf("shuffle buffer down: %zu left\n", end - buf);

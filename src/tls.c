@@ -13,7 +13,8 @@ NS_INTERNAL tls_sec_t tls_new_security(void) {
   struct tls_security *sec;
 
   sec = calloc(1, sizeof(*sec));
-  if (NULL == sec) return NULL;
+  if (NULL == sec)
+    return NULL;
 
   SHA256_Init(&sec->handshakes_hash);
 
@@ -166,10 +167,12 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   hdr.vers = htobe16(0x0303);
   hdr.len = htobe16(len + mac_len);
 
-  if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
+  if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
+    return 0;
 
   buf_ofs = ssl->tx_len;
-  if (!tls_tx_push(ssl, buf, len)) return 0;
+  if (!tls_tx_push(ssl, buf, len))
+    return 0;
 
   if (ssl->tx_enc) {
     if (ssl->is_server) {
@@ -188,7 +191,8 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
                len, digest);
     }
 
-    if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;
+    if (!tls_tx_push(ssl, digest, sizeof(digest)))
+      return 0;
 
     if (ssl->is_server) {
       ssl->cur->server_write_seq++;
@@ -220,14 +224,17 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
 
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
   /* FIXME: break up in to max-sized packets */
-  if (!tls_send(ssl, TLS_APP_DATA, buf, sz)) return -1;
+  if (!tls_send(ssl, TLS_APP_DATA, buf, sz))
+    return -1;
   return sz;
 }
 
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   struct tls_alert alert;
-  if (ssl->fatal) return 1;
-  if (level == ALERT_LEVEL_FATAL) ssl->fatal = 1;
+  if (ssl->fatal)
+    return 1;
+  if (level == ALERT_LEVEL_FATAL)
+    ssl->fatal = 1;
   alert.level = level;
   alert.desc = desc;
   return tls_send(ssl, TLS_ALERT, &alert, sizeof(alert));

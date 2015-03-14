@@ -39,7 +39,8 @@ static int decode_block1(const uint8_t buf[static 2], uint8_t out[static 1]) {
   unsigned int i;
 
   for (i = 0; i < sizeof(tmp); i++) {
-    if (!decode(buf[i], &tmp[i])) return 0;
+    if (!decode(buf[i], &tmp[i]))
+      return 0;
   }
 
   /* [ 6 from 0 : 2 from 1 ] */
@@ -52,7 +53,8 @@ static int decode_block2(const uint8_t buf[static 3], uint8_t out[static 2]) {
   unsigned int i;
 
   for (i = 0; i < sizeof(tmp); i++) {
-    if (!decode(buf[i], &tmp[i])) return 0;
+    if (!decode(buf[i], &tmp[i]))
+      return 0;
   }
 
   /* [ 6 from 0 : 2 from 1 ] */
@@ -67,7 +69,8 @@ static int decode_block3(const uint8_t buf[static 4], uint8_t out[static 3]) {
   unsigned int i;
 
   for (i = 0; i < sizeof(tmp); i++) {
-    if (!decode(buf[i], &tmp[i])) return 0;
+    if (!decode(buf[i], &tmp[i]))
+      return 0;
   }
 
   /* [ 6 from 0 : 2 from 1 ] */
@@ -104,7 +107,8 @@ NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len, uint8_t *out,
       olen = 3;
     }
 
-    if (!ret) return 0;
+    if (!ret)
+      return 0;
 
     *obytes += olen;
     out += olen;

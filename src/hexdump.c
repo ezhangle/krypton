@@ -13,8 +13,10 @@ void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen) {
   size_t i, j;
   size_t line;
 
-  if (NULL == f || 0 == len) return;
-  if (!llen) llen = 0x10;
+  if (NULL == f || 0 == len)
+    return;
+  if (!llen)
+    llen = 0x10;
 
   for (j = 0; j < len; j += line, tmp += line) {
     if (j + llen > len) {
@@ -33,9 +35,11 @@ void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen) {
       }
     }
 
-    for (; i < llen; i++) fprintf(f, " ");
+    for (; i < llen; i++)
+      fprintf(f, " ");
 
-    for (i = 0; i < line; i++) fprintf(f, " %02x", tmp[i]);
+    for (i = 0; i < line; i++)
+      fprintf(f, " %02x", tmp[i]);
 
     fprintf(f, "\n");
   }

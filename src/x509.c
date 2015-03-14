@@ -39,24 +39,28 @@ static int parse_pubkey(X509 *cert, const uint8_t *ptr, size_t len) {
   }
 
   ptr = ber_decode_tag(&tag, ptr, len);
-  if (NULL == ptr) goto bad_key;
+  if (NULL == ptr)
+    goto bad_key;
   end = ptr + tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr || tag.ber_len < 1) goto bad_key;
+  if (NULL == ptr || tag.ber_len < 1)
+    goto bad_key;
   mod.ptr = ptr + 1;
   mod.len = tag.ber_len - 1;
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr || !tag.ber_len) goto bad_key;
+  if (NULL == ptr || !tag.ber_len)
+    goto bad_key;
   exp.ptr = ptr;
   exp.len = tag.ber_len;
 
   switch (cert->enc_alg) {
     case X509_ENC_ALG_RSA:
       RSA_pub_key_new(&cert->pub_key, mod.ptr, mod.len, exp.ptr, exp.len);
-      if (NULL == cert->pub_key) goto bad_key;
+      if (NULL == cert->pub_key)
+        goto bad_key;
       break;
     default:
       dprintf("Unknown algorithm\n");
@@ -76,10 +80,13 @@ static int parse_sig_alg(X509 *cert, const uint8_t *ptr, size_t len,
   struct gber_tag tag;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
 
-  if (tag.ber_len != 9) return 0;
-  if (memcmp(ptr, rsaWithX, 8)) return 0;
+  if (tag.ber_len != 9)
+    return 0;
+  if (memcmp(ptr, rsaWithX, 8))
+    return 0;
 
   *alg = ptr[8];
 
@@ -91,13 +98,17 @@ static int parse_pubkey_info(X509 *cert, const uint8_t *ptr, size_t len) {
   struct gber_tag tag;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_enc_alg(cert, ptr, tag.ber_len)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_enc_alg(cert, ptr, tag.ber_len))
+    return 0;
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_pubkey(cert, ptr, tag.ber_len)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_pubkey(cert, ptr, tag.ber_len))
+    return 0;
   ptr += tag.ber_len;
 
   return 1;
@@ -108,49 +119,60 @@ static int parse_tbs_cert(X509 *cert, const uint8_t *ptr, size_t len) {
   struct gber_tag tag;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
 
   /* if explicit tag, version number is present */
   if (tag.ber_tag == 0xa0) {
     ptr += tag.ber_len;
     ptr = ber_decode_tag(&tag, ptr, end - ptr);
-    if (NULL == ptr) return 0;
+    if (NULL == ptr)
+      return 0;
   }
 
   /* int:serial number */
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->hash_alg)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->hash_alg))
+    return 0;
   ptr += tag.ber_len;
 
   /* name: issuer */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
   cert->issuer.ptr = malloc(tag.ber_len);
-  if (NULL == cert->issuer.ptr) return 0;
+  if (NULL == cert->issuer.ptr)
+    return 0;
   memcpy(cert->issuer.ptr, ptr, tag.ber_len);
   cert->issuer.len = tag.ber_len;
   ptr += tag.ber_len;
 
   /* validity (dates) */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
   ptr += tag.ber_len;
 
   /* name: subject */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
   cert->subject.ptr = malloc(tag.ber_len);
-  if (NULL == cert->subject.ptr) return 0;
+  if (NULL == cert->subject.ptr)
+    return 0;
   memcpy(cert->subject.ptr, ptr, tag.ber_len);
   cert->subject.len = tag.ber_len;
   ptr += tag.ber_len;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) return 0;
-  if (!parse_pubkey_info(cert, ptr, tag.ber_len)) return 0;
+  if (NULL == ptr)
+    return 0;
+  if (!parse_pubkey_info(cert, ptr, tag.ber_len))
+    return 0;
   ptr += tag.ber_len;
 
   /* skip the rest... although apparently there's an alternate DNS-name
@@ -182,16 +204,19 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   X509 *cert;
 
   cert = calloc(1, sizeof(*cert));
-  if (NULL == cert) return NULL;
+  if (NULL == cert)
+    return NULL;
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
+  if (NULL == ptr)
+    goto bad_cert;
   end = ptr + tag.ber_len;
 
   /* tbsCertificate - to be signed */
   tbs.ptr = ptr;
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
+  if (NULL == ptr)
+    goto bad_cert;
   tbs.len = (ptr + tag.ber_len) - tbs.ptr;
   if (!parse_tbs_cert(cert, ptr, tag.ber_len)) {
     goto bad_cert;
@@ -200,20 +225,24 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
 
   /* signatureAlgorithm */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
-  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->issuer_hash_alg)) return 0;
+  if (NULL == ptr)
+    goto bad_cert;
+  if (!parse_sig_alg(cert, ptr, tag.ber_len, &cert->issuer_hash_alg))
+    return 0;
   ptr += tag.ber_len;
 
   /* signatureValue */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if (NULL == ptr) goto bad_cert;
+  if (NULL == ptr)
+    goto bad_cert;
   if (tag.ber_len && !ptr[0]) {
     /* strip sign-forcing byte */
     ptr++;
     tag.ber_len--;
   }
   cert->sig.ptr = malloc(tag.ber_len);
-  if (NULL == cert->sig.ptr) return 0;
+  if (NULL == cert->sig.ptr)
+    return 0;
   memcpy(cert->sig.ptr, ptr, tag.ber_len);
   cert->sig.len = tag.ber_len;
   ptr += tag.ber_len;

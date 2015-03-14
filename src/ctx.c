@@ -14,7 +14,8 @@ SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth) {
   SSL_CTX *ctx;
 
   ctx = calloc(1, sizeof(*ctx));
-  if (NULL == ctx) goto out;
+  if (NULL == ctx)
+    goto out;
 
   assert(meth != NULL);
 
@@ -62,14 +63,16 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
   }
 
   p = pem_load(CAfile, PEM_SIG_CERT);
-  if (NULL == p) goto out;
+  if (NULL == p)
+    goto out;
 
   for (ca = NULL, i = 0; i < p->num_obj; i++) {
     DER *d = &p->obj[i];
     X509 *new;
 
     new = X509_new(d->der, d->der_len);
-    if (NULL == new) goto out;
+    if (NULL == new)
+      goto out;
 
     new->next = ca;
     ca = new;
@@ -87,7 +90,8 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file) {
   PEM *p;
 
   p = pem_load(file, PEM_SIG_CERT);
-  if (NULL == p) goto out;
+  if (NULL == p)
+    goto out;
 
   pem_free(ctx->pem_cert);
   ctx->pem_cert = p;
@@ -106,7 +110,8 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type) {
   }
 
   p = pem_load(file, PEM_SIG_CERT);
-  if (NULL == p) goto out;
+  if (NULL == p)
+    goto out;
 
   pem_free(ctx->pem_cert);
   ctx->pem_cert = p;
@@ -121,9 +126,11 @@ static int decode_int(const uint8_t **pptr, const uint8_t *end,
   const uint8_t *ptr;
 
   ptr = ber_decode_tag(&tag, *pptr, end - *pptr);
-  if (NULL == ptr) return 0;
+  if (NULL == ptr)
+    return 0;
 
-  if (ber_id_octet_constructed(tag.ber_id)) return 0;
+  if (ber_id_octet_constructed(tag.ber_id))
+    return 0;
 
   result->ptr = ptr;
   result->len = tag.ber_len;
@@ -163,29 +170,42 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   PEM *pem;
 
   pem = pem_load(file, PEM_SIG_KEY);
-  if (NULL == pem) goto out;
+  if (NULL == pem)
+    goto out;
 
   ptr = ber_decode_tag(&tag, pem->obj[0].der, pem->obj[0].der_len);
-  if (NULL == ptr) goto decode_err;
+  if (NULL == ptr)
+    goto decode_err;
 
-  if (!ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+  if (!ber_id_octet_constructed(tag.ber_id))
+    goto decode_err;
 
   end = ptr + tag.ber_len;
 
   /* eat the version */
-  if (!decode_int(&ptr, end, &vers)) goto decode_err;
-  if (!decode_int(&ptr, end, &n)) goto decode_err;
-  if (!decode_int(&ptr, end, &e)) goto decode_err;
-  if (!decode_int(&ptr, end, &d)) goto decode_err;
-  if (!decode_int(&ptr, end, &p)) goto decode_err;
-  if (!decode_int(&ptr, end, &q)) goto decode_err;
-  if (!decode_int(&ptr, end, &e1)) goto decode_err;
-  if (!decode_int(&ptr, end, &e2)) goto decode_err;
-  if (!decode_int(&ptr, end, &c)) goto decode_err;
+  if (!decode_int(&ptr, end, &vers))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &n))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &e))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &d))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &p))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &q))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &e1))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &e2))
+    goto decode_err;
+  if (!decode_int(&ptr, end, &c))
+    goto decode_err;
 
   RSA_priv_key_new(&rsa, n.ptr, n.len, e.ptr, e.len, d.ptr, d.len, p.ptr, p.len,
                    q.ptr, q.len, e1.ptr, e1.len, e2.ptr, e2.len, c.ptr, c.len);
-  if (NULL == rsa) goto out_free_pem;
+  if (NULL == rsa)
+    goto out_free_pem;
 
   RSA_free(ctx->rsa_privkey);
   ctx->rsa_privkey = rsa;

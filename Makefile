@@ -24,7 +24,9 @@ tests: $(TEST_SOURCES) krypton.c
 	$(CC) $(CFLAGS) -o cl-test-krypton test/cl-test.c krypton.c
 
 format:
-	clang-format -i -style '{BasedOnStyle: Google, AllowShortFunctionsOnASingleLine: None}' $$(grep -lrsi 'copyright.*cesanta' src test)
+	clang-format -i \
+	-style '{BasedOnStyle: Google, AllowShortIfStatementsOnASingleLine: false, AllowShortLoopsOnASingleLine: false, AllowShortFunctionsOnASingleLine: None}' \
+		$$(grep -lrsi 'copyright.*cesanta' src test)
 
 clean:
 	rm -rf *-openssl *-krypton *.o *.gc* *.dSYM *.exe *.obj *.pdb

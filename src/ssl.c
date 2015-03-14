@@ -23,7 +23,8 @@ SSL *SSL_new(SSL_CTX *ctx) {
   SSL *ssl;
 
   ssl = calloc(1, sizeof(*ssl));
-  if (NULL == ssl) goto out;
+  if (NULL == ssl)
+    goto out;
 
   assert(ctx != NULL);
 
@@ -175,7 +176,8 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   }
 
   /* In case any alerts are queued */
-  if (!do_send(ssl)) return 0;
+  if (!do_send(ssl))
+    return 0;
 
 #if KRYPTON_DEBUG_NONBLOCKING
   if (ssl->rx_len) {
@@ -204,7 +206,8 @@ int SSL_accept(SSL *ssl) {
   }
 
   while (ssl->tx_len) {
-    if (!do_send(ssl)) return -1;
+    if (!do_send(ssl))
+      return -1;
   }
 
   switch (ssl->state) {
@@ -228,7 +231,8 @@ int SSL_accept(SSL *ssl) {
       }
 
       ssl->state = STATE_SV_HELLO_SENT;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
     case STATE_SV_HELLO_SENT:
@@ -245,7 +249,8 @@ int SSL_accept(SSL *ssl) {
       }
 
       ssl->state = STATE_ESTABLISHED;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
     default:
@@ -275,7 +280,8 @@ int SSL_connect(SSL *ssl) {
   }
 
   while (ssl->tx_len) {
-    if (!do_send(ssl)) return -1;
+    if (!do_send(ssl))
+      return -1;
   }
 
   switch (ssl->state) {
@@ -297,7 +303,8 @@ int SSL_connect(SSL *ssl) {
       }
 
       ssl->state = STATE_CL_HELLO_SENT;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
 
@@ -319,7 +326,8 @@ int SSL_connect(SSL *ssl) {
       }
 
       ssl->state = STATE_CLIENT_FINISHED;
-      if (!do_send(ssl)) return -1;
+      if (!do_send(ssl))
+        return -1;
 
     /* fall through */
     case STATE_CLIENT_FINISHED:
@@ -355,7 +363,8 @@ int SSL_read(SSL *ssl, void *buf, int num) {
       } else {
         ret = SSL_connect(ssl);
       }
-      if (ret <= 0) return ret;
+      if (ret <= 0)
+        return ret;
     }
 
     if (!do_recv(ssl, buf, num)) {
@@ -384,7 +393,8 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
     } else {
       ret = SSL_connect(ssl);
     }
-    if (ret <= 0) return ret;
+    if (ret <= 0)
+      return ret;
   }
 
   /* Assume sender is retrying the same data since he
@@ -399,7 +409,8 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
     }
     ssl->write_pending = 1;
   }
-  if (!do_send(ssl)) return -1;
+  if (!do_send(ssl))
+    return -1;
 
   ssl_err(ssl, SSL_ERROR_NONE);
   return num;
@@ -423,7 +434,8 @@ int SSL_shutdown(SSL *ssl) {
         }
 
         ssl->state = STATE_CLOSING;
-        if (!do_send(ssl)) return -1;
+        if (!do_send(ssl))
+          return -1;
       /* fall through */
 
       case STATE_CLOSING:

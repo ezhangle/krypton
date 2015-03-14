@@ -41,7 +41,8 @@ static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
     goto err;
   }
 
-  if (tag.ber_len > MAX_DIGEST_SIZE) goto err;
+  if (tag.ber_len > MAX_DIGEST_SIZE)
+    goto err;
 
   memcpy(digest, ptr, tag.ber_len);
   *dlen = tag.ber_len;
@@ -86,7 +87,8 @@ again:
           nxt->sig.len);
 #endif
 
-  if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len)) return 0;
+  if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len))
+    return 0;
 #if DEBUG_VERIFY
   dprintf("%zu byte digest:\n", digest_len);
   hex_dump(digest, digest_len, 0);
@@ -118,8 +120,7 @@ again:
       return 0;
     }
     goto again;
-  } else {
-    /* TODO: check expiry date on nxt */
+  } else { /* TODO: check expiry date on nxt */
   }
 
   return 1;
