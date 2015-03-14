@@ -6,30 +6,30 @@
 #ifndef _X509_H
 #define _X509_H
 
-#define X509_ENC_ALG_UNKNOWN	0
-#define X509_ENC_ALG_RSA	1
+#define X509_ENC_ALG_UNKNOWN 0
+#define X509_ENC_ALG_RSA 1
 
-#define X509_HASH_MD5		0x04
-#define X509_HASH_SHA1		0x05
-#define X509_HASH_SHA256	0x0b
+#define X509_HASH_MD5 0x04
+#define X509_HASH_SHA1 0x05
+#define X509_HASH_SHA256 0x0b
 
 typedef struct X509_st X509;
 struct X509_st {
-	X509 *next;
-	RSA_CTX *pub_key;
+  X509 *next;
+  RSA_CTX *pub_key;
 
-	struct vec issuer;
-	struct vec subject;
-	struct vec sig;
+  struct vec issuer;
+  struct vec subject;
+  struct vec sig;
 
-	uint8_t enc_alg;
-	uint8_t is_self_signed;
+  uint8_t enc_alg;
+  uint8_t is_self_signed;
 
-	/* both must be RSA + something */
-	uint8_t hash_alg;
-	uint8_t issuer_hash_alg;
+  /* both must be RSA + something */
+  uint8_t hash_alg;
+  uint8_t issuer_hash_alg;
 
-	uint8_t digest[MAX_DIGEST_SIZE];
+  uint8_t digest[MAX_DIGEST_SIZE];
 };
 
 NS_INTERNAL X509 *X509_new(const uint8_t *ptr, size_t len);

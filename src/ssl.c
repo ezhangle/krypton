@@ -15,7 +15,9 @@
 #define MSG_NOSIGNAL 0
 #endif
 
-int SSL_library_init(void) { return 1; }
+int SSL_library_init(void) {
+  return 1;
+}
 
 SSL *SSL_new(SSL_CTX *ctx) {
   SSL *ssl;
@@ -46,7 +48,9 @@ int SSL_set_fd(SSL *ssl, int fd) {
   return 1;
 }
 
-int SSL_get_fd(SSL *ssl) { return ssl->fd; }
+int SSL_get_fd(SSL *ssl) {
+  return ssl->fd;
+}
 
 static int do_send(SSL *ssl) {
   const uint8_t *buf;
@@ -401,7 +405,9 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
   return num;
 }
 
-int SSL_get_error(const SSL *ssl, int ret) { return ssl->err; }
+int SSL_get_error(const SSL *ssl, int ret) {
+  return ssl->err;
+}
 
 int SSL_shutdown(SSL *ssl) {
   if (ssl->fatal) {
