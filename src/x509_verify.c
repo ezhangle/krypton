@@ -54,6 +54,12 @@ static int do_verify(X509 *cur, X509 *nxt) {
   uint8_t digest[MAX_DIGEST_SIZE];
   size_t digest_len, expected_len;
 again:
+
+  if ( !cur->is_ca ) {
+    dprintf("Not a CA certificate!\n");
+    return 0;
+  }
+
   /* TODO: chek expiry date on cur */
 
   if (cur->hash_alg != cur->issuer_hash_alg) {

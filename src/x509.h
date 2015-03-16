@@ -23,11 +23,13 @@ struct X509_st {
   struct vec sig;
 
   uint8_t enc_alg;
-  uint8_t is_self_signed;
 
   /* both must be RSA + something */
   uint8_t hash_alg;
   uint8_t issuer_hash_alg;
+
+  uint8_t is_self_signed:1;
+  uint8_t is_ca:1;
 
   uint8_t digest[MAX_DIGEST_SIZE];
 };

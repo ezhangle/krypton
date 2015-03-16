@@ -114,6 +114,109 @@ static int parse_pubkey_info(X509 *cert, const uint8_t *ptr, size_t len) {
   return 1;
 }
 
+static int decode_extension(X509 *cert, const uint8_t *oid, size_t oid_len,
+        const uint8_t *val, size_t val_len)
+{
+  static const char * const oidBasicConstraints =
+      "\x55\x1d\x13";
+  struct gber_tag tag;
+
+  if ( oid_len != 3 || memcmp(oid, oidBasicConstraints, oid_len) )
+    return 1;
+
+  /* encapsulated value */
+  val = ber_decode_tag(&tag, val, val_len);
+  if ( NULL == val )
+    return 0;
+  val_len = tag.ber_len;
+
+  if ( val_len && val[0] )
+    cert->is_ca = 1;
+
+  return 1;
+}
+
+static int parse_extensions(X509 *cert, const uint8_t *ptr, size_t len)
+{
+  const uint8_t *end = ptr + len;
+  struct gber_tag tag;
+
+  /* skip issuerUniqueID if present */
+  ptr = ber_decode_tag(&tag, ptr, end - ptr);
+  if ( NULL == ptr )
+    return 0;
+
+  /* extensions are tagged as data */
+  if ( tag.ber_tag == 0xa3 ) {
+    goto ext;
+  }
+  ptr += tag.ber_len;
+
+  /* skip subjectUniqueID if present */
+  ptr = ber_decode_tag(&tag, ptr, end - ptr);
+  if ( NULL == ptr )
+    return 0;
+
+  /* extensions are tagged as data */
+  if ( tag.ber_tag == 0xa3 ) {
+    goto ext;
+  }
+
+  ptr = ber_decode_tag(&tag, ptr, end - ptr);
+  if ( NULL == ptr )
+    return 0;
+
+  if ( tag.ber_tag != 0xa3 ) {
+    /* failed to find extensions */
+    return 1;
+  }
+ext:
+  ptr = ber_decode_tag(&tag, ptr, end - ptr);
+  if ( NULL == ptr )
+    return 0;
+
+  /* sequence */
+  if ( tag.ber_tag != 0x30 ) {
+    /* failed to find extensions */
+    return 1;
+  }
+
+  while(ptr < end) {
+    const uint8_t *oid, *val, *ext_end;
+    size_t oid_len, val_len;
+
+    ptr = ber_decode_tag(&tag, ptr, end - ptr);
+    if ( NULL == ptr )
+      return 0;
+    if ( tag.ber_tag != 0x30 ) {
+      ptr += tag.ber_len;
+      continue;
+    }
+
+    ext_end = ptr + tag.ber_len;
+
+    ptr = ber_decode_tag(&tag, ptr, ext_end - ptr);
+    if ( NULL == ptr )
+      return 0;
+    oid = ptr;
+    oid_len = tag.ber_len;
+    ptr += tag.ber_len;
+
+    ptr = ber_decode_tag(&tag, ptr, ext_end - ptr);
+    if ( NULL == ptr )
+      return 0;
+    val = ptr;
+    val_len = tag.ber_len;
+
+    if ( !decode_extension(cert, oid, oid_len, val, val_len) )
+      return 0;
+
+    ptr = ext_end;
+  }
+
+  return 1;
+}
+
 static int parse_tbs_cert(X509 *cert, const uint8_t *ptr, size_t len) {
   const uint8_t *end = ptr + len;
   struct gber_tag tag;
@@ -175,9 +278,9 @@ static int parse_tbs_cert(X509 *cert, const uint8_t *ptr, size_t len) {
     return 0;
   ptr += tag.ber_len;
 
-  /* skip the rest... although apparently there's an alternate DNS-name
-   * extension we might care about
-   */
+  if ( !parse_extensions(cert, ptr, end - ptr) )
+    return 0;
+
   return 1;
 }
 

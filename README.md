@@ -30,13 +30,9 @@ root CA are not checked. The chain will run from the server cert, through all
 intermediate certs provided by the server to a single certificate in the
 clients CA store, which will be used as the trust anchor.
 
-2. Leaf certificates can be used to sign new certificates for arbitrary
-subjects. This is because the complex policy-checking required by x509 is not
-implemented.
+2. Expiration dates are not checked.
 
-3. Expiration dates are not checked.
-
-4. In either case, no X509 API is provided to check the subject name, alternate
+3. In either case, no X509 API is provided to check the subject name, alternate
 names, dns name extensions etc. belonging to the server certificate.
 
 A possible solution for this might be to use 3rd party tools to ensure that the
