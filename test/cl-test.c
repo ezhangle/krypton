@@ -16,19 +16,17 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 
 #include <openssl/ssl.h>
-#if !USE_KRYPTON
-#include <openssl/err.h>
-#endif
 
 #define TEST_PORT 4343
 
 static SSL_CTX *setup_ctx(const char *cert_chain) {
   SSL_CTX *ctx;
 
-  ctx = SSL_CTX_new(TLSv1_2_client_method());
+  ctx = SSL_CTX_new(SSLv23_client_method());
   if (NULL == ctx)
     goto out;
 
@@ -41,7 +39,7 @@ static SSL_CTX *setup_ctx(const char *cert_chain) {
   if (!SSL_CTX_load_verify_locations(ctx, cert_chain, NULL))
     goto out_free;
 
-#if !USE_KRYPTON
+#ifdef SSL_F_CLIENT_CERTIFICATE
   SSL_CTX_set_cipher_list(ctx, "RC4-MD5,NULL-MD5");
 /* SSL_CTX_set_cipher_list(ctx, "NULL-MD5,RC4-MD5"); */
 #endif
@@ -161,6 +159,16 @@ static int test_content(SSL *ssl) {
   return !memcmp(buf, str2, ret);
 }
 
+static void ns_set_non_blocking_mode(int sock) {
+#ifdef _WIN32
+  unsigned long on = 1;
+  ioctlsocket(sock, FIONBIO, &on);
+#else
+  int flags = fcntl(sock, F_GETFL, 0);
+  fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+#endif
+}
+
 static int do_test(const char *cert_chain) {
   struct sockaddr_in sa;
   struct pollfd pfd;
@@ -177,11 +185,12 @@ static int do_test(const char *cert_chain) {
   if (NULL == ssl)
     goto out_ctx;
 
-  fd = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+  fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (fd < 0) {
     fprintf(stderr, "socket: %s\n", strerror(errno));
     goto out_ssl;
   }
+  ns_set_non_blocking_mode(fd);
 
   if (!SSL_set_fd(ssl, fd))
     goto out_close;
@@ -202,17 +211,11 @@ static int do_test(const char *cert_chain) {
 
   if (do_connect(ssl) <= 0) {
     printf("TLS connect failed\n");
-#if !USE_KRYPTON
-    ERR_print_errors_fp(stdout);
-#endif
     goto shutdown;
   }
 
   if (!test_content(ssl)) {
     printf("TLS data xfer failed\n");
-#if !USE_KRYPTON
-    ERR_print_errors_fp(stdout);
-#endif
     goto shutdown;
   }
 
@@ -234,7 +237,7 @@ out:
   return ret;
 }
 
-int main(int argc, char **argv) {
+int main(void) {
   SSL_library_init();
   if (!do_test("ca.crt"))
     return EXIT_FAILURE;

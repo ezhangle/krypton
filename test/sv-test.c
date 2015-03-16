@@ -16,19 +16,17 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 
 #include <openssl/ssl.h>
-#if !USE_KRYPTON
-#include <openssl/err.h>
-#endif
 
 #define TEST_PORT 4343
 
 static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
   SSL_CTX *ctx;
 
-  ctx = SSL_CTX_new(TLSv1_2_server_method());
+  ctx = SSL_CTX_new(SSLv23_server_method());
   if (NULL == ctx)
     goto out;
 
@@ -44,9 +42,6 @@ static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
     goto out_free;
   }
 
-#if !USE_KRYPTON
-  SSL_CTX_set_cipher_list(ctx, "RC4-MD5,NULL-MD5");
-#endif
   goto out;
 
 out_free:
@@ -167,6 +162,16 @@ static int test_content(SSL *ssl) {
   return 1;
 }
 
+static void ns_set_non_blocking_mode(int sock) {
+#ifdef _WIN32
+  unsigned long on = 1;
+  ioctlsocket(sock, FIONBIO, &on);
+#else
+  int flags = fcntl(sock, F_GETFL, 0);
+  fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+#endif
+}
+
 static int do_test(const char *cert_file, const char *key_file) {
   struct sockaddr_in sa;
   socklen_t slen;
@@ -209,27 +214,22 @@ static int do_test(const char *cert_file, const char *key_file) {
 
   slen = sizeof(sa);
   printf("Waiting for a connection...\n");
-  cfd = accept4(fd, &sa, &slen, SOCK_NONBLOCK);
+  cfd = accept(fd, (struct sockaddr *)&sa, &slen);
   if (cfd < 0) {
     fprintf(stderr, "accept: %s\n", strerror(errno));
     goto out_close;
   }
+  ns_set_non_blocking_mode(cfd);
 
   if (!SSL_set_fd(ssl, cfd))
     goto out_close_cl;
 
   printf("Got connection\n");
   if (do_accept(ssl) <= 0) {
-#if !USE_KRYPTON
-    ERR_print_errors_fp(stdout);
-#endif
     goto shutdown;
   }
 
   if (!test_content(ssl)) {
-#if !USE_KRYPTON
-    ERR_print_errors_fp(stdout);
-#endif
     goto shutdown;
   }
 
@@ -253,7 +253,7 @@ out:
   return ret;
 }
 
-int main(int argc, char **argv) {
+int main(void) {
   SSL_library_init();
   if (!do_test("server.crt", "server.key"))
     return EXIT_FAILURE;

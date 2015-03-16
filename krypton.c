@@ -42,7 +42,8 @@ const SSL_METHOD *SSLv23_client_method(void);
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth);
 
 #define SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER 0x00000002L
-long SSL_CTX_set_mode(SSL_CTX *ctx, long mode);
+#define SSL_CTX_set_mode(ctx,op) SSL_CTX_ctrl((ctx),33,(op),NULL)
+long SSL_CTX_ctrl(SSL_CTX *, int, long, void *);
 
 /* for the client */
 #define SSL_VERIFY_NONE 0x00
@@ -168,11 +169,7 @@ struct vec {
 
 typedef struct pem_st PEM;
 typedef struct der_st DER;
-
 typedef struct X509_st X509;
-
-typedef struct _BI_CTX BI_CTX;
-typedef struct _bigint bigint; /**< An alias for _bigint */
 typedef struct _RSA_CTX RSA_CTX;
 
 struct x509_store_ctx_st {
@@ -248,6 +245,8 @@ NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
 NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
 
+typedef struct _bigint bigint;  /**< An alias for _bigint */
+
 
 #endif /* _KTYPES_H */
 /*
@@ -258,15 +257,10 @@ NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #ifndef _CRYPTO_H
 #define _CRYPTO_H
 
-typedef struct _BI_CTX BI_CTX;
-typedef struct _bigint bigint; /**< An alias for _bigint */
-typedef struct _RSA_CTX RSA_CTX;
-
 NS_INTERNAL int get_random(uint8_t *out, size_t len);
 NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
 
 /* axTLS crypto functions, see C files for copyright info */
-typedef struct _RSA_CTX RSA_CTX;
 typedef struct _SHA256_CTX SHA256_CTX;
 
 NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
@@ -369,6 +363,233 @@ NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #define SQU_KARATSUBA_THRESH 40
 
 #endif /* _CRYPTO_H */
+/*
+ * Copyright (c) 2007, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef BIGINT_IMPL_HEADER
+#define BIGINT_IMPL_HEADER
+
+/* Maintain a number of precomputed variables when doing reduction */
+#define BIGINT_M_OFFSET     0    /**< Normal modulo offset. */
+#define BIGINT_P_OFFSET     1    /**< p modulo offset. */
+#define BIGINT_Q_OFFSET     2    /**< q module offset. */
+#define BIGINT_NUM_MODS     3    /**< The number of modulus constants used. */
+
+/* Architecture specific functions for big ints */
+#if defined(CONFIG_INTEGER_8BIT)
+#define COMP_RADIX          256U       /**< Max component + 1 */
+#define COMP_MAX            0xFFFFU/**< (Max dbl comp -1) */
+#define COMP_BIT_SIZE       8   /**< Number of bits in a component. */
+#define COMP_BYTE_SIZE      1   /**< Number of bytes in a component. */
+#define COMP_NUM_NIBBLES    2   /**< Used For diagnostics only. */
+typedef uint8_t comp;	        /**< A single precision component. */
+typedef uint16_t long_comp;     /**< A double precision component. */
+typedef int16_t slong_comp;     /**< A signed double precision component. */
+#elif defined(CONFIG_INTEGER_16BIT)
+#define COMP_RADIX          65536U       /**< Max component + 1 */
+#define COMP_MAX            0xFFFFFFFFU/**< (Max dbl comp -1) */
+#define COMP_BIT_SIZE       16  /**< Number of bits in a component. */
+#define COMP_BYTE_SIZE      2   /**< Number of bytes in a component. */
+#define COMP_NUM_NIBBLES    4   /**< Used For diagnostics only. */
+typedef uint16_t comp;	        /**< A single precision component. */
+typedef uint32_t long_comp;     /**< A double precision component. */
+typedef int32_t slong_comp;     /**< A signed double precision component. */
+#else /* regular 32 bit */
+#ifdef WIN32
+#define COMP_RADIX          4294967296i64
+#define COMP_MAX            0xFFFFFFFFFFFFFFFFui64
+#else
+#define COMP_RADIX          4294967296ULL         /**< Max component + 1 */
+#define COMP_MAX            0xFFFFFFFFFFFFFFFFULL/**< (Max dbl comp -1) */
+#endif
+#define COMP_BIT_SIZE       32  /**< Number of bits in a component. */
+#define COMP_BYTE_SIZE      4   /**< Number of bytes in a component. */
+#define COMP_NUM_NIBBLES    8   /**< Used For diagnostics only. */
+typedef uint32_t comp;	        /**< A single precision component. */
+typedef uint64_t long_comp;     /**< A double precision component. */
+typedef int64_t slong_comp;     /**< A signed double precision component. */
+#endif
+
+/**
+ * @struct  _bigint
+ * @brief A big integer basic object
+ */
+struct _bigint
+{
+    struct _bigint* next;       /**< The next bigint in the cache. */
+    short size;                 /**< The number of components in this bigint. */
+    short max_comps;            /**< The heapsize allocated for this bigint */
+    int refs;                   /**< An internal reference count. */
+    comp* comps;                /**< A ptr to the actual component data */
+};
+
+typedef struct _bigint bigint;  /**< An alias for _bigint */
+
+/**
+ * Maintains the state of the cache, and a number of variables used in
+ * reduction.
+ */
+struct _BI_CTX /**< A big integer "session" context. */
+{
+    bigint *active_list;                    /**< Bigints currently used. */
+    bigint *free_list;                      /**< Bigints not used. */
+    bigint *bi_radix;                       /**< The radix used. */
+    bigint *bi_mod[BIGINT_NUM_MODS];        /**< modulus */
+
+#if defined(CONFIG_BIGINT_MONTGOMERY)
+    bigint *bi_RR_mod_m[BIGINT_NUM_MODS];   /**< R^2 mod m */
+    bigint *bi_R_mod_m[BIGINT_NUM_MODS];    /**< R mod m */
+    comp N0_dash[BIGINT_NUM_MODS];
+#elif defined(CONFIG_BIGINT_BARRETT)
+    bigint *bi_mu[BIGINT_NUM_MODS];         /**< Storage for mu */
+#endif
+    bigint *bi_normalised_mod[BIGINT_NUM_MODS]; /**< Normalised mod storage. */
+    bigint **g;                 /**< Used by sliding-window. */
+    int window;                 /**< The size of the sliding window */
+    int active_count;           /**< Number of active bigints. */
+    int free_count;             /**< Number of free bigints. */
+
+#ifdef CONFIG_BIGINT_MONTGOMERY
+    uint8_t use_classical;      /**< Use classical reduction. */
+#endif
+    uint8_t mod_offset;         /**< The mod offset we are using */
+};
+typedef struct _BI_CTX BI_CTX;
+
+#ifndef WIN32
+#define max(a,b) ((a)>(b)?(a):(b))  /**< Find the maximum of 2 numbers. */
+#define min(a,b) ((a)<(b)?(a):(b))  /**< Find the minimum of 2 numbers. */
+#endif
+
+#define PERMANENT           0x7FFF55AA  /**< A magic number for permanents. */
+
+#endif
+/*
+ * Copyright (c) 2007, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef BIGINT_HEADER
+#define BIGINT_HEADER
+
+NS_INTERNAL BI_CTX *bi_initialize(void);
+NS_INTERNAL void bi_terminate(BI_CTX *ctx);
+NS_INTERNAL void bi_permanent(bigint *bi);
+NS_INTERNAL void bi_depermanent(bigint *bi);
+NS_INTERNAL void bi_clear_cache(BI_CTX *ctx);
+NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi);
+NS_INTERNAL bigint *bi_copy(bigint *bi);
+NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi);
+NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *bi, uint8_t *data, int size);
+NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int len);
+NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i);
+
+/* the functions that actually do something interesting */
+NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib);
+NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia,
+        bigint *bib, int *is_negative);
+NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *bia,
+			bigint *bim, int is_mod);
+NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib);
+NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp);
+#if 0
+NS_INTERNAL bigint *bi_mod_power2(BI_CTX *ctx, bigint *bi,
+			bigint *bim, bigint *biexp);
+#endif
+NS_INTERNAL int bi_compare(bigint *bia, bigint *bib);
+NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset);
+NS_INTERNAL void bi_free_mod(BI_CTX *ctx, int mod_offset);
+
+#ifdef CONFIG_SSL_FULL_MODE
+NS_INTERNAL void bi_print(const char *label, bigint *bi);
+NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data);
+#endif
+
+/**
+ * @def bi_mod
+ * Find the residue of B. bi_set_mod() must be called before hand.
+ */
+#define bi_mod(A, B)      bi_divide(A, B, ctx->bi_mod[ctx->mod_offset], 1)
+
+/**
+ * bi_residue() is technically the same as bi_mod(), but it uses the
+ * appropriate reduction technique (which is bi_mod() when doing classical
+ * reduction).
+ */
+#if defined(CONFIG_BIGINT_MONTGOMERY)
+#define bi_residue(A, B)         bi_mont(A, B)
+NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy);
+#elif defined(CONFIG_BIGINT_BARRETT)
+#define bi_residue(A, B)         bi_barrett(A, B)
+NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi);
+#else /* if defined(CONFIG_BIGINT_CLASSICAL) */
+#define bi_residue(A, B)         bi_mod(A, B)
+#endif
+
+#ifdef CONFIG_BIGINT_SQUARE
+NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bi);
+#else
+#define bi_square(A, B)     bi_multiply(A, bi_copy(B), B)
+#endif
+
+NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
+        bigint *dP, bigint *dQ,
+        bigint *p, bigint *q,
+        bigint *qInv);
+
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -644,7 +865,7 @@ NS_INTERNAL unsigned int ber_id_octet_class(uint8_t id);
 #endif
 
 #if KRYPTON_DEBUG
-NS_INTERNAL const char * const ber_id_octet_clsname(uint8_t id);
+NS_INTERNAL const char *ber_id_octet_clsname(uint8_t id);
 NS_INTERNAL int ber_dump(const uint8_t *ptr, size_t len);
 NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len);
 #endif
@@ -657,9 +878,6 @@ NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len);
 
 #ifndef _PEM_H
 #define _PEM_H
-
-typedef struct pem_st PEM;
-typedef struct der_st DER;
 
 struct pem_st {
   unsigned int tot_len;
@@ -699,7 +917,6 @@ NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len, uint8_t *out,
 #define X509_HASH_SHA1 0x05
 #define X509_HASH_SHA256 0x0b
 
-typedef struct X509_st X509;
 struct X509_st {
   X509 *next;
   RSA_CTX *pub_key;
@@ -728,234 +945,6 @@ NS_INTERNAL void X509_free(X509 *cert);
 NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
 
 #endif /* _X509_H */
-/*
- * Copyright (c) 2007, Cameron Rich
- *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors
- *   may be used to endorse or promote products derived from this software
- *   without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-#ifndef BIGINT_IMPL_HEADER
-#define BIGINT_IMPL_HEADER
-
-
-/* Maintain a number of precomputed variables when doing reduction */
-#define BIGINT_M_OFFSET     0    /**< Normal modulo offset. */
-#define BIGINT_P_OFFSET     1    /**< p modulo offset. */
-#define BIGINT_Q_OFFSET     2    /**< q module offset. */
-#define BIGINT_NUM_MODS     3    /**< The number of modulus constants used. */
-
-/* Architecture specific functions for big ints */
-#if defined(CONFIG_INTEGER_8BIT)
-#define COMP_RADIX          256        /**< Max component + 1 */
-#define COMP_MAX            0xFFFF /**< (Max dbl comp -1) */
-#define COMP_BIT_SIZE       8   /**< Number of bits in a component. */
-#define COMP_BYTE_SIZE      1   /**< Number of bytes in a component. */
-#define COMP_NUM_NIBBLES    2   /**< Used For diagnostics only. */
-typedef uint8_t comp;	        /**< A single precision component. */
-typedef uint16_t long_comp;     /**< A double precision component. */
-typedef int16_t slong_comp;     /**< A signed double precision component. */
-#elif defined(CONFIG_INTEGER_16BIT)
-#define COMP_RADIX          65536       /**< Max component + 1 */
-#define COMP_MAX            0xFFFFFFFFU/**< (Max dbl comp -1) */
-#define COMP_BIT_SIZE       16  /**< Number of bits in a component. */
-#define COMP_BYTE_SIZE      2   /**< Number of bytes in a component. */
-#define COMP_NUM_NIBBLES    4   /**< Used For diagnostics only. */
-typedef uint16_t comp;	        /**< A single precision component. */
-typedef uint32_t long_comp;     /**< A double precision component. */
-typedef int32_t slong_comp;     /**< A signed double precision component. */
-#else /* regular 32 bit */
-#ifdef _WIN32
-#define COMP_RADIX          4294967296i64
-#define COMP_MAX            0xFFFFFFFFFFFFFFFFui64
-#else
-#define COMP_RADIX          4294967296ULL         /**< Max component + 1 */
-#define COMP_MAX            0xFFFFFFFFFFFFFFFFULL/**< (Max dbl comp -1) */
-#endif
-#define COMP_BIT_SIZE       32  /**< Number of bits in a component. */
-#define COMP_BYTE_SIZE      4   /**< Number of bytes in a component. */
-#define COMP_NUM_NIBBLES    8   /**< Used For diagnostics only. */
-typedef uint32_t comp;	        /**< A single precision component. */
-typedef uint64_t long_comp;     /**< A double precision component. */
-typedef int64_t slong_comp;     /**< A signed double precision component. */
-#endif
-
-/**
- * @struct  _bigint
- * @brief A big integer basic object
- */
-struct _bigint
-{
-    struct _bigint* next;       /**< The next bigint in the cache. */
-    short size;                 /**< The number of components in this bigint. */
-    short max_comps;            /**< The heapsize allocated for this bigint */
-    int refs;                   /**< An internal reference count. */
-    comp* comps;                /**< A ptr to the actual component data */
-};
-
-typedef struct _bigint bigint;  /**< An alias for _bigint */
-
-/**
- * Maintains the state of the cache, and a number of variables used in
- * reduction.
- */
-struct _BI_CTX /**< A big integer "session" context. */
-{
-    bigint *active_list;                    /**< Bigints currently used. */
-    bigint *free_list;                      /**< Bigints not used. */
-    bigint *bi_radix;                       /**< The radix used. */
-    bigint *bi_mod[BIGINT_NUM_MODS];        /**< modulus */
-
-#if defined(CONFIG_BIGINT_MONTGOMERY)
-    bigint *bi_RR_mod_m[BIGINT_NUM_MODS];   /**< R^2 mod m */
-    bigint *bi_R_mod_m[BIGINT_NUM_MODS];    /**< R mod m */
-    comp N0_dash[BIGINT_NUM_MODS];
-#elif defined(CONFIG_BIGINT_BARRETT)
-    bigint *bi_mu[BIGINT_NUM_MODS];         /**< Storage for mu */
-#endif
-    bigint *bi_normalised_mod[BIGINT_NUM_MODS]; /**< Normalised mod storage. */
-    bigint **g;                 /**< Used by sliding-window. */
-    int window;                 /**< The size of the sliding window */
-    int active_count;           /**< Number of active bigints. */
-    int free_count;             /**< Number of free bigints. */
-
-#ifdef CONFIG_BIGINT_MONTGOMERY
-    uint8_t use_classical;      /**< Use classical reduction. */
-#endif
-    uint8_t mod_offset;         /**< The mod offset we are using */
-};
-typedef struct _BI_CTX BI_CTX;
-
-#ifndef _WIN32
-#define max(a,b) ((a)>(b)?(a):(b))  /**< Find the maximum of 2 numbers. */
-#define min(a,b) ((a)<(b)?(a):(b))  /**< Find the minimum of 2 numbers. */
-#endif
-
-#define PERMANENT           0x7FFF55AA  /**< A magic number for permanents. */
-
-#endif
-/*
- * Copyright (c) 2007, Cameron Rich
- * 
- * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without 
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software 
- *   without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-#ifndef BIGINT_HEADER
-#define BIGINT_HEADER
-
-NS_INTERNAL BI_CTX *bi_initialize(void);
-NS_INTERNAL void bi_terminate(BI_CTX *ctx);
-NS_INTERNAL void bi_permanent(bigint *bi);
-NS_INTERNAL void bi_depermanent(bigint *bi);
-NS_INTERNAL void bi_clear_cache(BI_CTX *ctx);
-NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi);
-NS_INTERNAL bigint *bi_copy(bigint *bi);
-NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi);
-NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *bi, uint8_t *data, int size);
-NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int len);
-NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i);
-
-/* the functions that actually do something interesting */
-NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib);
-NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia,
-        bigint *bib, int *is_negative);
-NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *bia,
-			bigint *bim, int is_mod);
-NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib);
-NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp);
-#if 0
-NS_INTERNAL bigint *bi_mod_power2(BI_CTX *ctx, bigint *bi,
-			bigint *bim, bigint *biexp);
-#endif
-NS_INTERNAL int bi_compare(bigint *bia, bigint *bib);
-NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset);
-NS_INTERNAL void bi_free_mod(BI_CTX *ctx, int mod_offset);
-
-#ifdef CONFIG_SSL_FULL_MODE
-NS_INTERNAL void bi_print(const char *label, bigint *bi);
-NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data);
-#endif
-
-/**
- * @def bi_mod
- * Find the residue of B. bi_set_mod() must be called before hand.
- */
-#define bi_mod(A, B)      bi_divide(A, B, ctx->bi_mod[ctx->mod_offset], 1)
-
-/**
- * bi_residue() is technically the same as bi_mod(), but it uses the
- * appropriate reduction technique (which is bi_mod() when doing classical
- * reduction).
- */
-#if defined(CONFIG_BIGINT_MONTGOMERY)
-#define bi_residue(A, B)         bi_mont(A, B)
-NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy);
-#elif defined(CONFIG_BIGINT_BARRETT)
-#define bi_residue(A, B)         bi_barrett(A, B)
-NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi);
-#else /* if defined(CONFIG_BIGINT_CLASSICAL) */
-#define bi_residue(A, B)         bi_mod(A, B)
-#endif
-
-#ifdef CONFIG_BIGINT_SQUARE
-NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bi);
-#else
-#define bi_square(A, B)     bi_multiply(A, bi_copy(B), B)
-#endif
-
-NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
-        bigint *dP, bigint *dQ,
-        bigint *p, bigint *q,
-        bigint *qInv);
-
-#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -1170,8 +1159,8 @@ NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
   return do_ber_dump(f, ptr, len, 1);
 }
 
-NS_INTERNAL const char *const ber_id_octet_clsname(uint8_t id) {
-  static const char *const clsname[] = {
+NS_INTERNAL const char *ber_id_octet_clsname(uint8_t id) {
+  static const char *clsname[] = {
       "universal", "application", "context-specific", "private",
   };
   return clsname[(id & 0xc0) >> 6];
@@ -1317,10 +1306,10 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
  */
 
 
-#define V1 v->comps[v->size - 1]                     /**< v1 for division */
-#define V2 v->comps[v->size - 2]                     /**< v2 for division */
-#define U(j) tmp_u->comps[tmp_u->size - j - 1]       /**< uj for division */
-#define Q(j) quotient->comps[quotient->size - j - 1] /**< qj for division */
+#define V1      v->comps[v->size-1]                 /**< v1 for division */
+#define V2      v->comps[v->size-2]                 /**< v2 for division */
+#define U(j)    tmp_u->comps[tmp_u->size-j-1]       /**< uj for division */
+#define Q(j)    quotient->comps[quotient->size-j-1] /**< qj for division */
 
 static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bi, comp i);
 static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom);
@@ -1336,23 +1325,25 @@ static bigint *comp_left_shift(bigint *biR, int num_shifts);
 #ifdef CONFIG_BIGINT_CHECK_ON
 static void check(const bigint *bi);
 #else
-#define check(A) /**< disappears in normal production mode */
+#define check(A)                /**< disappears in normal production mode */
 #endif
+
 
 /**
  * @brief Start a new bigint context.
  * @return A bigint context.
  */
-NS_INTERNAL BI_CTX *bi_initialize(void) {
-  /* calloc() sets everything to zero */
-  BI_CTX *ctx = (BI_CTX *)calloc(1, sizeof(BI_CTX));
+NS_INTERNAL BI_CTX *bi_initialize(void)
+{
+    /* calloc() sets everything to zero */
+    BI_CTX *ctx = (BI_CTX *)calloc(1, sizeof(BI_CTX));
 
-  /* the radix */
-  ctx->bi_radix = alloc(ctx, 2);
-  ctx->bi_radix->comps[0] = 0;
-  ctx->bi_radix->comps[1] = 1;
-  bi_permanent(ctx->bi_radix);
-  return ctx;
+    /* the radix */
+    ctx->bi_radix = alloc(ctx, 2);
+    ctx->bi_radix->comps[0] = 0;
+    ctx->bi_radix->comps[1] = 1;
+    bi_permanent(ctx->bi_radix);
+    return ctx;
 }
 
 /**
@@ -1362,37 +1353,43 @@ NS_INTERNAL BI_CTX *bi_initialize(void) {
  * properly freed.
  * @param ctx [in]   The bigint session context.
  */
-NS_INTERNAL void bi_terminate(BI_CTX *ctx) {
-  bi_depermanent(ctx->bi_radix);
-  bi_free(ctx, ctx->bi_radix);
+NS_INTERNAL void bi_terminate(BI_CTX *ctx)
+{
+    bi_depermanent(ctx->bi_radix);
+    bi_free(ctx, ctx->bi_radix);
 
-  if (ctx->active_count != 0) {
+    if (ctx->active_count != 0)
+    {
 #ifdef CONFIG_SSL_FULL_MODE
-    printf("bi_terminate: there were %d un-freed bigints\n", ctx->active_count);
+        printf("bi_terminate: there were %d un-freed bigints\n",
+                       ctx->active_count);
 #endif
-    abort();
-  }
+        abort();
+    }
 
-  bi_clear_cache(ctx);
-  free(ctx);
+    bi_clear_cache(ctx);
+    free(ctx);
 }
 
 /**
  *@brief Clear the memory cache.
  */
-NS_INTERNAL void bi_clear_cache(BI_CTX *ctx) {
-  bigint *p, *pn;
+NS_INTERNAL void bi_clear_cache(BI_CTX *ctx)
+{
+    bigint *p, *pn;
 
-  if (ctx->free_list == NULL) return;
+    if (ctx->free_list == NULL)
+        return;
 
-  for (p = ctx->free_list; p != NULL; p = pn) {
-    pn = p->next;
-    free(p->comps);
-    free(p);
-  }
+    for (p = ctx->free_list; p != NULL; p = pn)
+    {
+        pn = p->next;
+        free(p->comps);
+        free(p);
+    }
 
-  ctx->free_count = 0;
-  ctx->free_list = NULL;
+    ctx->free_count = 0;
+    ctx->free_list = NULL;
 }
 
 /**
@@ -1401,10 +1398,12 @@ NS_INTERNAL void bi_clear_cache(BI_CTX *ctx) {
  * @param bi [in]   The bigint to copy.
  * @return A reference to the same bigint.
  */
-NS_INTERNAL bigint *bi_copy(bigint *bi) {
-  check(bi);
-  if (bi->refs != PERMANENT) bi->refs++;
-  return bi;
+NS_INTERNAL bigint *bi_copy(bigint *bi)
+{
+    check(bi);
+    if (bi->refs != PERMANENT)
+        bi->refs++;
+    return bi;
 }
 
 /**
@@ -1413,32 +1412,36 @@ NS_INTERNAL bigint *bi_copy(bigint *bi) {
  * For this object to be freed, bi_depermanent() must be called.
  * @param bi [in]   The bigint to be made permanent.
  */
-NS_INTERNAL void bi_permanent(bigint *bi) {
-  check(bi);
-  if (bi->refs != 1) {
+NS_INTERNAL void bi_permanent(bigint *bi)
+{
+    check(bi);
+    if (bi->refs != 1)
+    {
 #ifdef CONFIG_SSL_FULL_MODE
-    printf("bi_permanent: refs was not 1\n");
+        printf("bi_permanent: refs was not 1\n");
 #endif
-    abort();
-  }
+        abort();
+    }
 
-  bi->refs = PERMANENT;
+    bi->refs = PERMANENT;
 }
 
 /**
  * @brief Take a permanent object and make it eligible for freedom.
  * @param bi [in]   The bigint to be made back to temporary.
  */
-NS_INTERNAL void bi_depermanent(bigint *bi) {
-  check(bi);
-  if (bi->refs != PERMANENT) {
+NS_INTERNAL void bi_depermanent(bigint *bi)
+{
+    check(bi);
+    if (bi->refs != PERMANENT)
+    {
 #ifdef CONFIG_SSL_FULL_MODE
-    printf("bi_depermanent: bigint was not permanent\n");
+        printf("bi_depermanent: bigint was not permanent\n");
 #endif
-    abort();
-  }
+        abort();
+    }
 
-  bi->refs = 1;
+    bi->refs = 1;
 }
 
 /**
@@ -1448,28 +1451,31 @@ NS_INTERNAL void bi_depermanent(bigint *bi) {
  * @param ctx [in]   The bigint session context.
  * @param bi [in]    The bigint to be freed.
  */
-NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi) {
-  check(bi);
-  if (bi->refs == PERMANENT) {
-    return;
-  }
+NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi)
+{
+    check(bi);
+    if (bi->refs == PERMANENT)
+    {
+        return;
+    }
 
-  if (--bi->refs > 0) {
-    return;
-  }
+    if (--bi->refs > 0)
+    {
+        return;
+    }
 
-  bi->next = ctx->free_list;
-  ctx->free_list = bi;
-  ctx->free_count++;
+    bi->next = ctx->free_list;
+    ctx->free_list = bi;
+    ctx->free_count++;
 
-  if (--ctx->active_count < 0) {
+    if (--ctx->active_count < 0)
+    {
 #ifdef CONFIG_SSL_FULL_MODE
-    printf(
-        "bi_free: active_count went negative "
-        "- double-freed bigint?\n");
+        printf("bi_free: active_count went negative "
+                "- double-freed bigint?\n");
 #endif
-    abort();
-  }
+        abort();
+    }
 }
 
 /**
@@ -1478,10 +1484,11 @@ NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi) {
  * @param i [in]     The (unsigned) integer to be converted.
  *
  */
-NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i) {
-  bigint *biR = alloc(ctx, 1);
-  biR->comps[0] = i;
-  return biR;
+NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i)
+{
+    bigint *biR = alloc(ctx, 1);
+    biR->comps[0] = i;
+    return biR;
 }
 
 /**
@@ -1489,11 +1496,12 @@ NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i) {
  * @param ctx [in]   The bigint session context.
  * @param bi  [in]   The bigint object to be copied.
  */
-NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi) {
-  bigint *biR = alloc(ctx, bi->size);
-  check(bi);
-  memcpy(biR->comps, bi->comps, bi->size * COMP_BYTE_SIZE);
-  return biR;
+NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi)
+{
+    bigint *biR = alloc(ctx, bi->size);
+    check(bi);
+    memcpy(biR->comps, bi->comps, bi->size*COMP_BYTE_SIZE);
+    return biR;
 }
 
 /**
@@ -1503,32 +1511,34 @@ NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi) {
  * @param bib [in]  Another bigint.
  * @return The result of the addition.
  */
-NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib) {
-  int n;
-  comp carry = 0;
-  comp *pa, *pb;
+NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib)
+{
+    int n;
+    comp carry = 0;
+    comp *pa, *pb;
 
-  check(bia);
-  check(bib);
+    check(bia);
+    check(bib);
 
-  n = max(bia->size, bib->size);
-  more_comps(bia, n + 1);
-  more_comps(bib, n);
-  pa = bia->comps;
-  pb = bib->comps;
+    n = max(bia->size, bib->size);
+    more_comps(bia, n+1);
+    more_comps(bib, n);
+    pa = bia->comps;
+    pb = bib->comps;
 
-  do {
-    comp sl, rl, cy1;
-    sl = *pa + *pb++;
-    rl = sl + carry;
-    cy1 = sl < *pa;
-    carry = cy1 | (rl < sl);
-    *pa++ = rl;
-  } while (--n != 0);
+    do
+    {
+        comp  sl, rl, cy1;
+        sl = *pa + *pb++;
+        rl = sl + carry;
+        cy1 = sl < *pa;
+        carry = cy1 | (rl < sl);
+        *pa++ = rl;
+    } while (--n != 0);
 
-  *pa = carry; /* do overflow */
-  bi_free(ctx, bib);
-  return trim(bia);
+    *pa = carry;                  /* do overflow */
+    bi_free(ctx, bib);
+    return trim(bia);
 }
 
 /**
@@ -1540,60 +1550,64 @@ NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib) {
  * is_negative may be null.
  * @return The result of the subtraction. The result is always positive.
  */
-NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia, bigint *bib,
-                                int *is_negative) {
-  int n = bia->size;
-  comp *pa, *pb, carry = 0;
+NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx,
+        bigint *bia, bigint *bib, int *is_negative)
+{
+    int n = bia->size;
+    comp *pa, *pb, carry = 0;
 
-  check(bia);
-  check(bib);
+    check(bia);
+    check(bib);
 
-  more_comps(bib, n);
-  pa = bia->comps;
-  pb = bib->comps;
+    more_comps(bib, n);
+    pa = bia->comps;
+    pb = bib->comps;
 
-  do {
-    comp sl, rl, cy1;
-    sl = *pa - *pb++;
-    rl = sl - carry;
-    cy1 = sl > *pa;
-    carry = cy1 | (rl > sl);
-    *pa++ = rl;
-  } while (--n != 0);
+    do
+    {
+        comp sl, rl, cy1;
+        sl = *pa - *pb++;
+        rl = sl - carry;
+        cy1 = sl > *pa;
+        carry = cy1 | (rl > sl);
+        *pa++ = rl;
+    } while (--n != 0);
 
-  if (is_negative) /* indicate a negative result */
-  {
-    *is_negative = carry;
-  }
+    if (is_negative)    /* indicate a negative result */
+    {
+        *is_negative = carry;
+    }
 
-  bi_free(ctx, trim(bib)); /* put bib back to the way it was */
-  return trim(bia);
+    bi_free(ctx, trim(bib));    /* put bib back to the way it was */
+    return trim(bia);
 }
 
 /**
  * Perform a multiply between a bigint an an (unsigned) integer
  */
-static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bia, comp b) {
-  int j = 0, n = bia->size;
-  bigint *biR = alloc(ctx, n + 1);
-  comp carry = 0;
-  comp *r = biR->comps;
-  comp *a = bia->comps;
+static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bia, comp b)
+{
+    int j = 0, n = bia->size;
+    bigint *biR = alloc(ctx, n + 1);
+    comp carry = 0;
+    comp *r = biR->comps;
+    comp *a = bia->comps;
 
-  check(bia);
+    check(bia);
 
-  /* clear things to start with */
-  memset(r, 0, ((n + 1) * COMP_BYTE_SIZE));
+    /* clear things to start with */
+    memset(r, 0, ((n+1)*COMP_BYTE_SIZE));
 
-  do {
-    long_comp tmp = *r + (long_comp)a[j] * b + carry;
-    *r++ = (comp)tmp; /* downsize */
-    carry = (comp)(tmp >> COMP_BIT_SIZE);
-  } while (++j < n);
+    do
+    {
+        long_comp tmp = *r + (long_comp)a[j]*b + carry;
+        *r++ = (comp)tmp;              /* downsize */
+        carry = (comp)(tmp >> COMP_BIT_SIZE);
+    } while (++j < n);
 
-  *r = carry;
-  bi_free(ctx, bia);
-  return trim(biR);
+    *r = carry;
+    bi_free(ctx, bia);
+    return trim(biR);
 }
 
 /**
@@ -1607,127 +1621,144 @@ static bigint *bi_int_multiply(BI_CTX *ctx, bigint *bia, comp b) {
  * (1).
  * @return  The result of the division/reduction.
  */
-NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *u, bigint *v, int is_mod) {
-  int n = v->size, m = u->size - n;
-  int j = 0, orig_u_size = u->size;
-  uint8_t mod_offset = ctx->mod_offset;
-  comp d;
-  bigint *quotient, *tmp_u;
-  comp q_dash;
+NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *u, bigint *v, int is_mod)
+{
+    int n = v->size, m = u->size-n;
+    int j = 0, orig_u_size = u->size;
+    uint8_t mod_offset = ctx->mod_offset;
+    comp d;
+    bigint *quotient, *tmp_u;
+    comp q_dash;
 
-  check(u);
-  check(v);
+    check(u);
+    check(v);
 
-  /* if doing reduction and we are < mod, then return mod */
-  if (is_mod && bi_compare(v, u) > 0) {
-    bi_free(ctx, v);
-    return u;
-  }
-
-  quotient = alloc(ctx, m + 1);
-  tmp_u = alloc(ctx, n + 1);
-  v = trim(v); /* make sure we have no leading 0's */
-  d = (comp)((long_comp)COMP_RADIX / (V1 + 1));
-
-  /* clear things to start with */
-  memset(quotient->comps, 0, ((quotient->size) * COMP_BYTE_SIZE));
-
-  /* normalise */
-  if (d > 1) {
-    u = bi_int_multiply(ctx, u, d);
-
-    if (is_mod) {
-      v = ctx->bi_normalised_mod[mod_offset];
-    } else {
-      v = bi_int_multiply(ctx, v, d);
+    /* if doing reduction and we are < mod, then return mod */
+    if (is_mod && bi_compare(v, u) > 0)
+    {
+        bi_free(ctx, v);
+        return u;
     }
-  }
 
-  if (orig_u_size == u->size) /* new digit position u0 */
-  {
-    more_comps(u, orig_u_size + 1);
-  }
+    quotient = alloc(ctx, m+1);
+    tmp_u = alloc(ctx, n+1);
+    v = trim(v);        /* make sure we have no leading 0's */
+    d = (comp)((long_comp)COMP_RADIX/(V1+1));
 
-  do {
-    /* get a temporary short version of u */
-    memcpy(tmp_u->comps, &u->comps[u->size - n - 1 - j],
-           (n + 1) * COMP_BYTE_SIZE);
+    /* clear things to start with */
+    memset(quotient->comps, 0, ((quotient->size)*COMP_BYTE_SIZE));
 
-    /* calculate q' */
-    if (U(0) == V1) {
-      q_dash = COMP_RADIX - 1;
-    } else {
-      q_dash = (comp)(((long_comp)U(0) * COMP_RADIX + U(1)) / V1);
+    /* normalise */
+    if (d > 1)
+    {
+        u = bi_int_multiply(ctx, u, d);
 
-      if (v->size > 1 && V2) {
-        /* we are implementing the following:
-        if (V2*q_dash > (((U(0)*COMP_RADIX + U(1) -
-                q_dash*V1)*COMP_RADIX) + U(2))) ... */
-        comp inner = (comp)((long_comp)COMP_RADIX * U(0) + U(1) -
-                            (long_comp)q_dash * V1);
-        if ((long_comp)V2 * q_dash > (long_comp)inner * COMP_RADIX + U(2)) {
-          q_dash--;
+        if (is_mod)
+        {
+            v = ctx->bi_normalised_mod[mod_offset];
         }
-      }
+        else
+        {
+            v = bi_int_multiply(ctx, v, d);
+        }
     }
 
-    /* multiply and subtract */
-    if (q_dash) {
-      int is_negative;
-      tmp_u = bi_subtract(ctx, tmp_u, bi_int_multiply(ctx, bi_copy(v), q_dash),
-                          &is_negative);
-      more_comps(tmp_u, n + 1);
-
-      Q(j) = q_dash;
-
-      /* add back */
-      if (is_negative) {
-        Q(j)--;
-        tmp_u = bi_add(ctx, tmp_u, bi_copy(v));
-
-        /* lop off the carry */
-        tmp_u->size--;
-        v->size--;
-      }
-    } else {
-      Q(j) = 0;
+    if (orig_u_size == u->size)  /* new digit position u0 */
+    {
+        more_comps(u, orig_u_size + 1);
     }
 
-    /* copy back to u */
-    memcpy(&u->comps[u->size - n - 1 - j], tmp_u->comps,
-           (n + 1) * COMP_BYTE_SIZE);
-  } while (++j <= m);
+    do
+    {
+        /* get a temporary short version of u */
+        memcpy(tmp_u->comps, &u->comps[u->size-n-1-j], (n+1)*COMP_BYTE_SIZE);
 
-  bi_free(ctx, tmp_u);
-  bi_free(ctx, v);
+        /* calculate q' */
+        if (U(0) == V1)
+        {
+            q_dash = COMP_RADIX-1;
+        }
+        else
+        {
+            q_dash = (comp)(((long_comp)U(0)*COMP_RADIX + U(1))/V1);
 
-  if (is_mod) /* get the remainder */
-  {
-    bi_free(ctx, quotient);
-    return bi_int_divide(ctx, trim(u), d);
-  } else /* get the quotient */
-  {
-    bi_free(ctx, u);
-    return trim(quotient);
-  }
+            if (v->size > 1 && V2)
+            {
+                /* we are implementing the following:
+                if (V2*q_dash > (((U(0)*COMP_RADIX + U(1) -
+                        q_dash*V1)*COMP_RADIX) + U(2))) ... */
+                comp inner = (comp)((long_comp)COMP_RADIX*U(0) + U(1) -
+                                            (long_comp)q_dash*V1);
+                if ((long_comp)V2*q_dash > (long_comp)inner*COMP_RADIX + U(2))
+                {
+                    q_dash--;
+                }
+            }
+        }
+
+        /* multiply and subtract */
+        if (q_dash)
+        {
+            int is_negative;
+            tmp_u = bi_subtract(ctx, tmp_u,
+                    bi_int_multiply(ctx, bi_copy(v), q_dash), &is_negative);
+            more_comps(tmp_u, n+1);
+
+            Q(j) = q_dash;
+
+            /* add back */
+            if (is_negative)
+            {
+                Q(j)--;
+                tmp_u = bi_add(ctx, tmp_u, bi_copy(v));
+
+                /* lop off the carry */
+                tmp_u->size--;
+                v->size--;
+            }
+        }
+        else
+        {
+            Q(j) = 0;
+        }
+
+        /* copy back to u */
+        memcpy(&u->comps[u->size-n-1-j], tmp_u->comps, (n+1)*COMP_BYTE_SIZE);
+    } while (++j <= m);
+
+    bi_free(ctx, tmp_u);
+    bi_free(ctx, v);
+
+    if (is_mod)     /* get the remainder */
+    {
+        bi_free(ctx, quotient);
+        return bi_int_divide(ctx, trim(u), d);
+    }
+    else            /* get the quotient */
+    {
+        bi_free(ctx, u);
+        return trim(quotient);
+    }
 }
 
 /*
  * Perform an integer divide on a bigint.
  */
-static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom) {
-  int i = biR->size - 1;
-  long_comp r = 0;
+static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom)
+{
+    int i = biR->size - 1;
+    long_comp r = 0;
 
-  check(biR);
+    check(biR);
 
-  do {
-    r = (r << COMP_BIT_SIZE) + biR->comps[i];
-    biR->comps[i] = (comp)(r / denom);
-    r %= denom;
-  } while (--i >= 0);
+    do
+    {
+        r = (r<<COMP_BIT_SIZE) + biR->comps[i];
+        biR->comps[i] = (comp)(r / denom);
+        r %= denom;
+    } while (--i >= 0);
 
-  return trim(biR);
+    return trim(biR);
 }
 
 #ifdef CONFIG_BIGINT_MONTGOMERY
@@ -1737,23 +1768,26 @@ static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom) {
  * N' is needed, hence the definition N0'=N' mod b. We reproduce below the
  * simple algorithm from an article by Dusse and Kaliski to efficiently
  * find N0' from N0 and b */
-static comp modular_inverse(bigint *bim) {
-  int i;
-  comp t = 1;
-  comp two_2_i_minus_1 = 2; /* 2^(i-1) */
-  long_comp two_2_i = 4;    /* 2^i */
-  comp N = bim->comps[0];
+static comp modular_inverse(bigint *bim)
+{
+    int i;
+    comp t = 1;
+    comp two_2_i_minus_1 = 2;   /* 2^(i-1) */
+    long_comp two_2_i = 4;      /* 2^i */
+    comp N = bim->comps[0];
 
-  for (i = 2; i <= COMP_BIT_SIZE; i++) {
-    if ((long_comp)N * t % two_2_i >= two_2_i_minus_1) {
-      t += two_2_i_minus_1;
+    for (i = 2; i <= COMP_BIT_SIZE; i++)
+    {
+        if ((long_comp)N*t%two_2_i >= two_2_i_minus_1)
+        {
+            t += two_2_i_minus_1;
+        }
+
+        two_2_i_minus_1 <<= 1;
+        two_2_i <<= 1;
     }
 
-    two_2_i_minus_1 <<= 1;
-    two_2_i <<= 1;
-  }
-
-  return (comp)(COMP_RADIX - t);
+    return (comp)(COMP_RADIX-t);
 }
 #endif
 
@@ -1762,52 +1796,57 @@ static comp modular_inverse(bigint *bim) {
 /**
  * Take each component and shift down (in terms of components)
  */
-static bigint *comp_right_shift(bigint *biR, int num_shifts) {
-  int i = biR->size - num_shifts;
-  comp *x = biR->comps;
-  comp *y = &biR->comps[num_shifts];
+static bigint *comp_right_shift(bigint *biR, int num_shifts)
+{
+    int i = biR->size-num_shifts;
+    comp *x = biR->comps;
+    comp *y = &biR->comps[num_shifts];
 
-  check(biR);
+    check(biR);
 
-  if (i <= 0) /* have we completely right shifted? */
-  {
-    biR->comps[0] = 0; /* return 0 */
-    biR->size = 1;
+    if (i <= 0)     /* have we completely right shifted? */
+    {
+        biR->comps[0] = 0;  /* return 0 */
+        biR->size = 1;
+        return biR;
+    }
+
+    do
+    {
+        *x++ = *y++;
+    } while (--i > 0);
+
+    biR->size -= num_shifts;
     return biR;
-  }
-
-  do {
-    *x++ = *y++;
-  } while (--i > 0);
-
-  biR->size -= num_shifts;
-  return biR;
 }
 
 /**
  * Take each component and shift it up (in terms of components)
  */
-static bigint *comp_left_shift(bigint *biR, int num_shifts) {
-  int i = biR->size - 1;
-  comp *x, *y;
+static bigint *comp_left_shift(bigint *biR, int num_shifts)
+{
+    int i = biR->size-1;
+    comp *x, *y;
 
-  check(biR);
+    check(biR);
 
-  if (num_shifts <= 0) {
+    if (num_shifts <= 0)
+    {
+        return biR;
+    }
+
+    more_comps(biR, biR->size + num_shifts);
+
+    x = &biR->comps[i+num_shifts];
+    y = &biR->comps[i];
+
+    do
+    {
+        *x-- = *y--;
+    } while (i--);
+
+    memset(biR->comps, 0, num_shifts*COMP_BYTE_SIZE); /* zero LS comps */
     return biR;
-  }
-
-  more_comps(biR, biR->size + num_shifts);
-
-  x = &biR->comps[i + num_shifts];
-  y = &biR->comps[i];
-
-  do {
-    *x-- = *y--;
-  } while (i--);
-
-  memset(biR->comps, 0, num_shifts * COMP_BYTE_SIZE); /* zero LS comps */
-  return biR;
 }
 #endif
 
@@ -1818,22 +1857,25 @@ static bigint *comp_left_shift(bigint *biR, int num_shifts) {
  * @param size [in] The number of bytes of data.
  * @return A bigint representing this data.
  */
-NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int size) {
-  bigint *biR = alloc(ctx, (size + COMP_BYTE_SIZE - 1) / COMP_BYTE_SIZE);
-  int i, j = 0, offset = 0;
+NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int size)
+{
+    bigint *biR = alloc(ctx, (size+COMP_BYTE_SIZE-1)/COMP_BYTE_SIZE);
+    int i, j = 0, offset = 0;
 
-  memset(biR->comps, 0, biR->size * COMP_BYTE_SIZE);
+    memset(biR->comps, 0, biR->size*COMP_BYTE_SIZE);
 
-  for (i = size - 1; i >= 0; i--) {
-    biR->comps[offset] += data[i] << (j * 8);
+    for (i = size-1; i >= 0; i--)
+    {
+        biR->comps[offset] += data[i] << (j*8);
 
-    if (++j == COMP_BYTE_SIZE) {
-      j = 0;
-      offset++;
+        if (++j == COMP_BYTE_SIZE)
+        {
+            j = 0;
+            offset ++;
+        }
     }
-  }
 
-  return trim(biR);
+    return trim(biR);
 }
 
 #ifdef CONFIG_SSL_FULL_MODE
@@ -1845,43 +1887,50 @@ NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int size) {
  * be in upper case.
  * @return A bigint representing this data.
  */
-NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data) {
-  int size = strlen(data);
-  bigint *biR = alloc(ctx, (size + COMP_NUM_NIBBLES - 1) / COMP_NUM_NIBBLES);
-  int i, j = 0, offset = 0;
-  memset(biR->comps, 0, biR->size * COMP_BYTE_SIZE);
+NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data)
+{
+    int size = strlen(data);
+    bigint *biR = alloc(ctx, (size+COMP_NUM_NIBBLES-1)/COMP_NUM_NIBBLES);
+    int i, j = 0, offset = 0;
+    memset(biR->comps, 0, biR->size*COMP_BYTE_SIZE);
 
-  for (i = size - 1; i >= 0; i--) {
-    int num = (data[i] <= '9') ? (data[i] - '0') : (data[i] - 'A' + 10);
-    biR->comps[offset] += num << (j * 4);
+    for (i = size-1; i >= 0; i--)
+    {
+        int num = (data[i] <= '9') ? (data[i] - '0') : (data[i] - 'A' + 10);
+        biR->comps[offset] += num << (j*4);
 
-    if (++j == COMP_NUM_NIBBLES) {
-      j = 0;
-      offset++;
+        if (++j == COMP_NUM_NIBBLES)
+        {
+            j = 0;
+            offset ++;
+        }
     }
-  }
 
-  return biR;
+    return biR;
 }
 
-NS_INTERNAL void bi_print(const char *label, bigint *x) {
-  int i, j;
+NS_INTERNAL void bi_print(const char *label, bigint *x)
+{
+    int i, j;
 
-  if (x == NULL) {
-    printf("%s: (null)\n", label);
-    return;
-  }
-
-  printf("%s: (size %d)\n", label, x->size);
-  for (i = x->size - 1; i >= 0; i--) {
-    for (j = COMP_NUM_NIBBLES - 1; j >= 0; j--) {
-      comp mask = 0x0f << (j * 4);
-      comp num = (x->comps[i] & mask) >> (j * 4);
-      putc((num <= 9) ? (num + '0') : (num + 'A' - 10), stdout);
+    if (x == NULL)
+    {
+        printf("%s: (null)\n", label);
+        return;
     }
-  }
 
-  printf("\n");
+    printf("%s: (size %d)\n", label, x->size);
+    for (i = x->size-1; i >= 0; i--)
+    {
+        for (j = COMP_NUM_NIBBLES-1; j >= 0; j--)
+        {
+            comp mask = 0x0f << (j*4);
+            comp num = (x->comps[i] & mask) >> (j*4);
+            putc((num <= 9) ? (num + '0') : (num + 'A' - 10), stdout);
+        }
+    }
+
+    printf("\n");
 }
 #endif
 
@@ -1895,26 +1944,30 @@ NS_INTERNAL void bi_print(const char *label, bigint *x) {
  * @param size [in] The maximum size of the byte stream. Unused bytes will be
  * zeroed.
  */
-NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *x, uint8_t *data, int size) {
-  int i, j, k = size - 1;
+NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *x, uint8_t *data, int size)
+{
+    int i, j, k = size-1;
 
-  check(x);
-  memset(data, 0, size); /* ensure all leading 0's are cleared */
+    check(x);
+    memset(data, 0, size);  /* ensure all leading 0's are cleared */
 
-  for (i = 0; i < x->size; i++) {
-    for (j = 0; j < COMP_BYTE_SIZE; j++) {
-      comp mask = 0xff << (j * 8);
-      int num = (x->comps[i] & mask) >> (j * 8);
-      data[k--] = num;
+    for (i = 0; i < x->size; i++)
+    {
+        for (j = 0; j < COMP_BYTE_SIZE; j++)
+        {
+            comp mask = 0xff << (j*8);
+            int num = (x->comps[i] & mask) >> (j*8);
+            data[k--] = num;
 
-      if (k < 0) {
-        goto buf_done;
-      }
+            if (k < 0)
+            {
+                goto buf_done;
+            }
+        }
     }
-  }
 buf_done:
 
-  bi_free(ctx, x);
+    bi_free(ctx, x);
 }
 
 /**
@@ -1930,35 +1983,36 @@ buf_done:
  * modulus we are referring to.
  * @see bi_free_mod(), bi_mod_power().
  */
-NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset) {
-  int k = bim->size;
-  comp d = (comp)((long_comp)COMP_RADIX / (bim->comps[k - 1] + 1));
+NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset)
+{
+    int k = bim->size;
+    comp d = (comp)((long_comp)COMP_RADIX/(bim->comps[k-1]+1));
 #ifdef CONFIG_BIGINT_MONTGOMERY
-  bigint *R, *R2;
+    bigint *R, *R2;
 #endif
 
-  ctx->bi_mod[mod_offset] = bim;
-  bi_permanent(ctx->bi_mod[mod_offset]);
-  ctx->bi_normalised_mod[mod_offset] = bi_int_multiply(ctx, bim, d);
-  bi_permanent(ctx->bi_normalised_mod[mod_offset]);
+    ctx->bi_mod[mod_offset] = bim;
+    bi_permanent(ctx->bi_mod[mod_offset]);
+    ctx->bi_normalised_mod[mod_offset] = bi_int_multiply(ctx, bim, d);
+    bi_permanent(ctx->bi_normalised_mod[mod_offset]);
 
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-  /* set montgomery variables */
-  R = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k - 1);      /* R */
-  R2 = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k * 2 - 1); /* R^2 */
-  ctx->bi_RR_mod_m[mod_offset] = bi_mod(ctx, R2);                /* R^2 mod m */
-  ctx->bi_R_mod_m[mod_offset] = bi_mod(ctx, R);                  /* R mod m */
+    /* set montgomery variables */
+    R = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k-1);     /* R */
+    R2 = comp_left_shift(bi_clone(ctx, ctx->bi_radix), k*2-1);  /* R^2 */
+    ctx->bi_RR_mod_m[mod_offset] = bi_mod(ctx, R2);             /* R^2 mod m */
+    ctx->bi_R_mod_m[mod_offset] = bi_mod(ctx, R);               /* R mod m */
 
-  bi_permanent(ctx->bi_RR_mod_m[mod_offset]);
-  bi_permanent(ctx->bi_R_mod_m[mod_offset]);
+    bi_permanent(ctx->bi_RR_mod_m[mod_offset]);
+    bi_permanent(ctx->bi_R_mod_m[mod_offset]);
 
-  ctx->N0_dash[mod_offset] = modular_inverse(ctx->bi_mod[mod_offset]);
+    ctx->N0_dash[mod_offset] = modular_inverse(ctx->bi_mod[mod_offset]);
 
-#elif defined(CONFIG_BIGINT_BARRETT)
-  ctx->bi_mu[mod_offset] =
-      bi_divide(ctx, comp_left_shift(bi_clone(ctx, ctx->bi_radix), k * 2 - 1),
-                ctx->bi_mod[mod_offset], 0);
-  bi_permanent(ctx->bi_mu[mod_offset]);
+#elif defined (CONFIG_BIGINT_BARRETT)
+    ctx->bi_mu[mod_offset] =
+        bi_divide(ctx, comp_left_shift(
+            bi_clone(ctx, ctx->bi_radix), k*2-1), ctx->bi_mod[mod_offset], 0);
+    bi_permanent(ctx->bi_mu[mod_offset]);
 #endif
 }
 
@@ -1968,20 +2022,21 @@ NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset) {
  * @param mod_offset [in] The offset to use.
  * @see bi_set_mod().
  */
-void bi_free_mod(BI_CTX *ctx, int mod_offset) {
-  bi_depermanent(ctx->bi_mod[mod_offset]);
-  bi_free(ctx, ctx->bi_mod[mod_offset]);
-#if defined(CONFIG_BIGINT_MONTGOMERY)
-  bi_depermanent(ctx->bi_RR_mod_m[mod_offset]);
-  bi_depermanent(ctx->bi_R_mod_m[mod_offset]);
-  bi_free(ctx, ctx->bi_RR_mod_m[mod_offset]);
-  bi_free(ctx, ctx->bi_R_mod_m[mod_offset]);
+void bi_free_mod(BI_CTX *ctx, int mod_offset)
+{
+    bi_depermanent(ctx->bi_mod[mod_offset]);
+    bi_free(ctx, ctx->bi_mod[mod_offset]);
+#if defined (CONFIG_BIGINT_MONTGOMERY)
+    bi_depermanent(ctx->bi_RR_mod_m[mod_offset]);
+    bi_depermanent(ctx->bi_R_mod_m[mod_offset]);
+    bi_free(ctx, ctx->bi_RR_mod_m[mod_offset]);
+    bi_free(ctx, ctx->bi_R_mod_m[mod_offset]);
 #elif defined(CONFIG_BIGINT_BARRETT)
-  bi_depermanent(ctx->bi_mu[mod_offset]);
-  bi_free(ctx, ctx->bi_mu[mod_offset]);
+    bi_depermanent(ctx->bi_mu[mod_offset]);
+    bi_free(ctx, ctx->bi_mu[mod_offset]);
 #endif
-  bi_depermanent(ctx->bi_normalised_mod[mod_offset]);
-  bi_free(ctx, ctx->bi_normalised_mod[mod_offset]);
+    bi_depermanent(ctx->bi_normalised_mod[mod_offset]);
+    bi_free(ctx, ctx->bi_normalised_mod[mod_offset]);
 }
 
 /**
@@ -1992,48 +2047,53 @@ void bi_free_mod(BI_CTX *ctx, int mod_offset) {
  * improvements over Classical/Montgomery reduction methods.
  */
 static bigint *regular_multiply(BI_CTX *ctx, bigint *bia, bigint *bib,
-                                int inner_partial, int outer_partial) {
-  int i = 0, j;
-  int n = bia->size;
-  int t = bib->size;
-  bigint *biR = alloc(ctx, n + t);
-  comp *sr = biR->comps;
-  comp *sa = bia->comps;
-  comp *sb = bib->comps;
+        int inner_partial, int outer_partial)
+{
+    int i = 0, j;
+    int n = bia->size;
+    int t = bib->size;
+    bigint *biR = alloc(ctx, n + t);
+    comp *sr = biR->comps;
+    comp *sa = bia->comps;
+    comp *sb = bib->comps;
 
-  check(bia);
-  check(bib);
+    check(bia);
+    check(bib);
 
-  /* clear things to start with */
-  memset(biR->comps, 0, ((n + t) * COMP_BYTE_SIZE));
+    /* clear things to start with */
+    memset(biR->comps, 0, ((n+t)*COMP_BYTE_SIZE));
 
-  do {
-    long_comp tmp;
-    comp carry = 0;
-    int r_index = i;
-    j = 0;
+    do
+    {
+        long_comp tmp;
+        comp carry = 0;
+        int r_index = i;
+        j = 0;
 
-    if (outer_partial && outer_partial - i > 0 && outer_partial < n) {
-      r_index = outer_partial - 1;
-      j = outer_partial - i - 1;
-    }
+        if (outer_partial && outer_partial-i > 0 && outer_partial < n)
+        {
+            r_index = outer_partial-1;
+            j = outer_partial-i-1;
+        }
 
-    do {
-      if (inner_partial && r_index >= inner_partial) {
-        break;
-      }
+        do
+        {
+            if (inner_partial && r_index >= inner_partial)
+            {
+                break;
+            }
 
-      tmp = sr[r_index] + ((long_comp)sa[j]) * sb[i] + carry;
-      sr[r_index++] = (comp)tmp; /* downsize */
-      carry = tmp >> COMP_BIT_SIZE;
-    } while (++j < n);
+            tmp = sr[r_index] + ((long_comp)sa[j])*sb[i] + carry;
+            sr[r_index++] = (comp)tmp;              /* downsize */
+            carry = tmp >> COMP_BIT_SIZE;
+        } while (++j < n);
 
-    sr[r_index] = carry;
-  } while (++i < t);
+        sr[r_index] = carry;
+    } while (++i < t);
 
-  bi_free(ctx, bia);
-  bi_free(ctx, bib);
-  return trim(biR);
+    bi_free(ctx, bia);
+    bi_free(ctx, bib);
+    return trim(biR);
 }
 
 #ifdef CONFIG_BIGINT_KARATSUBA
@@ -2042,48 +2102,54 @@ static bigint *regular_multiply(BI_CTX *ctx, bigint *bia, bigint *bib,
  * being done instead of 4. The additional additions/subtractions are O(N)
  * rather than O(N^2) and so for big numbers it saves on a few operations
  */
-static bigint *karatsuba(BI_CTX *ctx, bigint *bia, bigint *bib, int is_square) {
-  bigint *x0, *x1;
-  bigint *p0, *p1, *p2;
-  int m;
+static bigint *karatsuba(BI_CTX *ctx, bigint *bia, bigint *bib, int is_square)
+{
+    bigint *x0, *x1;
+    bigint *p0, *p1, *p2;
+    int m;
 
-  if (is_square) {
-    m = (bia->size + 1) / 2;
-  } else {
-    m = (max(bia->size, bib->size) + 1) / 2;
-  }
+    if (is_square)
+    {
+        m = (bia->size + 1)/2;
+    }
+    else
+    {
+        m = (max(bia->size, bib->size) + 1)/2;
+    }
 
-  x0 = bi_clone(ctx, bia);
-  x0->size = m;
-  x1 = bi_clone(ctx, bia);
-  comp_right_shift(x1, m);
-  bi_free(ctx, bia);
+    x0 = bi_clone(ctx, bia);
+    x0->size = m;
+    x1 = bi_clone(ctx, bia);
+    comp_right_shift(x1, m);
+    bi_free(ctx, bia);
 
-  /* work out the 3 partial products */
-  if (is_square) {
-    p0 = bi_square(ctx, bi_copy(x0));
-    p2 = bi_square(ctx, bi_copy(x1));
-    p1 = bi_square(ctx, bi_add(ctx, x0, x1));
-  } else /* normal multiply */
-  {
-    bigint *y0, *y1;
-    y0 = bi_clone(ctx, bib);
-    y0->size = m;
-    y1 = bi_clone(ctx, bib);
-    comp_right_shift(y1, m);
-    bi_free(ctx, bib);
+    /* work out the 3 partial products */
+    if (is_square)
+    {
+        p0 = bi_square(ctx, bi_copy(x0));
+        p2 = bi_square(ctx, bi_copy(x1));
+        p1 = bi_square(ctx, bi_add(ctx, x0, x1));
+    }
+    else /* normal multiply */
+    {
+        bigint *y0, *y1;
+        y0 = bi_clone(ctx, bib);
+        y0->size = m;
+        y1 = bi_clone(ctx, bib);
+        comp_right_shift(y1, m);
+        bi_free(ctx, bib);
 
-    p0 = bi_multiply(ctx, bi_copy(x0), bi_copy(y0));
-    p2 = bi_multiply(ctx, bi_copy(x1), bi_copy(y1));
-    p1 = bi_multiply(ctx, bi_add(ctx, x0, x1), bi_add(ctx, y0, y1));
-  }
+        p0 = bi_multiply(ctx, bi_copy(x0), bi_copy(y0));
+        p2 = bi_multiply(ctx, bi_copy(x1), bi_copy(y1));
+        p1 = bi_multiply(ctx, bi_add(ctx, x0, x1), bi_add(ctx, y0, y1));
+    }
 
-  p1 = bi_subtract(ctx, bi_subtract(ctx, p1, bi_copy(p2), NULL), bi_copy(p0),
-                   NULL);
+    p1 = bi_subtract(ctx,
+            bi_subtract(ctx, p1, bi_copy(p2), NULL), bi_copy(p0), NULL);
 
-  comp_left_shift(p1, m);
-  comp_left_shift(p2, 2 * m);
-  return bi_add(ctx, p1, bi_add(ctx, p0, p2));
+    comp_left_shift(p1, m);
+    comp_left_shift(p2, 2*m);
+    return bi_add(ctx, p1, bi_add(ctx, p0, p2));
 }
 #endif
 
@@ -2094,18 +2160,20 @@ static bigint *karatsuba(BI_CTX *ctx, bigint *bia, bigint *bib, int is_square) {
  * @param bib [in]  Another bigint.
  * @return The result of the multiplication.
  */
-NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib) {
-  check(bia);
-  check(bib);
+NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib)
+{
+    check(bia);
+    check(bib);
 
 #ifdef CONFIG_BIGINT_KARATSUBA
-  if (min(bia->size, bib->size) < MUL_KARATSUBA_THRESH) {
-    return regular_multiply(ctx, bia, bib, 0, 0);
-  }
+    if (min(bia->size, bib->size) < MUL_KARATSUBA_THRESH)
+    {
+        return regular_multiply(ctx, bia, bib, 0, 0);
+    }
 
-  return karatsuba(ctx, bia, bib, 0);
+    return karatsuba(ctx, bia, bib, 0);
 #else
-  return regular_multiply(ctx, bia, bib, 0, 0);
+    return regular_multiply(ctx, bia, bib, 0, 0);
 #endif
 }
 
@@ -2113,47 +2181,54 @@ NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib) {
 /*
  * Perform the actual square operion. It takes into account overflow.
  */
-static bigint *regular_square(BI_CTX *ctx, bigint *bi) {
-  int t = bi->size;
-  int i = 0, j;
-  bigint *biR = alloc(ctx, t * 2 + 1);
-  comp *w = biR->comps;
-  comp *x = bi->comps;
-  long_comp carry;
-  memset(w, 0, biR->size * COMP_BYTE_SIZE);
+static bigint *regular_square(BI_CTX *ctx, bigint *bi)
+{
+    int t = bi->size;
+    int i = 0, j;
+    bigint *biR = alloc(ctx, t*2+1);
+    comp *w = biR->comps;
+    comp *x = bi->comps;
+    long_comp carry;
+    memset(w, 0, biR->size*COMP_BYTE_SIZE);
 
-  do {
-    long_comp tmp = w[2 * i] + (long_comp)x[i] * x[i];
-    w[2 * i] = (comp)tmp;
-    carry = tmp >> COMP_BIT_SIZE;
+    do
+    {
+        long_comp tmp = w[2*i] + (long_comp)x[i]*x[i];
+        w[2*i] = (comp)tmp;
+        carry = tmp >> COMP_BIT_SIZE;
 
-    for (j = i + 1; j < t; j++) {
-      uint8_t c = 0;
-      long_comp xx = (long_comp)x[i] * x[j];
-      if ((COMP_MAX - xx) < xx) c = 1;
+        for (j = i+1; j < t; j++)
+        {
+            uint8_t c = 0;
+            long_comp xx = (long_comp)x[i]*x[j];
+            if ((COMP_MAX-xx) < xx)
+                c = 1;
 
-      tmp = (xx << 1);
+            tmp = (xx<<1);
 
-      if ((COMP_MAX - tmp) < w[i + j]) c = 1;
+            if ((COMP_MAX-tmp) < w[i+j])
+                c = 1;
 
-      tmp += w[i + j];
+            tmp += w[i+j];
 
-      if ((COMP_MAX - tmp) < carry) c = 1;
+            if ((COMP_MAX-tmp) < carry)
+                c = 1;
 
-      tmp += carry;
-      w[i + j] = (comp)tmp;
-      carry = tmp >> COMP_BIT_SIZE;
+            tmp += carry;
+            w[i+j] = (comp)tmp;
+            carry = tmp >> COMP_BIT_SIZE;
 
-      if (c) carry += COMP_RADIX;
-    }
+            if (c)
+                carry += COMP_RADIX;
+        }
 
-    tmp = w[i + t] + carry;
-    w[i + t] = (comp)tmp;
-    w[i + t + 1] = tmp >> COMP_BIT_SIZE;
-  } while (++i < t);
+        tmp = w[i+t] + carry;
+        w[i+t] = (comp)tmp;
+        w[i+t+1] = tmp >> COMP_BIT_SIZE;
+    } while (++i < t);
 
-  bi_free(ctx, bi);
-  return trim(biR);
+    bi_free(ctx, bi);
+    return trim(biR);
 }
 
 /**
@@ -2162,17 +2237,19 @@ static bigint *regular_square(BI_CTX *ctx, bigint *bi) {
  * @param bia [in]  A bigint.
  * @return The result of the multiplication.
  */
-NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bia) {
-  check(bia);
+NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bia)
+{
+    check(bia);
 
 #ifdef CONFIG_BIGINT_KARATSUBA
-  if (bia->size < SQU_KARATSUBA_THRESH) {
-    return regular_square(ctx, bia);
-  }
+    if (bia->size < SQU_KARATSUBA_THRESH)
+    {
+        return regular_square(ctx, bia);
+    }
 
-  return karatsuba(ctx, bia, NULL, 1);
+    return karatsuba(ctx, bia, NULL, 1);
 #else
-  return regular_square(ctx, bia);
+    return regular_square(ctx, bia);
 #endif
 }
 #endif
@@ -2183,161 +2260,184 @@ NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bia) {
  * @param bib [in]  Another bigint.
  * @return -1 if smaller, 1 if larger and 0 if equal.
  */
-NS_INTERNAL int bi_compare(bigint *bia, bigint *bib) {
-  int r, i;
+NS_INTERNAL int bi_compare(bigint *bia, bigint *bib)
+{
+    int r, i;
 
-  check(bia);
-  check(bib);
+    check(bia);
+    check(bib);
 
-  if (bia->size > bib->size)
-    r = 1;
-  else if (bia->size < bib->size)
-    r = -1;
-  else {
-    comp *a = bia->comps;
-    comp *b = bib->comps;
-
-    /* Same number of components.  Compare starting from the high end
-     * and working down. */
-    r = 0;
-    i = bia->size - 1;
-
-    do {
-      if (a[i] > b[i]) {
+    if (bia->size > bib->size)
         r = 1;
-        break;
-      } else if (a[i] < b[i]) {
+    else if (bia->size < bib->size)
         r = -1;
-        break;
-      }
-    } while (--i >= 0);
-  }
+    else
+    {
+        comp *a = bia->comps;
+        comp *b = bib->comps;
 
-  return r;
+        /* Same number of components.  Compare starting from the high end
+         * and working down. */
+        r = 0;
+        i = bia->size - 1;
+
+        do
+        {
+            if (a[i] > b[i])
+            {
+                r = 1;
+                break;
+            }
+            else if (a[i] < b[i])
+            {
+                r = -1;
+                break;
+            }
+        } while (--i >= 0);
+    }
+
+    return r;
 }
 
 /*
  * Allocate and zero more components.  Does not consume bi.
  */
-static void more_comps(bigint *bi, int n) {
-  if (n > bi->max_comps) {
-    bi->max_comps = max(bi->max_comps * 2, n);
-    bi->comps = (comp *)realloc(bi->comps, bi->max_comps * COMP_BYTE_SIZE);
-  }
+static void more_comps(bigint *bi, int n)
+{
+    if (n > bi->max_comps)
+    {
+        bi->max_comps = max(bi->max_comps * 2, n);
+        bi->comps = (comp*)realloc(bi->comps, bi->max_comps * COMP_BYTE_SIZE);
+    }
 
-  if (n > bi->size) {
-    memset(&bi->comps[bi->size], 0, (n - bi->size) * COMP_BYTE_SIZE);
-  }
+    if (n > bi->size)
+    {
+        memset(&bi->comps[bi->size], 0, (n-bi->size)*COMP_BYTE_SIZE);
+    }
 
-  bi->size = n;
+    bi->size = n;
 }
 
 /*
  * Make a new empty bigint. It may just use an old one if one is available.
  * Otherwise get one off the heap.
  */
-static bigint *alloc(BI_CTX *ctx, int size) {
-  bigint *biR;
+static bigint *alloc(BI_CTX *ctx, int size)
+{
+    bigint *biR;
 
-  /* Can we recycle an old bigint? */
-  if (ctx->free_list != NULL) {
-    biR = ctx->free_list;
-    ctx->free_list = biR->next;
-    ctx->free_count--;
+    /* Can we recycle an old bigint? */
+    if (ctx->free_list != NULL)
+    {
+        biR = ctx->free_list;
+        ctx->free_list = biR->next;
+        ctx->free_count--;
 
-    if (biR->refs != 0) {
+        if (biR->refs != 0)
+        {
 #ifdef CONFIG_SSL_FULL_MODE
-      printf("alloc: refs was not 0\n");
+            printf("alloc: refs was not 0\n");
 #endif
-      abort(); /* create a stack trace from a core dump */
+            abort();    /* create a stack trace from a core dump */
+        }
+
+        more_comps(biR, size);
+    }
+    else
+    {
+        /* No free bigints available - create a new one. */
+        biR = (bigint *)malloc(sizeof(bigint));
+        biR->comps = (comp*)malloc(size * COMP_BYTE_SIZE);
+        biR->max_comps = size;  /* give some space to spare */
     }
 
-    more_comps(biR, size);
-  } else {
-    /* No free bigints available - create a new one. */
-    biR = (bigint *)malloc(sizeof(bigint));
-    biR->comps = (comp *)malloc(size * COMP_BYTE_SIZE);
-    biR->max_comps = size; /* give some space to spare */
-  }
-
-  biR->size = size;
-  biR->refs = 1;
-  biR->next = NULL;
-  ctx->active_count++;
-  return biR;
+    biR->size = size;
+    biR->refs = 1;
+    biR->next = NULL;
+    ctx->active_count++;
+    return biR;
 }
 
 /*
  * Work out the highest '1' bit in an exponent. Used when doing sliding-window
  * exponentiation.
  */
-static int find_max_exp_index(bigint *biexp) {
-  int i = COMP_BIT_SIZE - 1;
-  comp shift = COMP_RADIX / 2;
-  comp test = biexp->comps[biexp->size - 1]; /* assume no leading zeroes */
+static int find_max_exp_index(bigint *biexp)
+{
+    int i = COMP_BIT_SIZE-1;
+    comp shift = COMP_RADIX/2;
+    comp test = biexp->comps[biexp->size-1];    /* assume no leading zeroes */
 
-  check(biexp);
+    check(biexp);
 
-  do {
-    if (test & shift) {
-      return i + (biexp->size - 1) * COMP_BIT_SIZE;
-    }
+    do
+    {
+        if (test & shift)
+        {
+            return i+(biexp->size-1)*COMP_BIT_SIZE;
+        }
 
-    shift >>= 1;
-  } while (i-- != 0);
+        shift >>= 1;
+    } while (i-- != 0);
 
-  return -1; /* error - must have been a leading 0 */
+    return -1;      /* error - must have been a leading 0 */
 }
 
 /*
  * Is a particular bit is an exponent 1 or 0? Used when doing sliding-window
  * exponentiation.
  */
-static int exp_bit_is_one(bigint *biexp, int offset) {
-  comp test = biexp->comps[offset / COMP_BIT_SIZE];
-  int num_shifts = offset % COMP_BIT_SIZE;
-  comp shift = 1;
-  int i;
+static int exp_bit_is_one(bigint *biexp, int offset)
+{
+    comp test = biexp->comps[offset / COMP_BIT_SIZE];
+    int num_shifts = offset % COMP_BIT_SIZE;
+    comp shift = 1;
+    int i;
 
-  check(biexp);
+    check(biexp);
 
-  for (i = 0; i < num_shifts; i++) {
-    shift <<= 1;
-  }
+    for (i = 0; i < num_shifts; i++)
+    {
+        shift <<= 1;
+    }
 
-  return (test & shift) != 0;
+    return (test & shift) != 0;
 }
 
 #ifdef CONFIG_BIGINT_CHECK_ON
 /*
  * Perform a sanity check on bi.
  */
-static void check(const bigint *bi) {
-  if (bi->refs <= 0) {
-    printf("check: zero or negative refs in bigint\n");
-    abort();
-  }
+static void check(const bigint *bi)
+{
+    if (bi->refs <= 0)
+    {
+        printf("check: zero or negative refs in bigint\n");
+        abort();
+    }
 
-  if (bi->next != NULL) {
-    printf(
-        "check: attempt to use a bigint from "
-        "the free list\n");
-    abort();
-  }
+    if (bi->next != NULL)
+    {
+        printf("check: attempt to use a bigint from "
+                "the free list\n");
+        abort();
+    }
 }
 #endif
 
 /*
  * Delete any leading 0's (and allow for 0).
  */
-static bigint *trim(bigint *bi) {
-  check(bi);
+static bigint *trim(bigint *bi)
+{
+    check(bi);
 
-  while (bi->comps[bi->size - 1] == 0 && bi->size > 1) {
-    bi->size--;
-  }
+    while (bi->comps[bi->size-1] == 0 && bi->size > 1)
+    {
+        bi->size--;
+    }
 
-  return bi;
+    return bi;
 }
 
 #if defined(CONFIG_BIGINT_MONTGOMERY)
@@ -2347,34 +2447,36 @@ static bigint *trim(bigint *bi) {
  * @param bixy [in]  A bigint.
  * @return The result of the montgomery reduction.
  */
-NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy) {
-  int i = 0, n;
-  uint8_t mod_offset = ctx->mod_offset;
-  bigint *bim = ctx->bi_mod[mod_offset];
-  comp mod_inv = ctx->N0_dash[mod_offset];
+NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy)
+{
+    int i = 0, n;
+    uint8_t mod_offset = ctx->mod_offset;
+    bigint *bim = ctx->bi_mod[mod_offset];
+    comp mod_inv = ctx->N0_dash[mod_offset];
 
-  check(bixy);
+    check(bixy);
 
-  if (ctx->use_classical) /* just use classical instead */
-  {
-    return bi_mod(ctx, bixy);
-  }
+    if (ctx->use_classical)     /* just use classical instead */
+    {
+        return bi_mod(ctx, bixy);
+    }
 
-  n = bim->size;
+    n = bim->size;
 
-  do {
-    bixy = bi_add(ctx, bixy,
-                  comp_left_shift(
-                      bi_int_multiply(ctx, bim, bixy->comps[i] * mod_inv), i));
-  } while (++i < n);
+    do
+    {
+        bixy = bi_add(ctx, bixy, comp_left_shift(
+                    bi_int_multiply(ctx, bim, bixy->comps[i]*mod_inv), i));
+    } while (++i < n);
 
-  comp_right_shift(bixy, n);
+    comp_right_shift(bixy, n);
 
-  if (bi_compare(bixy, bim) >= 0) {
-    bixy = bi_subtract(ctx, bixy, bim, NULL);
-  }
+    if (bi_compare(bixy, bim) >= 0)
+    {
+        bixy = bi_subtract(ctx, bixy, bim, NULL);
+    }
 
-  return bixy;
+    return bixy;
 }
 
 #elif defined(CONFIG_BIGINT_BARRETT)
@@ -2382,14 +2484,16 @@ NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy) {
  * Stomp on the most significant components to give the illusion of a "mod base
  * radix" operation
  */
-static bigint *comp_mod(bigint *bi, int mod) {
-  check(bi);
+static bigint *comp_mod(bigint *bi, int mod)
+{
+    check(bi);
 
-  if (bi->size > mod) {
-    bi->size = mod;
-  }
+    if (bi->size > mod)
+    {
+        bi->size = mod;
+    }
 
-  return bi;
+    return bi;
 }
 
 /**
@@ -2398,37 +2502,40 @@ static bigint *comp_mod(bigint *bi, int mod) {
  * @param bi [in]  A bigint.
  * @return The result of the Barrett reduction.
  */
-NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi) {
-  bigint *q1, *q2, *q3, *r1, *r2, *r;
-  uint8_t mod_offset = ctx->mod_offset;
-  bigint *bim = ctx->bi_mod[mod_offset];
-  int k = bim->size;
+NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi)
+{
+    bigint *q1, *q2, *q3, *r1, *r2, *r;
+    uint8_t mod_offset = ctx->mod_offset;
+    bigint *bim = ctx->bi_mod[mod_offset];
+    int k = bim->size;
 
-  check(bi);
-  check(bim);
+    check(bi);
+    check(bim);
 
-  /* use Classical method instead  - Barrett cannot help here */
-  if (bi->size > k * 2) {
-    return bi_mod(ctx, bi);
-  }
+    /* use Classical method instead  - Barrett cannot help here */
+    if (bi->size > k*2)
+    {
+        return bi_mod(ctx, bi);
+    }
 
-  q1 = comp_right_shift(bi_clone(ctx, bi), k - 1);
+    q1 = comp_right_shift(bi_clone(ctx, bi), k-1);
 
-  /* do outer partial multiply */
-  q2 = regular_multiply(ctx, q1, ctx->bi_mu[mod_offset], 0, k - 1);
-  q3 = comp_right_shift(q2, k + 1);
-  r1 = comp_mod(bi, k + 1);
+    /* do outer partial multiply */
+    q2 = regular_multiply(ctx, q1, ctx->bi_mu[mod_offset], 0, k-1);
+    q3 = comp_right_shift(q2, k+1);
+    r1 = comp_mod(bi, k+1);
 
-  /* do inner partial multiply */
-  r2 = comp_mod(regular_multiply(ctx, q3, bim, k + 1, 0), k + 1);
-  r = bi_subtract(ctx, r1, r2, NULL);
+    /* do inner partial multiply */
+    r2 = comp_mod(regular_multiply(ctx, q3, bim, k+1, 0), k+1);
+    r = bi_subtract(ctx, r1, r2, NULL);
 
-  /* if (r >= m) r = r - m; */
-  if (bi_compare(r, bim) >= 0) {
-    r = bi_subtract(ctx, r, bim, NULL);
-  }
+    /* if (r >= m) r = r - m; */
+    if (bi_compare(r, bim) >= 0)
+    {
+        r = bi_subtract(ctx, r, bim, NULL);
+    }
 
-  return r;
+    return r;
 }
 #endif /* CONFIG_BIGINT_BARRETT */
 
@@ -2436,27 +2543,29 @@ NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi) {
 /*
  * Work out g1, g3, g5, g7... etc for the sliding-window algorithm
  */
-static void precompute_slide_window(BI_CTX *ctx, int window, bigint *g1) {
-  int k = 1, i;
-  bigint *g2;
+static void precompute_slide_window(BI_CTX *ctx, int window, bigint *g1)
+{
+    int k = 1, i;
+    bigint *g2;
 
-  for (i = 0; i < window - 1; i++) /* compute 2^(window-1) */
-  {
-    k <<= 1;
-  }
+    for (i = 0; i < window-1; i++)   /* compute 2^(window-1) */
+    {
+        k <<= 1;
+    }
 
-  ctx->g = (bigint **)malloc(k * sizeof(bigint *));
-  ctx->g[0] = bi_clone(ctx, g1);
-  bi_permanent(ctx->g[0]);
-  g2 = bi_residue(ctx, bi_square(ctx, ctx->g[0])); /* g^2 */
+    ctx->g = (bigint **)malloc(k*sizeof(bigint *));
+    ctx->g[0] = bi_clone(ctx, g1);
+    bi_permanent(ctx->g[0]);
+    g2 = bi_residue(ctx, bi_square(ctx, ctx->g[0]));   /* g^2 */
 
-  for (i = 1; i < k; i++) {
-    ctx->g[i] = bi_residue(ctx, bi_multiply(ctx, ctx->g[i - 1], bi_copy(g2)));
-    bi_permanent(ctx->g[i]);
-  }
+    for (i = 1; i < k; i++)
+    {
+        ctx->g[i] = bi_residue(ctx, bi_multiply(ctx, ctx->g[i-1], bi_copy(g2)));
+        bi_permanent(ctx->g[i]);
+    }
 
-  bi_free(ctx, g2);
-  ctx->window = k;
+    bi_free(ctx, g2);
+    ctx->window = k;
 }
 #endif
 
@@ -2471,81 +2580,92 @@ static void precompute_slide_window(BI_CTX *ctx, int window, bigint *g1) {
  * @return The result of the mod exponentiation operation
  * @see bi_set_mod().
  */
-NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp) {
-  int i = find_max_exp_index(biexp), j, window_size = 1;
-  bigint *biR = int_to_bi(ctx, 1);
+NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp)
+{
+    int i = find_max_exp_index(biexp), j, window_size = 1;
+    bigint *biR = int_to_bi(ctx, 1);
 
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-  uint8_t mod_offset = ctx->mod_offset;
-  if (!ctx->use_classical) {
-    /* preconvert */
-    bi = bi_mont(ctx,
-                 bi_multiply(ctx, bi, ctx->bi_RR_mod_m[mod_offset])); /* x' */
-    bi_free(ctx, biR);
-    biR = ctx->bi_R_mod_m[mod_offset]; /* A */
-  }
+    uint8_t mod_offset = ctx->mod_offset;
+    if (!ctx->use_classical)
+    {
+        /* preconvert */
+        bi = bi_mont(ctx,
+                bi_multiply(ctx, bi, ctx->bi_RR_mod_m[mod_offset]));    /* x' */
+        bi_free(ctx, biR);
+        biR = ctx->bi_R_mod_m[mod_offset];                              /* A */
+    }
 #endif
 
-  check(bi);
-  check(biexp);
+    check(bi);
+    check(biexp);
 
 #ifdef CONFIG_BIGINT_SLIDING_WINDOW
-  for (j = i; j > 32; j /= 5) /* work out an optimum size */
-    window_size++;
+    for (j = i; j > 32; j /= 5) /* work out an optimum size */
+        window_size++;
 
-  /* work out the slide constants */
-  precompute_slide_window(ctx, window_size, bi);
-#else /* just one constant */
-  ctx->g = (bigint **)malloc(sizeof(bigint *));
-  ctx->g[0] = bi_clone(ctx, bi);
-  ctx->window = 1;
-  bi_permanent(ctx->g[0]);
+    /* work out the slide constants */
+    precompute_slide_window(ctx, window_size, bi);
+#else   /* just one constant */
+    ctx->g = (bigint **)malloc(sizeof(bigint *));
+    ctx->g[0] = bi_clone(ctx, bi);
+    ctx->window = 1;
+    bi_permanent(ctx->g[0]);
 #endif
 
-  /* if sliding-window is off, then only one bit will be done at a time and
-   * will reduce to standard left-to-right exponentiation */
-  do {
-    if (exp_bit_is_one(biexp, i)) {
-      int l = i - window_size + 1;
-      int part_exp = 0;
-
-      if (l < 0) /* LSB of exponent will always be 1 */
-        l = 0;
-      else {
-        while (exp_bit_is_one(biexp, l) == 0) l++; /* go back up */
-      }
-
-      /* build up the section of the exponent */
-      for (j = i; j >= l; j--) {
-        biR = bi_residue(ctx, bi_square(ctx, biR));
-        if (exp_bit_is_one(biexp, j)) part_exp++;
-
-        if (j != l) part_exp <<= 1;
-      }
-
-      part_exp = (part_exp - 1) / 2; /* adjust for array */
-      biR = bi_residue(ctx, bi_multiply(ctx, biR, ctx->g[part_exp]));
-      i = l - 1;
-    } else /* square it */
+    /* if sliding-window is off, then only one bit will be done at a time and
+     * will reduce to standard left-to-right exponentiation */
+    do
     {
-      biR = bi_residue(ctx, bi_square(ctx, biR));
-      i--;
+        if (exp_bit_is_one(biexp, i))
+        {
+            int l = i-window_size+1;
+            int part_exp = 0;
+
+            if (l < 0)  /* LSB of exponent will always be 1 */
+                l = 0;
+            else
+            {
+                while (exp_bit_is_one(biexp, l) == 0)
+                    l++;    /* go back up */
+            }
+
+            /* build up the section of the exponent */
+            for (j = i; j >= l; j--)
+            {
+                biR = bi_residue(ctx, bi_square(ctx, biR));
+                if (exp_bit_is_one(biexp, j))
+                    part_exp++;
+
+                if (j != l)
+                    part_exp <<= 1;
+            }
+
+            part_exp = (part_exp-1)/2;  /* adjust for array */
+            biR = bi_residue(ctx, bi_multiply(ctx, biR, ctx->g[part_exp]));
+            i = l-1;
+        }
+        else    /* square it */
+        {
+            biR = bi_residue(ctx, bi_square(ctx, biR));
+            i--;
+        }
+    } while (i >= 0);
+
+    /* cleanup */
+    for (i = 0; i < ctx->window; i++)
+    {
+        bi_depermanent(ctx->g[i]);
+        bi_free(ctx, ctx->g[i]);
     }
-  } while (i >= 0);
 
-  /* cleanup */
-  for (i = 0; i < ctx->window; i++) {
-    bi_depermanent(ctx->g[i]);
-    bi_free(ctx, ctx->g[i]);
-  }
-
-  free(ctx->g);
-  bi_free(ctx, bi);
-  bi_free(ctx, biexp);
+    free(ctx->g);
+    bi_free(ctx, bi);
+    bi_free(ctx, biexp);
 #if defined CONFIG_BIGINT_MONTGOMERY
-  return ctx->use_classical ? biR : bi_mont(ctx, biR); /* convert back */
+    return ctx->use_classical ? biR : bi_mont(ctx, biR); /* convert back */
 #else /* CONFIG_BIGINT_CLASSICAL or CONFIG_BIGINT_BARRETT */
-  return biR;
+    return biR;
 #endif
 }
 
@@ -2601,29 +2721,31 @@ NS_INTERNAL bigint *bi_mod_power2(BI_CTX *ctx, bigint *bi, bigint *bim, bigint *
  * @param qInv [in] CRT's qInv bigint
  * @return The result of the CRT operation
  */
-NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
-                           bigint *p, bigint *q, bigint *qInv) {
-  bigint *m1, *m2, *h;
+NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
+        bigint *dP, bigint *dQ,
+        bigint *p, bigint *q, bigint *qInv)
+{
+    bigint *m1, *m2, *h;
 
-/* Montgomery has a condition the 0 < x, y < m and these products violate
- * that condition. So disable Montgomery when using CRT */
+    /* Montgomery has a condition the 0 < x, y < m and these products violate
+     * that condition. So disable Montgomery when using CRT */
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-  ctx->use_classical = 1;
+    ctx->use_classical = 1;
 #endif
-  ctx->mod_offset = BIGINT_P_OFFSET;
-  m1 = bi_mod_power(ctx, bi_copy(bi), dP);
+    ctx->mod_offset = BIGINT_P_OFFSET;
+    m1 = bi_mod_power(ctx, bi_copy(bi), dP);
 
-  ctx->mod_offset = BIGINT_Q_OFFSET;
-  m2 = bi_mod_power(ctx, bi, dQ);
+    ctx->mod_offset = BIGINT_Q_OFFSET;
+    m2 = bi_mod_power(ctx, bi, dQ);
 
-  h = bi_subtract(ctx, bi_add(ctx, m1, p), bi_copy(m2), NULL);
-  h = bi_multiply(ctx, h, qInv);
-  ctx->mod_offset = BIGINT_P_OFFSET;
-  h = bi_residue(ctx, h);
+    h = bi_subtract(ctx, bi_add(ctx, m1, p), bi_copy(m2), NULL);
+    h = bi_multiply(ctx, h, qInv);
+    ctx->mod_offset = BIGINT_P_OFFSET;
+    h = bi_residue(ctx, h);
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-  ctx->use_classical = 0; /* reset for any further operation */
+    ctx->use_classical = 0;         /* reset for any further operation */
 #endif
-  return bi_add(ctx, m2, bi_multiply(ctx, q, h));
+    return bi_add(ctx, m2, bi_multiply(ctx, q, h));
 }
 /** @} */
 /*
@@ -2655,8 +2777,13 @@ out:
   return ctx;
 }
 
-long SSL_CTX_set_mode(SSL_CTX *ctx, long mode) {
-  ctx->mode |= mode;
+long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long mode, void *ptr) {
+  (void)ctx;
+  (void)cmd;
+  (void)ptr;
+  if (cmd == 33) {
+    ctx->mode |= mode;
+  }
   return ctx->mode;
 }
 
@@ -3327,12 +3454,6 @@ const SSL_METHOD *SSLv23_client_method(void) {
   return &cl_meth;
 }
 
-long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long mode, void *ptr) {
-  (void)ctx;
-  (void)cmd;
-  (void)ptr;
-  return mode;
-}
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -3558,9 +3679,10 @@ NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
 #define RANDOM_SOURCE "/dev/urandom"
 int get_random(uint8_t *out, size_t len) {
   static FILE *fp = NULL;
-  ssize_t ret = 0;
+  size_t ret = 0;
 
   if (fp == NULL) {
+    /* TODO(lsm): provide cleanup API  */
     fp = fopen(RANDOM_SOURCE, "rb");
   }
 
@@ -3568,10 +3690,7 @@ int get_random(uint8_t *out, size_t len) {
     ret = fread(out, 1, len, fp);
   }
 
-  if (ret < 0 || (size_t)ret != len)
-    return 0;
-
-  return 1;
+  return ret == len;
 }
 
 int get_random_nonzero(uint8_t *out, size_t len) {

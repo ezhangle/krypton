@@ -103,11 +103,7 @@ struct vec {
 
 typedef struct pem_st PEM;
 typedef struct der_st DER;
-
 typedef struct X509_st X509;
-
-typedef struct _BI_CTX BI_CTX;
-typedef struct _bigint bigint; /**< An alias for _bigint */
 typedef struct _RSA_CTX RSA_CTX;
 
 struct x509_store_ctx_st {
@@ -183,11 +179,13 @@ NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
 NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
 
+typedef struct _bigint bigint;  /**< An alias for _bigint */
+
 #include "crypto.h"
+#include "bigint.h"
+#include "bigint_impl.h"
 #include "pem.h"
 #include "ber.h"
-#include "bigint_impl.h"
-#include "bigint.h"
 #include "../openssl/ssl.h"
 #include "tlsproto.h"
 #include "tls.h"

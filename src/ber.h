@@ -30,7 +30,7 @@ NS_INTERNAL unsigned int ber_id_octet_class(uint8_t id);
 #endif
 
 #if KRYPTON_DEBUG
-NS_INTERNAL const char * const ber_id_octet_clsname(uint8_t id);
+NS_INTERNAL const char *ber_id_octet_clsname(uint8_t id);
 NS_INTERNAL int ber_dump(const uint8_t *ptr, size_t len);
 NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len);
 #endif

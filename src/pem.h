@@ -6,9 +6,6 @@
 #ifndef _PEM_H
 #define _PEM_H
 
-typedef struct pem_st PEM;
-typedef struct der_st DER;
-
 struct pem_st {
   unsigned int tot_len;
   uint16_t num_obj;

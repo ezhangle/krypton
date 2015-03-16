@@ -29,9 +29,3 @@ const SSL_METHOD *SSLv23_client_method(void) {
   return &cl_meth;
 }
 
-long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long mode, void *ptr) {
-  (void)ctx;
-  (void)cmd;
-  (void)ptr;
-  return mode;
-}

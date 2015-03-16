@@ -13,7 +13,6 @@
 #define X509_HASH_SHA1 0x05
 #define X509_HASH_SHA256 0x0b
 
-typedef struct X509_st X509;
 struct X509_st {
   X509 *next;
   RSA_CTX *pub_key;

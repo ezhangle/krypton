@@ -31,8 +31,6 @@
 #ifndef BIGINT_IMPL_HEADER
 #define BIGINT_IMPL_HEADER
 
-#include "ktypes.h"
-
 /* Maintain a number of precomputed variables when doing reduction */
 #define BIGINT_M_OFFSET     0    /**< Normal modulo offset. */
 #define BIGINT_P_OFFSET     1    /**< p modulo offset. */
@@ -41,8 +39,8 @@
 
 /* Architecture specific functions for big ints */
 #if defined(CONFIG_INTEGER_8BIT)
-#define COMP_RADIX          256        /**< Max component + 1 */
-#define COMP_MAX            0xFFFF /**< (Max dbl comp -1) */
+#define COMP_RADIX          256U       /**< Max component + 1 */
+#define COMP_MAX            0xFFFFU/**< (Max dbl comp -1) */
 #define COMP_BIT_SIZE       8   /**< Number of bits in a component. */
 #define COMP_BYTE_SIZE      1   /**< Number of bytes in a component. */
 #define COMP_NUM_NIBBLES    2   /**< Used For diagnostics only. */
@@ -50,7 +48,7 @@ typedef uint8_t comp;	        /**< A single precision component. */
 typedef uint16_t long_comp;     /**< A double precision component. */
 typedef int16_t slong_comp;     /**< A signed double precision component. */
 #elif defined(CONFIG_INTEGER_16BIT)
-#define COMP_RADIX          65536       /**< Max component + 1 */
+#define COMP_RADIX          65536U       /**< Max component + 1 */
 #define COMP_MAX            0xFFFFFFFFU/**< (Max dbl comp -1) */
 #define COMP_BIT_SIZE       16  /**< Number of bits in a component. */
 #define COMP_BYTE_SIZE      2   /**< Number of bytes in a component. */
@@ -59,7 +57,7 @@ typedef uint16_t comp;	        /**< A single precision component. */
 typedef uint32_t long_comp;     /**< A double precision component. */
 typedef int32_t slong_comp;     /**< A signed double precision component. */
 #else /* regular 32 bit */
-#ifdef _WIN32
+#ifdef WIN32
 #define COMP_RADIX          4294967296i64
 #define COMP_MAX            0xFFFFFFFFFFFFFFFFui64
 #else
@@ -120,7 +118,7 @@ struct _BI_CTX /**< A big integer "session" context. */
 };
 typedef struct _BI_CTX BI_CTX;
 
-#ifndef _WIN32
+#ifndef WIN32
 #define max(a,b) ((a)>(b)?(a):(b))  /**< Find the maximum of 2 numbers. */
 #define min(a,b) ((a)<(b)?(a):(b))  /**< Find the minimum of 2 numbers. */
 #endif

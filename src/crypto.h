@@ -6,15 +6,10 @@
 #ifndef _CRYPTO_H
 #define _CRYPTO_H
 
-typedef struct _BI_CTX BI_CTX;
-typedef struct _bigint bigint; /**< An alias for _bigint */
-typedef struct _RSA_CTX RSA_CTX;
-
 NS_INTERNAL int get_random(uint8_t *out, size_t len);
 NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
 
 /* axTLS crypto functions, see C files for copyright info */
-typedef struct _RSA_CTX RSA_CTX;
 typedef struct _SHA256_CTX SHA256_CTX;
 
 NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,

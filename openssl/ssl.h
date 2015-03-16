@@ -42,7 +42,8 @@ const SSL_METHOD *SSLv23_client_method(void);
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth);
 
 #define SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER 0x00000002L
-long SSL_CTX_set_mode(SSL_CTX *ctx, long mode);
+#define SSL_CTX_set_mode(ctx,op) SSL_CTX_ctrl((ctx),33,(op),NULL)
+long SSL_CTX_ctrl(SSL_CTX *, int, long, void *);
 
 /* for the client */
 #define SSL_VERIFY_NONE 0x00

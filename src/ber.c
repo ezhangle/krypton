@@ -75,8 +75,8 @@ NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
   return do_ber_dump(f, ptr, len, 1);
 }
 
-NS_INTERNAL const char *const ber_id_octet_clsname(uint8_t id) {
-  static const char *const clsname[] = {
+NS_INTERNAL const char *ber_id_octet_clsname(uint8_t id) {
+  static const char *clsname[] = {
       "universal", "application", "context-specific", "private",
   };
   return clsname[(id & 0xc0) >> 6];
