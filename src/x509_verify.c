@@ -8,7 +8,7 @@
 static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
                           uint8_t *digest,
                           size_t *dlen) {
-  uint8_t buf[128];
+  uint8_t buf[512];
   struct gber_tag tag;
   const uint8_t *ptr, *end;
   int ret;

@@ -356,7 +356,7 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   uint32_t len;
   uint16_t ilen;
   size_t out_size = RSA_block_size(ssl->ctx->rsa_privkey);
-  uint8_t out[300];
+  uint8_t out[512];
   int ret;
 
   assert(out_size < sizeof(out)); /* TODO(lsm): fix this */

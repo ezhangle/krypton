@@ -62,7 +62,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;
   size_t buf_len = 6 + RSA_block_size(ssl->nxt->svr_key);
-  unsigned char buf[128];
+  unsigned char buf[6 + 512];
   struct tls_premaster_secret in;
 
   assert(buf_len < sizeof(buf));  /* Fix this */
@@ -85,8 +85,8 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
 
   buf[0] = HANDSHAKE_CLIENT_KEY_EXCH;
   buf[1] = 0;
-  set16(buf + 2, buf_len + 2);
-  set16(buf + 4, buf_len);
+  set16(buf + 2, buf_len - 4);
+  set16(buf + 4, buf_len - 6);
   if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len))
     return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, buf, buf_len);

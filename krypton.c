@@ -5373,10 +5373,10 @@ NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
 NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
-  uint8_t check[128];  /* TODO(lsm): fix this, and assert below */
+  uint8_t check[12];
   SHA256_CTX tmp_hash;
 
-  assert(sizeof(check) > vrfy_len);
+  assert(sizeof(check) >= vrfy_len);
 
   /* don't interfere with running hash */
   memcpy(&tmp_hash, &sec->handshakes_hash, sizeof(tmp_hash));
@@ -5393,10 +5393,10 @@ NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
 NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
-  uint8_t check[128];  /* TODO(lsm): fix this, and assert below */
+  uint8_t check[12];
   SHA256_CTX tmp_hash;
 
-  assert(sizeof(check) > vrfy_len);
+  assert(sizeof(check) >= vrfy_len);
 
   /* don't interfere with running hash */
   memcpy(&tmp_hash, &sec->handshakes_hash, sizeof(tmp_hash));
@@ -5631,7 +5631,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;
   size_t buf_len = 6 + RSA_block_size(ssl->nxt->svr_key);
-  unsigned char buf[128];
+  unsigned char buf[6 + 512];
   struct tls_premaster_secret in;
 
   assert(buf_len < sizeof(buf));  /* Fix this */
@@ -5654,8 +5654,8 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
 
   buf[0] = HANDSHAKE_CLIENT_KEY_EXCH;
   buf[1] = 0;
-  set16(buf + 2, buf_len + 2);
-  set16(buf + 4, buf_len);
+  set16(buf + 2, buf_len - 4);
+  set16(buf + 4, buf_len - 6);
   if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len))
     return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, buf, buf_len);
@@ -6044,7 +6044,7 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   uint32_t len;
   uint16_t ilen;
   size_t out_size = RSA_block_size(ssl->ctx->rsa_privkey);
-  uint8_t out[300];
+  uint8_t out[512];
   int ret;
 
   assert(out_size < sizeof(out)); /* TODO(lsm): fix this */
@@ -6983,7 +6983,7 @@ void X509_free(X509 *cert) {
 static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
                           uint8_t *digest,
                           size_t *dlen) {
-  uint8_t buf[128];
+  uint8_t buf[512];
   struct gber_tag tag;
   const uint8_t *ptr, *end;
   int ret;
