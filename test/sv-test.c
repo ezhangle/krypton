@@ -3,6 +3,7 @@
  * All rights reserved
  */
 
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -17,10 +18,8 @@
 #include <unistd.h>
 #include <errno.h>
 
-#if USE_KRYPTON
-#include "krypton.h"
-#else
 #include <openssl/ssl.h>
+#if !USE_KRYPTON
 #include <openssl/err.h>
 #endif
 

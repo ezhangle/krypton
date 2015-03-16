@@ -8,7 +8,7 @@
 #define RANDOM_SOURCE "/dev/urandom"
 int get_random(uint8_t *out, size_t len) {
   static FILE *fp = NULL;
-  size_t ret = 0;
+  ssize_t ret = 0;
 
   if (fp == NULL) {
     fp = fopen(RANDOM_SOURCE, "rb");
@@ -18,7 +18,7 @@ int get_random(uint8_t *out, size_t len) {
     ret = fread(out, 1, len, fp);
   }
 
-  if (ret < 0 || ret != len)
+  if (ret < 0 || (size_t)ret != len)
     return 0;
 
   return 1;
