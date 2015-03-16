@@ -8,7 +8,7 @@ SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c src/hmac.c \
 HEADERS = src/ktypes.h src/crypto.h src/tlsproto.h src/tls.h src/ber.h \
 					src/pem.h src/x509.h src/bigint_impl.h src/bigint.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c
-CFLAGS := -O2 -W -Wall -I. -Wno-unused-parameter $(CLFAGS_EXTRA)
+CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA)
 
 .PHONY: all clean tests openssl-tests krypton-tests
 
@@ -19,10 +19,10 @@ krypton.c: $(HEADERS) $(SOURCES) Makefile
 
 tests: openssl-tests krypton-tests
 
-krypton-tests: CFLAGS += -DUSE_KRYPTON=1
+krypton-tests: CFLAGS += -DUSE_KRYPTON=1 -I.
 krypton-tests: sv-test-krypton cl-test-krypton
 
-opnssl-tests: sv-test-openssl cl-test-openssl
+openssl-tests: sv-test-openssl cl-test-openssl
 
 sv-test-openssl: test/sv-test.c
 	$(CC) $(CFLAGS) -o sv-test-openssl test/sv-test.c -lssl -lcrypto
