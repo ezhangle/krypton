@@ -11,7 +11,7 @@ NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
   size_t A1_len = SHA256_SIZE + seed_len;
   uint8_t A1[128];
 
-  assert(A1_len < sizeof(A1));  /* TODO(lsm): fix this */
+  assert(A1_len < sizeof(A1)); /* TODO(lsm): fix this */
 
   hmac_sha256(seed, seed_len, sec, sec_len, A1);
   memcpy(A1 + SHA256_SIZE, seed, seed_len);

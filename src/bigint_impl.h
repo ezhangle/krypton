@@ -85,8 +85,6 @@ struct _bigint
     comp* comps;                /**< A ptr to the actual component data */
 };
 
-typedef struct _bigint bigint;  /**< An alias for _bigint */
-
 /**
  * Maintains the state of the cache, and a number of variables used in
  * reduction.

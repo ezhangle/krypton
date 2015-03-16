@@ -67,6 +67,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   uint32_t len;
   uint16_t proto;
 
+  (void)hdr;
   if (ssl->is_server && ssl->state != STATE_CL_HELLO_WAIT) {
     tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_NO_RENEGOTIATION);
     return 1;
@@ -275,6 +276,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
   X509 *final = NULL, *chain = NULL;
   int err = ALERT_DECODE_ERROR;
 
+  (void)hdr;
   cert = (struct tls_cert *)buf;
   buf += sizeof(*cert);
   if (buf > end)
@@ -359,6 +361,7 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   uint8_t out[512];
   int ret;
 
+  (void)hdr;
   assert(out_size < sizeof(out)); /* TODO(lsm): fix this */
 
   if (buf + sizeof(len) > end)
@@ -405,6 +408,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   uint32_t len;
   int ret = 0;
 
+  (void)hdr;
   if (buf + sizeof(len) > end)
     goto err;
 
@@ -547,6 +551,9 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
 static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
                                 const uint8_t *buf, const uint8_t *end) {
   dprintf("change cipher spec\n");
+  (void)hdr;
+  (void)end;
+  (void)buf;
   if (ssl->is_server) {
     tls_generate_keys(ssl->nxt);
     if (ssl->nxt) {
@@ -595,6 +602,7 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   if (len < 2)
     return 0;
 
+  (void)hdr;
   switch (buf[1]) {
     case ALERT_CLOSE_NOTIFY:
       dprintf("recieved close notify\n");

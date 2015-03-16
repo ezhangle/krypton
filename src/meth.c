@@ -28,4 +28,3 @@ const SSL_METHOD *SSLv23_server_method(void) {
 const SSL_METHOD *SSLv23_client_method(void) {
   return &cl_meth;
 }
-

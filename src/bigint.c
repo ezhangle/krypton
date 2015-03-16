@@ -505,6 +505,7 @@ static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom)
     int i = biR->size - 1;
     long_comp r = 0;
 
+    (void)ctx;
     check(biR);
 
     do

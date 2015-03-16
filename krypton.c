@@ -74,7 +74,7 @@ void SSL_CTX_free(SSL_CTX *);
 
 #define _FILE_OFFSET_BITS 64
 #define _GNU_SOURCE
-#undef WIN32_LEAN_AND_MEAN      // Let windows.h always include winsock2.h
+#undef WIN32_LEAN_AND_MEAN  // Let windows.h always include winsock2.h
 
 #ifndef NOT_AMALGAMATED
 #define NS_INTERNAL static
@@ -108,7 +108,7 @@ typedef long ssize_t;
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #endif
-#pragma comment(lib, "ws2_32.lib")    // Linking with winsock library
+#pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
 #else
 #include <sys/socket.h>
 #include <stdint.h>
@@ -153,7 +153,9 @@ typedef long ssize_t;
 #if defined(KRYPTON_DEBUG) && !defined(_MSC_VER)
 #define dprintf(...) printf(__VA_ARGS__)
 #else
-#define dprintf(...) do {} while(0);
+#define dprintf(...) \
+  do {               \
+  } while (0);
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
@@ -245,7 +247,7 @@ NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
 NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
 
-typedef struct _bigint bigint;  /**< An alias for _bigint */
+typedef struct _bigint bigint; /**< An alias for _bigint */
 
 
 #endif /* _KTYPES_H */
@@ -449,8 +451,6 @@ struct _bigint
     int refs;                   /**< An internal reference count. */
     comp* comps;                /**< A ptr to the actual component data */
 };
-
-typedef struct _bigint bigint;  /**< An alias for _bigint */
 
 /**
  * Maintains the state of the cache, and a number of variables used in
@@ -931,8 +931,8 @@ struct X509_st {
   uint8_t hash_alg;
   uint8_t issuer_hash_alg;
 
-  uint8_t is_self_signed:1;
-  uint8_t is_ca:1;
+  uint8_t is_self_signed : 1;
+  uint8_t is_ca : 1;
 
   uint8_t digest[MAX_DIGEST_SIZE];
 };
@@ -1749,6 +1749,7 @@ static bigint *bi_int_divide(BI_CTX *ctx, bigint *biR, comp denom)
     int i = biR->size - 1;
     long_comp r = 0;
 
+    (void)ctx;
     check(biR);
 
     do
@@ -2918,6 +2919,7 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   int ret = 0;
   PEM *pem;
 
+  (void)type;
   pem = pem_load(file, PEM_SIG_KEY);
   if (NULL == pem)
     goto out;
@@ -3453,7 +3455,6 @@ const SSL_METHOD *SSLv23_server_method(void) {
 const SSL_METHOD *SSLv23_client_method(void) {
   return &cl_meth;
 }
-
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -3650,7 +3651,7 @@ NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
   size_t A1_len = SHA256_SIZE + seed_len;
   uint8_t A1[128];
 
-  assert(A1_len < sizeof(A1));  /* TODO(lsm): fix this */
+  assert(A1_len < sizeof(A1)); /* TODO(lsm): fix this */
 
   hmac_sha256(seed, seed_len, sec, sec_len, A1);
   memcpy(A1 + SHA256_SIZE, seed, seed_len);
@@ -3781,6 +3782,7 @@ void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length)
     int i;
     uint8_t *m, x, y, a, b;
 
+    (void)msg;
     x = ctx->x;
     y = ctx->y;
     m = ctx->m;
@@ -4602,6 +4604,7 @@ static const sha2_word32 sha256_initial_hash_value[8] = {
 	0x5be0cd19UL
 };
 
+#if 0
 /* Hash constant words K for SHA-384 and SHA-512: */
 static const sha2_word64 K512[80] = {
 	(uint64_t) 0x428a2f98d728ae22, (uint64_t) 0x7137449123ef65cd,
@@ -4669,6 +4672,7 @@ static const sha2_word64 sha512_initial_hash_value[8] = {
 	(uint64_t) 0x1f83d9abfb41bd6b,
 	(uint64_t) 0x5be0cd19137e2179
 };
+#endif
 
 
 /*** SHA-256: *********************************************************/
@@ -5381,6 +5385,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
 }
 
 int SSL_get_error(const SSL *ssl, int ret) {
+  (void)ret;
   return ssl->err;
 }
 
@@ -5753,7 +5758,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   unsigned char buf[6 + 512];
   struct tls_premaster_secret in;
 
-  assert(buf_len < sizeof(buf));  /* Fix this */
+  assert(buf_len < sizeof(buf)); /* Fix this */
 
   in.version = htobe16(0x0303);
   if (!get_random(in.opaque, sizeof(in.opaque))) {
@@ -5874,6 +5879,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   uint32_t len;
   uint16_t proto;
 
+  (void)hdr;
   if (ssl->is_server && ssl->state != STATE_CL_HELLO_WAIT) {
     tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_NO_RENEGOTIATION);
     return 1;
@@ -6082,6 +6088,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
   X509 *final = NULL, *chain = NULL;
   int err = ALERT_DECODE_ERROR;
 
+  (void)hdr;
   cert = (struct tls_cert *)buf;
   buf += sizeof(*cert);
   if (buf > end)
@@ -6166,6 +6173,7 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   uint8_t out[512];
   int ret;
 
+  (void)hdr;
   assert(out_size < sizeof(out)); /* TODO(lsm): fix this */
 
   if (buf + sizeof(len) > end)
@@ -6212,6 +6220,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   uint32_t len;
   int ret = 0;
 
+  (void)hdr;
   if (buf + sizeof(len) > end)
     goto err;
 
@@ -6354,6 +6363,9 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
 static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
                                 const uint8_t *buf, const uint8_t *end) {
   dprintf("change cipher spec\n");
+  (void)hdr;
+  (void)end;
+  (void)buf;
   if (ssl->is_server) {
     tls_generate_keys(ssl->nxt);
     if (ssl->nxt) {
@@ -6402,6 +6414,7 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   if (len < 2)
     return 0;
 
+  (void)hdr;
   switch (buf[1]) {
     case ALERT_CLOSE_NOTIFY:
       dprintf("recieved close notify\n");
@@ -6781,6 +6794,7 @@ static int parse_sig_alg(X509 *cert, const uint8_t *ptr, size_t len,
   const uint8_t *end = ptr + len;
   struct gber_tag tag;
 
+  (void)cert;
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
   if (NULL == ptr)
     return 0;
@@ -6817,80 +6831,77 @@ static int parse_pubkey_info(X509 *cert, const uint8_t *ptr, size_t len) {
 }
 
 static int decode_extension(X509 *cert, const uint8_t *oid, size_t oid_len,
-        const uint8_t *val, size_t val_len)
-{
-  static const char * const oidBasicConstraints =
-      "\x55\x1d\x13";
+                            const uint8_t *val, size_t val_len) {
+  static const char *const oidBasicConstraints = "\x55\x1d\x13";
   struct gber_tag tag;
 
-  if ( oid_len != 3 || memcmp(oid, oidBasicConstraints, oid_len) )
+  if (oid_len != 3 || memcmp(oid, oidBasicConstraints, oid_len))
     return 1;
 
   /* encapsulated value */
   val = ber_decode_tag(&tag, val, val_len);
-  if ( NULL == val )
+  if (NULL == val)
     return 0;
   val_len = tag.ber_len;
 
-  if ( val_len && val[0] )
+  if (val_len && val[0])
     cert->is_ca = 1;
 
   return 1;
 }
 
-static int parse_extensions(X509 *cert, const uint8_t *ptr, size_t len)
-{
+static int parse_extensions(X509 *cert, const uint8_t *ptr, size_t len) {
   const uint8_t *end = ptr + len;
   struct gber_tag tag;
 
   /* skip issuerUniqueID if present */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if ( NULL == ptr )
+  if (NULL == ptr)
     return 0;
 
   /* extensions are tagged as data */
-  if ( tag.ber_tag == 0xa3 ) {
+  if (tag.ber_tag == 0xa3) {
     goto ext;
   }
   ptr += tag.ber_len;
 
   /* skip subjectUniqueID if present */
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if ( NULL == ptr )
+  if (NULL == ptr)
     return 0;
 
   /* extensions are tagged as data */
-  if ( tag.ber_tag == 0xa3 ) {
+  if (tag.ber_tag == 0xa3) {
     goto ext;
   }
 
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if ( NULL == ptr )
+  if (NULL == ptr)
     return 0;
 
-  if ( tag.ber_tag != 0xa3 ) {
+  if (tag.ber_tag != 0xa3) {
     /* failed to find extensions */
     return 1;
   }
 ext:
   ptr = ber_decode_tag(&tag, ptr, end - ptr);
-  if ( NULL == ptr )
+  if (NULL == ptr)
     return 0;
 
   /* sequence */
-  if ( tag.ber_tag != 0x30 ) {
+  if (tag.ber_tag != 0x30) {
     /* failed to find extensions */
     return 1;
   }
 
-  while(ptr < end) {
+  while (ptr < end) {
     const uint8_t *oid, *val, *ext_end;
     size_t oid_len, val_len;
 
     ptr = ber_decode_tag(&tag, ptr, end - ptr);
-    if ( NULL == ptr )
+    if (NULL == ptr)
       return 0;
-    if ( tag.ber_tag != 0x30 ) {
+    if (tag.ber_tag != 0x30) {
       ptr += tag.ber_len;
       continue;
     }
@@ -6898,19 +6909,19 @@ ext:
     ext_end = ptr + tag.ber_len;
 
     ptr = ber_decode_tag(&tag, ptr, ext_end - ptr);
-    if ( NULL == ptr )
+    if (NULL == ptr)
       return 0;
     oid = ptr;
     oid_len = tag.ber_len;
     ptr += tag.ber_len;
 
     ptr = ber_decode_tag(&tag, ptr, ext_end - ptr);
-    if ( NULL == ptr )
+    if (NULL == ptr)
       return 0;
     val = ptr;
     val_len = tag.ber_len;
 
-    if ( !decode_extension(cert, oid, oid_len, val, val_len) )
+    if (!decode_extension(cert, oid, oid_len, val, val_len))
       return 0;
 
     ptr = ext_end;
@@ -6980,7 +6991,7 @@ static int parse_tbs_cert(X509 *cert, const uint8_t *ptr, size_t len) {
     return 0;
   ptr += tag.ber_len;
 
-  if ( !parse_extensions(cert, ptr, end - ptr) )
+  if (!parse_extensions(cert, ptr, end - ptr))
     return 0;
 
   return 1;
@@ -7099,8 +7110,7 @@ void X509_free(X509 *cert) {
  */
 
 
-static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
-                          uint8_t *digest,
+static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
                           size_t *dlen) {
   uint8_t buf[512];
   struct gber_tag tag;
@@ -7149,7 +7159,7 @@ static int do_verify(X509 *cur, X509 *nxt) {
   size_t digest_len, expected_len;
 again:
 
-  if ( !cur->is_ca ) {
+  if (!cur->is_ca) {
     dprintf("Not a CA certificate!\n");
     return 0;
   }

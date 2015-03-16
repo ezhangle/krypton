@@ -242,6 +242,7 @@ static const sha2_word32 sha256_initial_hash_value[8] = {
 	0x5be0cd19UL
 };
 
+#if 0
 /* Hash constant words K for SHA-384 and SHA-512: */
 static const sha2_word64 K512[80] = {
 	(uint64_t) 0x428a2f98d728ae22, (uint64_t) 0x7137449123ef65cd,
@@ -309,6 +310,7 @@ static const sha2_word64 sha512_initial_hash_value[8] = {
 	(uint64_t) 0x1f83d9abfb41bd6b,
 	(uint64_t) 0x5be0cd19137e2179
 };
+#endif
 
 
 /*** SHA-256: *********************************************************/

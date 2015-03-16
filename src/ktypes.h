@@ -8,7 +8,7 @@
 
 #define _FILE_OFFSET_BITS 64
 #define _GNU_SOURCE
-#undef WIN32_LEAN_AND_MEAN      // Let windows.h always include winsock2.h
+#undef WIN32_LEAN_AND_MEAN  // Let windows.h always include winsock2.h
 
 #ifndef NOT_AMALGAMATED
 #define NS_INTERNAL static
@@ -42,7 +42,7 @@ typedef long ssize_t;
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #endif
-#pragma comment(lib, "ws2_32.lib")    // Linking with winsock library
+#pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
 #else
 #include <sys/socket.h>
 #include <stdint.h>
@@ -87,7 +87,9 @@ typedef long ssize_t;
 #if defined(KRYPTON_DEBUG) && !defined(_MSC_VER)
 #define dprintf(...) printf(__VA_ARGS__)
 #else
-#define dprintf(...) do {} while(0);
+#define dprintf(...) \
+  do {               \
+  } while (0);
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
@@ -179,7 +181,7 @@ NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
 NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
 
-typedef struct _bigint bigint;  /**< An alias for _bigint */
+typedef struct _bigint bigint; /**< An alias for _bigint */
 
 #include "crypto.h"
 #include "bigint.h"

@@ -65,7 +65,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   unsigned char buf[6 + 512];
   struct tls_premaster_secret in;
 
-  assert(buf_len < sizeof(buf));  /* Fix this */
+  assert(buf_len < sizeof(buf)); /* Fix this */
 
   in.version = htobe16(0x0303);
   if (!get_random(in.opaque, sizeof(in.opaque))) {

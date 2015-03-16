@@ -27,8 +27,8 @@ struct X509_st {
   uint8_t hash_alg;
   uint8_t issuer_hash_alg;
 
-  uint8_t is_self_signed:1;
-  uint8_t is_ca:1;
+  uint8_t is_self_signed : 1;
+  uint8_t is_ca : 1;
 
   uint8_t digest[MAX_DIGEST_SIZE];
 };

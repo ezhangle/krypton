@@ -174,6 +174,7 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   int ret = 0;
   PEM *pem;
 
+  (void)type;
   pem = pem_load(file, PEM_SIG_KEY);
   if (NULL == pem)
     goto out;

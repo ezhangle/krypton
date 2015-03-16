@@ -411,6 +411,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
 }
 
 int SSL_get_error(const SSL *ssl, int ret) {
+  (void)ret;
   return ssl->err;
 }
 

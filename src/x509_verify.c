@@ -5,8 +5,7 @@
 
 #include "ktypes.h"
 
-static int get_sig_digest(RSA_CTX *rsa, struct vec *sig,
-                          uint8_t *digest,
+static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
                           size_t *dlen) {
   uint8_t buf[512];
   struct gber_tag tag;
@@ -55,7 +54,7 @@ static int do_verify(X509 *cur, X509 *nxt) {
   size_t digest_len, expected_len;
 again:
 
-  if ( !cur->is_ca ) {
+  if (!cur->is_ca) {
     dprintf("Not a CA certificate!\n");
     return 0;
   }
