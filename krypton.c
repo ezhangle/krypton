@@ -140,7 +140,8 @@ typedef long ssize_t;
 
 #ifndef htobe64
 #if BYTE_ORDER == LITTLE_ENDIAN
-#define htobe64(x) __builtin_bswap64(x)
+#define htobe64(x) (((uint64_t)htonl((x) & 0xffffffff) << 32) | htonl((x) >> 32))
+#define xxhtobe64(x) __builtin_bswap64(x)
 #define xhtobe64(x)                                     \
   ((uint64_t)htonl((uint32_t)(x & 0xffffffff))) >> 32 | \
       htonl((uint32_t)(x >> 32))
@@ -4089,7 +4090,8 @@ int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
  */
 
 
-#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+//#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+#if 0
 
 /*
  * Force usage of rol or ror by selecting the one with the smaller constant.

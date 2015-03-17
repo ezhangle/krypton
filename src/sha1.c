@@ -8,7 +8,8 @@
 
 #include "ktypes.h"
 
-#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+//#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+#if 0
 
 /*
  * Force usage of rol or ror by selecting the one with the smaller constant.

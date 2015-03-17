@@ -74,10 +74,8 @@ typedef long ssize_t;
 
 #ifndef htobe64
 #if BYTE_ORDER == LITTLE_ENDIAN
-#define htobe64(x) __builtin_bswap64(x)
-#define xhtobe64(x)                                     \
-  ((uint64_t)htonl((uint32_t)(x & 0xffffffff))) >> 32 | \
-      htonl((uint32_t)(x >> 32))
+#define htobe64(x) (((uint64_t)htonl((x) & 0xffffffff)<<32) | htonl((x)>>32))
+#define xxhtobe64(x) __builtin_bswap64(x)
 #else
 #define htobe64
 #endif
