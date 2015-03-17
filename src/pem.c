@@ -41,7 +41,7 @@ static int add_line(DER *d, size_t *max_len, const uint8_t *buf, size_t len) {
   size_t olen;
 
   if (!b64_decode(buf, len, dec, &olen)) {
-    dprintf("pem: base64 error\n");
+    dprintf(("pem: base64 error\n"));
     return 0;
   }
 
@@ -52,7 +52,7 @@ static int add_line(DER *d, size_t *max_len, const uint8_t *buf, size_t len) {
     new_len = *max_len + DER_INCREMENT;
     new = realloc(d->der, new_len);
     if (NULL == new) {
-      dprintf("pem: realloc: %s\n", strerror(errno));
+      dprintf(("pem: realloc: %s\n", strerror(errno)));
       return 0;
     }
 
@@ -99,7 +99,7 @@ PEM *pem_load(const char *fn, int type_mask) {
 
   f = fopen(fn, "r");
   if (NULL == f) {
-    dprintf("%s: fopen: %s\n", fn, strerror(errno));
+    dprintf(("%s: fopen: %s\n", fn, strerror(errno)));
     goto out_free;
   }
 
@@ -133,7 +133,7 @@ PEM *pem_load(const char *fn, int type_mask) {
         }
 
         if (!add_line(&p->obj[cur], &der_max_len, (uint8_t *)buf, lf - buf)) {
-          dprintf("%s: Corrupted key or cert\n", fn);
+          dprintf(("%s: Corrupted key or cert\n", fn));
           goto out_close;
         }
 
@@ -144,17 +144,17 @@ PEM *pem_load(const char *fn, int type_mask) {
   }
 
   if (state != 0) {
-    dprintf("%s: no end marker\n", fn);
+    dprintf(("%s: no end marker\n", fn));
     goto out_close;
   }
   if (p->num_obj < 1) {
-    dprintf("%s: no objects in file\n", fn);
+    dprintf(("%s: no objects in file\n", fn));
     goto out_close;
   }
 
 /* success */
 #if 0
-	dprintf("%s: Loaded %zu byte PEM\n", fn, p->der_len);
+	dprintf(("%s: Loaded %zu byte PEM\n", fn, p->der_len));
 	ber_dump(p->der, p->der_len);
 #endif
   fclose(f);

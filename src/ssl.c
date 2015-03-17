@@ -70,14 +70,14 @@ again:
     if (errno == EWOULDBLOCK) {
       goto shuffle;
     }
-    dprintf("send: %s\n", strerror(errno));
+    dprintf(("send: %s\n", strerror(errno)));
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     ssl->tx_len = 0;
     ssl->write_pending = 0;
     return 0;
   }
   if (ret == 0) {
-    dprintf("send: peer hung up\n");
+    dprintf(("send: peer hung up\n"));
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
     ssl->tx_len = 0;
     ssl->write_pending = 0;
@@ -151,14 +151,14 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       ssl_err(ssl, SSL_ERROR_WANT_READ);
       return 0;
     }
-    dprintf("recv: %s\n", strerror(errno));
+    dprintf(("recv: %s\n", strerror(errno)));
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
   }
 
   if (ret == 0) {
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
-    dprintf("peer hung up\n");
+    dprintf(("peer hung up\n"));
     return 0;
   }
 
@@ -194,7 +194,7 @@ int SSL_accept(SSL *ssl) {
   }
 
   if (ssl->mode_defined && !ssl->is_server) {
-    dprintf("bad mode in accept\n");
+    dprintf(("bad mode in accept\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
@@ -268,7 +268,7 @@ int SSL_connect(SSL *ssl) {
   }
 
   if (ssl->mode_defined && ssl->is_server) {
-    dprintf("bad mode in connect\n");
+    dprintf(("bad mode in connect\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
@@ -291,7 +291,7 @@ int SSL_connect(SSL *ssl) {
       ssl->nxt = sec;
 
       if (!tls_cl_hello(ssl)) {
-        dprintf("failed to construct hello\n");
+        dprintf(("failed to construct hello\n"));
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;
       }
@@ -314,7 +314,7 @@ int SSL_connect(SSL *ssl) {
     /* fall through */
     case STATE_SV_DONE_RCVD:
       if (!tls_cl_finish(ssl)) {
-        dprintf("failed to construct key exchange\n");
+        dprintf(("failed to construct key exchange\n"));
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;
       }
@@ -422,9 +422,9 @@ int SSL_shutdown(SSL *ssl) {
   if (!ssl->close_notify) {
     switch (ssl->state) {
       default:
-        dprintf("sending close notify\n");
+        dprintf(("sending close notify\n"));
         if (!tls_close_notify(ssl)) {
-          dprintf("failed to construct close_notify\n");
+          dprintf(("failed to construct close_notify\n"));
           return -1;
         }
 

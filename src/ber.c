@@ -103,7 +103,7 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
   const uint8_t *end = ptr + len;
 
   if (len < 2) {
-    dprintf("block too small\n");
+    dprintf(("block too small\n"));
     return NULL;
   }
 
@@ -111,13 +111,13 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
   tag->ber_tag = tag->ber_id;
   if ((tag->ber_id & 0x1f) == 0x1f) {
     if ((*ptr & 0x80)) {
-      dprintf("bad id\n");
+      dprintf(("bad id\n"));
       return NULL;
     }
     tag->ber_tag <<= 8;
     tag->ber_tag |= *(ptr++);
     if (ptr >= end) {
-      dprintf("tag too big\n");
+      dprintf(("tag too big\n"));
       return NULL;
     }
   }
@@ -131,7 +131,7 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
 
     ll = ber_len_short(*(ptr++));
     if (ptr + ll > end || ll > 4) {
-      dprintf("tag past end\n");
+      dprintf(("tag past end\n"));
       return NULL;
     }
 

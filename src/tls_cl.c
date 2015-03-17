@@ -74,11 +74,11 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   }
   tls_compute_master_secret(ssl->nxt, &in);
   tls_generate_keys(ssl->nxt);
-  dprintf(" + master secret computed\n");
+  dprintf((" + master secret computed\n"));
 
   if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *)&in, sizeof(in), buf + 6, 0) <=
       1) {
-    dprintf("RSA encrypt failed\n");
+    dprintf(("RSA encrypt failed\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }

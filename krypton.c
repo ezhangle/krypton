@@ -150,12 +150,10 @@ typedef long ssize_t;
 #endif
 
 /* #define KRYPTON_DEBUG 1 */
-#if defined(KRYPTON_DEBUG) && !defined(_MSC_VER)
-#define dprintf(...) printf(__VA_ARGS__)
+#if defined(KRYPTON_DEBUG)
+#define dprintf(x) printf x
 #else
-#define dprintf(...) \
-  do {               \
-  } while (0);
+#define dprintf(x)
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
@@ -1187,7 +1185,7 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
   const uint8_t *end = ptr + len;
 
   if (len < 2) {
-    dprintf("block too small\n");
+    dprintf(("block too small\n"));
     return NULL;
   }
 
@@ -1195,13 +1193,13 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
   tag->ber_tag = tag->ber_id;
   if ((tag->ber_id & 0x1f) == 0x1f) {
     if ((*ptr & 0x80)) {
-      dprintf("bad id\n");
+      dprintf(("bad id\n"));
       return NULL;
     }
     tag->ber_tag <<= 8;
     tag->ber_tag |= *(ptr++);
     if (ptr >= end) {
-      dprintf("tag too big\n");
+      dprintf(("tag too big\n"));
       return NULL;
     }
   }
@@ -1215,7 +1213,7 @@ static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
 
     ll = ber_len_short(*(ptr++));
     if (ptr + ll > end || ll > 4) {
-      dprintf("tag past end\n");
+      dprintf(("tag past end\n"));
       return NULL;
     }
 
@@ -2805,7 +2803,7 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
 
   /* not implemented */
   if (CAPath) {
-    dprintf("%s: CAPath: Not implemented\n", __func__);
+    dprintf(("%s: CAPath: Not implemented\n", __func__));
   }
   if (NULL == CAfile) {
     /* XXX: SSL_error ?? */
@@ -2964,7 +2962,7 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   goto out_free_pem;
 
 decode_err:
-  dprintf("%s: RSA private key decode error\n", file);
+  dprintf(("%s: RSA private key decode error\n", file));
 out_free_pem:
   pem_free(pem);
 out:
@@ -3497,7 +3495,7 @@ static int add_line(DER *d, size_t *max_len, const uint8_t *buf, size_t len) {
   size_t olen;
 
   if (!b64_decode(buf, len, dec, &olen)) {
-    dprintf("pem: base64 error\n");
+    dprintf(("pem: base64 error\n"));
     return 0;
   }
 
@@ -3508,7 +3506,7 @@ static int add_line(DER *d, size_t *max_len, const uint8_t *buf, size_t len) {
     new_len = *max_len + DER_INCREMENT;
     new = realloc(d->der, new_len);
     if (NULL == new) {
-      dprintf("pem: realloc: %s\n", strerror(errno));
+      dprintf(("pem: realloc: %s\n", strerror(errno)));
       return 0;
     }
 
@@ -3555,7 +3553,7 @@ PEM *pem_load(const char *fn, int type_mask) {
 
   f = fopen(fn, "r");
   if (NULL == f) {
-    dprintf("%s: fopen: %s\n", fn, strerror(errno));
+    dprintf(("%s: fopen: %s\n", fn, strerror(errno)));
     goto out_free;
   }
 
@@ -3589,7 +3587,7 @@ PEM *pem_load(const char *fn, int type_mask) {
         }
 
         if (!add_line(&p->obj[cur], &der_max_len, (uint8_t *)buf, lf - buf)) {
-          dprintf("%s: Corrupted key or cert\n", fn);
+          dprintf(("%s: Corrupted key or cert\n", fn));
           goto out_close;
         }
 
@@ -3600,17 +3598,17 @@ PEM *pem_load(const char *fn, int type_mask) {
   }
 
   if (state != 0) {
-    dprintf("%s: no end marker\n", fn);
+    dprintf(("%s: no end marker\n", fn));
     goto out_close;
   }
   if (p->num_obj < 1) {
-    dprintf("%s: no objects in file\n", fn);
+    dprintf(("%s: no objects in file\n", fn));
     goto out_close;
   }
 
 /* success */
 #if 0
-	dprintf("%s: Loaded %zu byte PEM\n", fn, p->der_len);
+	dprintf(("%s: Loaded %zu byte PEM\n", fn, p->der_len));
 	ber_dump(p->der, p->der_len);
 #endif
   fclose(f);
@@ -5044,14 +5042,14 @@ again:
     if (errno == EWOULDBLOCK) {
       goto shuffle;
     }
-    dprintf("send: %s\n", strerror(errno));
+    dprintf(("send: %s\n", strerror(errno)));
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     ssl->tx_len = 0;
     ssl->write_pending = 0;
     return 0;
   }
   if (ret == 0) {
-    dprintf("send: peer hung up\n");
+    dprintf(("send: peer hung up\n"));
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
     ssl->tx_len = 0;
     ssl->write_pending = 0;
@@ -5125,14 +5123,14 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       ssl_err(ssl, SSL_ERROR_WANT_READ);
       return 0;
     }
-    dprintf("recv: %s\n", strerror(errno));
+    dprintf(("recv: %s\n", strerror(errno)));
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
   }
 
   if (ret == 0) {
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
-    dprintf("peer hung up\n");
+    dprintf(("peer hung up\n"));
     return 0;
   }
 
@@ -5168,7 +5166,7 @@ int SSL_accept(SSL *ssl) {
   }
 
   if (ssl->mode_defined && !ssl->is_server) {
-    dprintf("bad mode in accept\n");
+    dprintf(("bad mode in accept\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
@@ -5242,7 +5240,7 @@ int SSL_connect(SSL *ssl) {
   }
 
   if (ssl->mode_defined && ssl->is_server) {
-    dprintf("bad mode in connect\n");
+    dprintf(("bad mode in connect\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
@@ -5265,7 +5263,7 @@ int SSL_connect(SSL *ssl) {
       ssl->nxt = sec;
 
       if (!tls_cl_hello(ssl)) {
-        dprintf("failed to construct hello\n");
+        dprintf(("failed to construct hello\n"));
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;
       }
@@ -5288,7 +5286,7 @@ int SSL_connect(SSL *ssl) {
     /* fall through */
     case STATE_SV_DONE_RCVD:
       if (!tls_cl_finish(ssl)) {
-        dprintf("failed to construct key exchange\n");
+        dprintf(("failed to construct key exchange\n"));
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;
       }
@@ -5396,9 +5394,9 @@ int SSL_shutdown(SSL *ssl) {
   if (!ssl->close_notify) {
     switch (ssl->state) {
       default:
-        dprintf("sending close notify\n");
+        dprintf(("sending close notify\n"));
         if (!tls_close_notify(ssl)) {
-          dprintf("failed to construct close_notify\n");
+          dprintf(("failed to construct close_notify\n"));
           return -1;
         }
 
@@ -5767,11 +5765,11 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   }
   tls_compute_master_secret(ssl->nxt, &in);
   tls_generate_keys(ssl->nxt);
-  dprintf(" + master secret computed\n");
+  dprintf((" + master secret computed\n"));
 
   if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *)&in, sizeof(in), buf + 6, 0) <=
       1) {
-    dprintf("RSA encrypt failed\n");
+    dprintf(("RSA encrypt failed\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
@@ -5980,26 +5978,26 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
     switch (ext_type) {
       case EXT_SERVER_NAME:
-        dprintf(" + EXT: server name\n");
+        dprintf((" + EXT: server name\n"));
         break;
       case EXT_SESSION_TICKET:
-        dprintf(" + EXT: session ticket\n");
+        dprintf((" + EXT: session ticket\n"));
         break;
       case EXT_HEARTBEAT:
-        dprintf(" + EXT: heartbeat\n");
+        dprintf((" + EXT: heartbeat\n"));
         break;
       case EXT_SIG_ALGOS:
         /* XXX: spec requires care to be taken of this */
-        dprintf(" + EXT: signature algorithms\n");
+        dprintf((" + EXT: signature algorithms\n"));
         break;
       case EXT_NPN:
-        dprintf(" + EXT: npn\n");
+        dprintf((" + EXT: npn\n"));
         break;
       case EXT_RENEG_INFO:
-        dprintf(" + EXT: reneg info\n");
+        dprintf((" + EXT: reneg info\n"));
         break;
       default:
-        dprintf(" + EXT: %.4x len=%u\n", ext_type, ext_len);
+        dprintf((" + EXT: %.4x len=%u\n", ext_type, ext_len));
         break;
     }
 
@@ -6022,8 +6020,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
   for (i = 0; i < num_ciphers; i++) {
     uint16_t suite = be16toh(cipher_suites[i]);
-    dprintf(" + %s cipher_suite[%u]: 0x%.4x\n",
-            (ssl->is_server) ? "server" : "client", i, suite);
+    dprintf((" + %s cipher_suite[%u]: 0x%.4x\n",
+            (ssl->is_server) ? "server" : "client", i, suite));
     if (ssl->is_server) {
       cipher_suite_negotiate(ssl, suite);
     } else {
@@ -6035,8 +6033,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
   for (i = 0; i < num_compressions; i++) {
     uint8_t compressor = compressions[i];
-    dprintf(" + %s compression[%u]: 0x%.2x\n",
-            (ssl->is_server) ? "server" : "client", i, compressor);
+    dprintf((" + %s compression[%u]: 0x%.2x\n",
+            (ssl->is_server) ? "server" : "client", i, compressor));
     if (ssl->is_server) {
       compressor_negotiate(ssl, compressor);
     } else {
@@ -6048,13 +6046,13 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   if (!ssl->nxt->cipher_negotiated || !ssl->nxt->compressor_negotiated) {
-    dprintf("Faled to negotiate cipher\n");
+    dprintf(("Faled to negotiate cipher\n"));
     goto bad_param;
   }
   if (ssl->is_server) {
     memcpy(&ssl->nxt->cl_rnd, rand, sizeof(ssl->nxt->cl_rnd));
     if (sess_id_len) {
-      dprintf("Impossible session resume\n");
+      dprintf(("Impossible session resume\n"));
       goto bad_param;
     }
     ssl->state = STATE_CL_HELLO_RCVD;
@@ -6066,15 +6064,15 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   return 1;
 
 err:
-  dprintf("error decoding hello\n");
+  dprintf(("error decoding hello\n"));
   tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
   return 0;
 bad_param:
-  dprintf("failed to negotiate cipher suite\n");
+  dprintf(("failed to negotiate cipher suite\n"));
   tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_ILLEGAL_PARAMETER);
   return 0;
 bad_vers:
-  dprintf("bad protocol version: 0x%.4x\n", proto);
+  dprintf(("bad protocol version: 0x%.4x\n", proto));
   tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_PROTOCOL_VERSION);
   return 0;
 }
@@ -6114,7 +6112,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
 
     cert = X509_new(buf, clen);
     if (NULL == cert) {
-      dprintf("bad cert\n");
+      dprintf(("bad cert\n"));
       err = ALERT_BAD_CERT;
       goto err;
     }
@@ -6126,7 +6124,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
     /* XXX: early steal the reference to the key */
     if (depth == 0) {
       if (cert->enc_alg != X509_ENC_ALG_RSA) {
-        dprintf("unsupported cert\n");
+        dprintf(("unsupported cert\n"));
         err = ALERT_UNSUPPORTED_CERT;
         goto err;
       }
@@ -6151,7 +6149,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
       goto err;
     }
   } else {
-    dprintf("No cert verification??\n");
+    dprintf(("No cert verification??\n"));
   }
 
   /* don't free the last pub-key, we need it */
@@ -6203,11 +6201,11 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   if (ret != 48 || ((out[0] << 8) | out[1]) != ssl->nxt->peer_vers) {
     /* prevents timing attacks by failing later */
     get_random(out, sizeof(struct tls_premaster_secret));
-    dprintf("Bad pre-master secret\n");
+    dprintf(("Bad pre-master secret\n"));
   }
 
   tls_compute_master_secret(ssl->nxt, (struct tls_premaster_secret *)out);
-  dprintf(" + master secret computed\n");
+  dprintf((" + master secret computed\n"));
 
   return 1;
 err:
@@ -6231,7 +6229,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
     goto err;
 
   if (NULL == ssl->cur) {
-    dprintf("No change cipher-spec before finished\n");
+    dprintf(("No change cipher-spec before finished\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
     return 0;
   }
@@ -6246,7 +6244,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   if (!ret) {
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
   }
-  dprintf("finished (%s)\n", (ret) ? "OK" : "EVIL");
+  dprintf(("finished (%s)\n", (ret) ? "OK" : "EVIL"));
 
   return ret;
 err:
@@ -6266,21 +6264,21 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   switch (type) {
     case HANDSHAKE_CLIENT_HELLO:
-      dprintf("client hello\n");
+      dprintf(("client hello\n"));
       ret = handle_hello(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_CERTIFICATE_VRFY:
-      dprintf("cert verify\n");
+      dprintf(("cert verify\n"));
       break;
     case HANDSHAKE_CLIENT_KEY_EXCH:
-      dprintf("key exch\n");
+      dprintf(("key exch\n"));
       ret = handle_key_exch(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_FINISHED:
       ret = handle_finished(ssl, hdr, buf, end);
       break;
     default:
-      dprintf("unknown type 0x%.2x (encrypted?)\n", type);
+      dprintf(("unknown type 0x%.2x (encrypted?)\n", type));
       tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
       return 0;
   }
@@ -6306,39 +6304,39 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   switch (type) {
     case HANDSHAKE_HELLO_REQ:
-      dprintf("hello req\n");
+      dprintf(("hello req\n"));
       break;
     case HANDSHAKE_SERVER_HELLO:
-      dprintf("server hello\n");
+      dprintf(("server hello\n"));
       ret = handle_hello(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_NEW_SESSION_TICKET:
-      dprintf("new session ticket\n");
+      dprintf(("new session ticket\n"));
       break;
     case HANDSHAKE_CERTIFICATE:
-      dprintf("certificate\n");
+      dprintf(("certificate\n"));
       ret = handle_certificate(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_SERVER_KEY_EXCH:
-      dprintf("server key exch\n");
+      dprintf(("server key exch\n"));
       ret = handle_key_exch(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_CERTIFICATE_REQ:
-      dprintf("cert req\n");
+      dprintf(("cert req\n"));
       ssl->state = STATE_SV_DONE_RCVD;
       break;
     case HANDSHAKE_SERVER_HELLO_DONE:
-      dprintf("hello done\n");
+      dprintf(("hello done\n"));
       ssl->state = STATE_SV_DONE_RCVD;
       break;
     case HANDSHAKE_CERTIFICATE_VRFY:
-      dprintf("cert verify\n");
+      dprintf(("cert verify\n"));
       break;
     case HANDSHAKE_FINISHED:
       ret = handle_finished(ssl, hdr, buf, end);
       break;
     default:
-      dprintf("unknown type 0x%.2x (encrypted?)\n", type);
+      dprintf(("unknown type 0x%.2x (encrypted?)\n", type));
       tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
       return 0;
   }
@@ -6362,7 +6360,7 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
 static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
                                 const uint8_t *buf, const uint8_t *end) {
-  dprintf("change cipher spec\n");
+  dprintf(("change cipher spec\n"));
   (void)hdr;
   (void)end;
   (void)buf;
@@ -6417,9 +6415,9 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   (void)hdr;
   switch (buf[1]) {
     case ALERT_CLOSE_NOTIFY:
-      dprintf("recieved close notify\n");
+      dprintf(("recieved close notify\n"));
       if (!ssl->close_notify && ssl->state != STATE_CLOSING) {
-        dprintf(" + replying\n");
+        dprintf((" + replying\n"));
         tls_alert(ssl, buf[0], buf[1]);
       }
       ssl->close_notify = 1;
@@ -6430,10 +6428,10 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
   switch (buf[0]) {
     case ALERT_LEVEL_WARNING:
-      dprintf("alert warning(%u)\n", buf[1]);
+      dprintf(("alert warning(%u)\n", buf[1]));
       break;
     case ALERT_LEVEL_FATAL:
-      dprintf("alert fatal(%u)\n", buf[1]);
+      dprintf(("alert fatal(%u)\n", buf[1]));
     default:
       return 0;
   }
@@ -6455,7 +6453,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   }
 
   if (len < MD5_SIZE) {
-    dprintf("No room for MAC\n");
+    dprintf(("No room for MAC\n"));
     return 0;
   }
 
@@ -6506,7 +6504,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   }
 
   if (memcmp(digest, mac, MD5_SIZE)) {
-    dprintf("Bad MAC\n");
+    dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
   }
@@ -6531,11 +6529,11 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     struct vec v;
 
     if (ssl->close_notify) {
-      dprintf("messages after close_notify??\n");
+      dprintf(("messages after close_notify??\n"));
       break;
     }
     if (ssl->fatal) {
-      dprintf("stopping processing messages due to fatal\n");
+      dprintf(("stopping processing messages due to fatal\n"));
       break;
     }
 
@@ -6549,7 +6547,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         && hdr->vers != htobe16(0x0301) /* TLS v1.0 */
         && hdr->vers != htobe16(0x0300) /* SSL 3.0 */
         ) {
-      dprintf("bad framing version: 0x%.4x\n", be16toh(hdr->vers));
+      dprintf(("bad framing version: 0x%.4x\n", be16toh(hdr->vers)));
       tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_PROTOCOL_VERSION);
       goto out;
     }
@@ -6583,7 +6581,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         iret = handle_appdata(ssl, &v, out, out_len);
         break;
       default:
-        dprintf("unknown header type 0x%.2x\n", hdr->type);
+        dprintf(("unknown header type 0x%.2x\n", hdr->type));
         iret = 0;
         break;
     }
@@ -6602,7 +6600,7 @@ out:
     return ret;
 
   if (buf < end) {
-    dprintf("shuffle buffer down: %zu left\n", end - buf);
+    dprintf(("shuffle buffer down: %zu left\n", end - buf));
     memmove(ssl->rx_buf, buf, end - buf);
     ssl->rx_len = end - buf;
   } else {
@@ -6778,13 +6776,13 @@ static int parse_pubkey(X509 *cert, const uint8_t *ptr, size_t len) {
         goto bad_key;
       break;
     default:
-      dprintf("Unknown algorithm\n");
+      dprintf(("Unknown algorithm\n"));
       break;
   }
 
   return 1;
 bad_key:
-  dprintf("bad public key in certificate\n");
+  dprintf(("bad public key in certificate\n"));
   return 0;
 }
 
@@ -7090,7 +7088,7 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   return cert;
 bad_cert:
   X509_free(cert);
-  dprintf("bad certificate\n");
+  dprintf(("bad certificate\n"));
   return NULL;
 }
 
@@ -7121,7 +7119,7 @@ static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
 
   ret = RSA_decrypt(rsa, sig->ptr, buf, sig->len, 0);
   if (ret <= 0) {
-    dprintf("RSA signature check failed\n");
+    dprintf(("RSA signature check failed\n"));
     return 0;
   }
 
@@ -7150,7 +7148,7 @@ static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
   *dlen = tag.ber_len;
   return 1;
 err:
-  dprintf("Failed to decode signature block\n");
+  dprintf(("Failed to decode signature block\n"));
   return 0;
 }
 
@@ -7160,19 +7158,19 @@ static int do_verify(X509 *cur, X509 *nxt) {
 again:
 
   if (!cur->is_ca) {
-    dprintf("Not a CA certificate!\n");
+    dprintf(("Not a CA certificate!\n"));
     return 0;
   }
 
   /* TODO: chek expiry date on cur */
 
   if (cur->hash_alg != cur->issuer_hash_alg) {
-    dprintf("hash algorithms don't match\n");
+    dprintf(("hash algorithms don't match\n"));
     return 0;
   }
 
   if ((size_t)RSA_block_size(cur->pub_key) != nxt->sig.len) {
-    dprintf("signature size doesn't match\n");
+    dprintf(("signature size doesn't match\n"));
     return 0;
   }
 
@@ -7187,34 +7185,34 @@ again:
       expected_len = SHA256_SIZE;
       break;
     default:
-      dprintf("Unsupported hash alg\n");
+      dprintf(("Unsupported hash alg\n"));
       return 0;
   }
 #if DEBUG_VERIFY
-  dprintf("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key),
+  dprintf(("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key)),
           nxt->sig.len);
 #endif
 
   if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len))
     return 0;
 #if DEBUG_VERIFY
-  dprintf("%zu byte digest:\n", digest_len);
+  dprintf(("%zu byte digest:\n", digest_len));
   hex_dump(digest, digest_len, 0);
 #endif
   if (digest_len != expected_len) {
-    dprintf("Bad digest length\n");
+    dprintf(("Bad digest length\n"));
     return 0;
   }
 #if DEBUG_VERIFY
   hex_dump(nxt->digest, digest_len, 0);
 #endif
   if (memcmp(nxt->digest, digest, digest_len)) {
-    dprintf("bad signature\n");
+    dprintf(("bad signature\n"));
     return 0;
   }
 #if DEBUG_VERIFY
-  dprintf("Verified OK\n");
-  dprintf("\n");
+  dprintf(("Verified OK\n"));
+  dprintf(("\n"));
 #endif
 
   /* if not the end of the chain, then tail-recursively check
@@ -7224,7 +7222,7 @@ again:
     cur = nxt;
     nxt = cur->next;
     if (!x509_issued_by(&cur->subject, &nxt->issuer)) {
-      dprintf("Bad chain\n");
+      dprintf(("Bad chain\n"));
       return 0;
     }
     goto again;
@@ -7257,12 +7255,12 @@ int X509_verify(X509 *ca_store, X509 *chain) {
 
   anchor = find_anchor(ca_store, chain);
   if (NULL == anchor) {
-    dprintf("vrfy: Cannot find trust anchor\n");
+    dprintf(("vrfy: Cannot find trust anchor\n"));
     return 0;
   }
 
 #if DEBUG_VERIFY
-  dprintf("Verifying to here:\n");
+  dprintf(("Verifying to here:\n"));
   hex_dump(anchor->subject.ptr, anchor->subject.len, 0);
 #endif
 

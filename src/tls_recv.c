@@ -168,26 +168,26 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
     switch (ext_type) {
       case EXT_SERVER_NAME:
-        dprintf(" + EXT: server name\n");
+        dprintf((" + EXT: server name\n"));
         break;
       case EXT_SESSION_TICKET:
-        dprintf(" + EXT: session ticket\n");
+        dprintf((" + EXT: session ticket\n"));
         break;
       case EXT_HEARTBEAT:
-        dprintf(" + EXT: heartbeat\n");
+        dprintf((" + EXT: heartbeat\n"));
         break;
       case EXT_SIG_ALGOS:
         /* XXX: spec requires care to be taken of this */
-        dprintf(" + EXT: signature algorithms\n");
+        dprintf((" + EXT: signature algorithms\n"));
         break;
       case EXT_NPN:
-        dprintf(" + EXT: npn\n");
+        dprintf((" + EXT: npn\n"));
         break;
       case EXT_RENEG_INFO:
-        dprintf(" + EXT: reneg info\n");
+        dprintf((" + EXT: reneg info\n"));
         break;
       default:
-        dprintf(" + EXT: %.4x len=%u\n", ext_type, ext_len);
+        dprintf((" + EXT: %.4x len=%u\n", ext_type, ext_len));
         break;
     }
 
@@ -210,8 +210,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
   for (i = 0; i < num_ciphers; i++) {
     uint16_t suite = be16toh(cipher_suites[i]);
-    dprintf(" + %s cipher_suite[%u]: 0x%.4x\n",
-            (ssl->is_server) ? "server" : "client", i, suite);
+    dprintf((" + %s cipher_suite[%u]: 0x%.4x\n",
+            (ssl->is_server) ? "server" : "client", i, suite));
     if (ssl->is_server) {
       cipher_suite_negotiate(ssl, suite);
     } else {
@@ -223,8 +223,8 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
   for (i = 0; i < num_compressions; i++) {
     uint8_t compressor = compressions[i];
-    dprintf(" + %s compression[%u]: 0x%.2x\n",
-            (ssl->is_server) ? "server" : "client", i, compressor);
+    dprintf((" + %s compression[%u]: 0x%.2x\n",
+            (ssl->is_server) ? "server" : "client", i, compressor));
     if (ssl->is_server) {
       compressor_negotiate(ssl, compressor);
     } else {
@@ -236,13 +236,13 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   if (!ssl->nxt->cipher_negotiated || !ssl->nxt->compressor_negotiated) {
-    dprintf("Faled to negotiate cipher\n");
+    dprintf(("Faled to negotiate cipher\n"));
     goto bad_param;
   }
   if (ssl->is_server) {
     memcpy(&ssl->nxt->cl_rnd, rand, sizeof(ssl->nxt->cl_rnd));
     if (sess_id_len) {
-      dprintf("Impossible session resume\n");
+      dprintf(("Impossible session resume\n"));
       goto bad_param;
     }
     ssl->state = STATE_CL_HELLO_RCVD;
@@ -254,15 +254,15 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   return 1;
 
 err:
-  dprintf("error decoding hello\n");
+  dprintf(("error decoding hello\n"));
   tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
   return 0;
 bad_param:
-  dprintf("failed to negotiate cipher suite\n");
+  dprintf(("failed to negotiate cipher suite\n"));
   tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_ILLEGAL_PARAMETER);
   return 0;
 bad_vers:
-  dprintf("bad protocol version: 0x%.4x\n", proto);
+  dprintf(("bad protocol version: 0x%.4x\n", proto));
   tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_PROTOCOL_VERSION);
   return 0;
 }
@@ -302,7 +302,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
 
     cert = X509_new(buf, clen);
     if (NULL == cert) {
-      dprintf("bad cert\n");
+      dprintf(("bad cert\n"));
       err = ALERT_BAD_CERT;
       goto err;
     }
@@ -314,7 +314,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
     /* XXX: early steal the reference to the key */
     if (depth == 0) {
       if (cert->enc_alg != X509_ENC_ALG_RSA) {
-        dprintf("unsupported cert\n");
+        dprintf(("unsupported cert\n"));
         err = ALERT_UNSUPPORTED_CERT;
         goto err;
       }
@@ -339,7 +339,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
       goto err;
     }
   } else {
-    dprintf("No cert verification??\n");
+    dprintf(("No cert verification??\n"));
   }
 
   /* don't free the last pub-key, we need it */
@@ -391,11 +391,11 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   if (ret != 48 || ((out[0] << 8) | out[1]) != ssl->nxt->peer_vers) {
     /* prevents timing attacks by failing later */
     get_random(out, sizeof(struct tls_premaster_secret));
-    dprintf("Bad pre-master secret\n");
+    dprintf(("Bad pre-master secret\n"));
   }
 
   tls_compute_master_secret(ssl->nxt, (struct tls_premaster_secret *)out);
-  dprintf(" + master secret computed\n");
+  dprintf((" + master secret computed\n"));
 
   return 1;
 err:
@@ -419,7 +419,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
     goto err;
 
   if (NULL == ssl->cur) {
-    dprintf("No change cipher-spec before finished\n");
+    dprintf(("No change cipher-spec before finished\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
     return 0;
   }
@@ -434,7 +434,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   if (!ret) {
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
   }
-  dprintf("finished (%s)\n", (ret) ? "OK" : "EVIL");
+  dprintf(("finished (%s)\n", (ret) ? "OK" : "EVIL"));
 
   return ret;
 err:
@@ -454,21 +454,21 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   switch (type) {
     case HANDSHAKE_CLIENT_HELLO:
-      dprintf("client hello\n");
+      dprintf(("client hello\n"));
       ret = handle_hello(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_CERTIFICATE_VRFY:
-      dprintf("cert verify\n");
+      dprintf(("cert verify\n"));
       break;
     case HANDSHAKE_CLIENT_KEY_EXCH:
-      dprintf("key exch\n");
+      dprintf(("key exch\n"));
       ret = handle_key_exch(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_FINISHED:
       ret = handle_finished(ssl, hdr, buf, end);
       break;
     default:
-      dprintf("unknown type 0x%.2x (encrypted?)\n", type);
+      dprintf(("unknown type 0x%.2x (encrypted?)\n", type));
       tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
       return 0;
   }
@@ -494,39 +494,39 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   switch (type) {
     case HANDSHAKE_HELLO_REQ:
-      dprintf("hello req\n");
+      dprintf(("hello req\n"));
       break;
     case HANDSHAKE_SERVER_HELLO:
-      dprintf("server hello\n");
+      dprintf(("server hello\n"));
       ret = handle_hello(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_NEW_SESSION_TICKET:
-      dprintf("new session ticket\n");
+      dprintf(("new session ticket\n"));
       break;
     case HANDSHAKE_CERTIFICATE:
-      dprintf("certificate\n");
+      dprintf(("certificate\n"));
       ret = handle_certificate(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_SERVER_KEY_EXCH:
-      dprintf("server key exch\n");
+      dprintf(("server key exch\n"));
       ret = handle_key_exch(ssl, hdr, buf, end);
       break;
     case HANDSHAKE_CERTIFICATE_REQ:
-      dprintf("cert req\n");
+      dprintf(("cert req\n"));
       ssl->state = STATE_SV_DONE_RCVD;
       break;
     case HANDSHAKE_SERVER_HELLO_DONE:
-      dprintf("hello done\n");
+      dprintf(("hello done\n"));
       ssl->state = STATE_SV_DONE_RCVD;
       break;
     case HANDSHAKE_CERTIFICATE_VRFY:
-      dprintf("cert verify\n");
+      dprintf(("cert verify\n"));
       break;
     case HANDSHAKE_FINISHED:
       ret = handle_finished(ssl, hdr, buf, end);
       break;
     default:
-      dprintf("unknown type 0x%.2x (encrypted?)\n", type);
+      dprintf(("unknown type 0x%.2x (encrypted?)\n", type));
       tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
       return 0;
   }
@@ -550,7 +550,7 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
 static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
                                 const uint8_t *buf, const uint8_t *end) {
-  dprintf("change cipher spec\n");
+  dprintf(("change cipher spec\n"));
   (void)hdr;
   (void)end;
   (void)buf;
@@ -605,9 +605,9 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   (void)hdr;
   switch (buf[1]) {
     case ALERT_CLOSE_NOTIFY:
-      dprintf("recieved close notify\n");
+      dprintf(("recieved close notify\n"));
       if (!ssl->close_notify && ssl->state != STATE_CLOSING) {
-        dprintf(" + replying\n");
+        dprintf((" + replying\n"));
         tls_alert(ssl, buf[0], buf[1]);
       }
       ssl->close_notify = 1;
@@ -618,10 +618,10 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
   switch (buf[0]) {
     case ALERT_LEVEL_WARNING:
-      dprintf("alert warning(%u)\n", buf[1]);
+      dprintf(("alert warning(%u)\n", buf[1]));
       break;
     case ALERT_LEVEL_FATAL:
-      dprintf("alert fatal(%u)\n", buf[1]);
+      dprintf(("alert fatal(%u)\n", buf[1]));
     default:
       return 0;
   }
@@ -643,7 +643,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   }
 
   if (len < MD5_SIZE) {
-    dprintf("No room for MAC\n");
+    dprintf(("No room for MAC\n"));
     return 0;
   }
 
@@ -694,7 +694,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   }
 
   if (memcmp(digest, mac, MD5_SIZE)) {
-    dprintf("Bad MAC\n");
+    dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
   }
@@ -719,11 +719,11 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     struct vec v;
 
     if (ssl->close_notify) {
-      dprintf("messages after close_notify??\n");
+      dprintf(("messages after close_notify??\n"));
       break;
     }
     if (ssl->fatal) {
-      dprintf("stopping processing messages due to fatal\n");
+      dprintf(("stopping processing messages due to fatal\n"));
       break;
     }
 
@@ -737,7 +737,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         && hdr->vers != htobe16(0x0301) /* TLS v1.0 */
         && hdr->vers != htobe16(0x0300) /* SSL 3.0 */
         ) {
-      dprintf("bad framing version: 0x%.4x\n", be16toh(hdr->vers));
+      dprintf(("bad framing version: 0x%.4x\n", be16toh(hdr->vers)));
       tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_PROTOCOL_VERSION);
       goto out;
     }
@@ -771,7 +771,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         iret = handle_appdata(ssl, &v, out, out_len);
         break;
       default:
-        dprintf("unknown header type 0x%.2x\n", hdr->type);
+        dprintf(("unknown header type 0x%.2x\n", hdr->type));
         iret = 0;
         break;
     }
@@ -790,7 +790,7 @@ out:
     return ret;
 
   if (buf < end) {
-    dprintf("shuffle buffer down: %zu left\n", end - buf);
+    dprintf(("shuffle buffer down: %zu left\n", end - buf));
     memmove(ssl->rx_buf, buf, end - buf);
     ssl->rx_len = end - buf;
   } else {

@@ -63,13 +63,13 @@ static int parse_pubkey(X509 *cert, const uint8_t *ptr, size_t len) {
         goto bad_key;
       break;
     default:
-      dprintf("Unknown algorithm\n");
+      dprintf(("Unknown algorithm\n"));
       break;
   }
 
   return 1;
 bad_key:
-  dprintf("bad public key in certificate\n");
+  dprintf(("bad public key in certificate\n"));
   return 0;
 }
 
@@ -375,7 +375,7 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   return cert;
 bad_cert:
   X509_free(cert);
-  dprintf("bad certificate\n");
+  dprintf(("bad certificate\n"));
   return NULL;
 }
 

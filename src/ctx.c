@@ -60,7 +60,7 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
 
   /* not implemented */
   if (CAPath) {
-    dprintf("%s: CAPath: Not implemented\n", __func__);
+    dprintf(("%s: CAPath: Not implemented\n", __func__));
   }
   if (NULL == CAfile) {
     /* XXX: SSL_error ?? */
@@ -219,7 +219,7 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   goto out_free_pem;
 
 decode_err:
-  dprintf("%s: RSA private key decode error\n", file);
+  dprintf(("%s: RSA private key decode error\n", file));
 out_free_pem:
   pem_free(pem);
 out:

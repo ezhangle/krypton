@@ -16,7 +16,7 @@ static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
 
   ret = RSA_decrypt(rsa, sig->ptr, buf, sig->len, 0);
   if (ret <= 0) {
-    dprintf("RSA signature check failed\n");
+    dprintf(("RSA signature check failed\n"));
     return 0;
   }
 
@@ -45,7 +45,7 @@ static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
   *dlen = tag.ber_len;
   return 1;
 err:
-  dprintf("Failed to decode signature block\n");
+  dprintf(("Failed to decode signature block\n"));
   return 0;
 }
 
@@ -55,19 +55,19 @@ static int do_verify(X509 *cur, X509 *nxt) {
 again:
 
   if (!cur->is_ca) {
-    dprintf("Not a CA certificate!\n");
+    dprintf(("Not a CA certificate!\n"));
     return 0;
   }
 
   /* TODO: chek expiry date on cur */
 
   if (cur->hash_alg != cur->issuer_hash_alg) {
-    dprintf("hash algorithms don't match\n");
+    dprintf(("hash algorithms don't match\n"));
     return 0;
   }
 
   if ((size_t)RSA_block_size(cur->pub_key) != nxt->sig.len) {
-    dprintf("signature size doesn't match\n");
+    dprintf(("signature size doesn't match\n"));
     return 0;
   }
 
@@ -82,34 +82,34 @@ again:
       expected_len = SHA256_SIZE;
       break;
     default:
-      dprintf("Unsupported hash alg\n");
+      dprintf(("Unsupported hash alg\n"));
       return 0;
   }
 #if DEBUG_VERIFY
-  dprintf("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key),
+  dprintf(("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key)),
           nxt->sig.len);
 #endif
 
   if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len))
     return 0;
 #if DEBUG_VERIFY
-  dprintf("%zu byte digest:\n", digest_len);
+  dprintf(("%zu byte digest:\n", digest_len));
   hex_dump(digest, digest_len, 0);
 #endif
   if (digest_len != expected_len) {
-    dprintf("Bad digest length\n");
+    dprintf(("Bad digest length\n"));
     return 0;
   }
 #if DEBUG_VERIFY
   hex_dump(nxt->digest, digest_len, 0);
 #endif
   if (memcmp(nxt->digest, digest, digest_len)) {
-    dprintf("bad signature\n");
+    dprintf(("bad signature\n"));
     return 0;
   }
 #if DEBUG_VERIFY
-  dprintf("Verified OK\n");
-  dprintf("\n");
+  dprintf(("Verified OK\n"));
+  dprintf(("\n"));
 #endif
 
   /* if not the end of the chain, then tail-recursively check
@@ -119,7 +119,7 @@ again:
     cur = nxt;
     nxt = cur->next;
     if (!x509_issued_by(&cur->subject, &nxt->issuer)) {
-      dprintf("Bad chain\n");
+      dprintf(("Bad chain\n"));
       return 0;
     }
     goto again;
@@ -152,12 +152,12 @@ int X509_verify(X509 *ca_store, X509 *chain) {
 
   anchor = find_anchor(ca_store, chain);
   if (NULL == anchor) {
-    dprintf("vrfy: Cannot find trust anchor\n");
+    dprintf(("vrfy: Cannot find trust anchor\n"));
     return 0;
   }
 
 #if DEBUG_VERIFY
-  dprintf("Verifying to here:\n");
+  dprintf(("Verifying to here:\n"));
   hex_dump(anchor->subject.ptr, anchor->subject.len, 0);
 #endif
 

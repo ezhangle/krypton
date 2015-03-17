@@ -84,12 +84,10 @@ typedef long ssize_t;
 #endif
 
 /* #define KRYPTON_DEBUG 1 */
-#if defined(KRYPTON_DEBUG) && !defined(_MSC_VER)
-#define dprintf(...) printf(__VA_ARGS__)
+#if defined(KRYPTON_DEBUG)
+#define dprintf(x) printf x
 #else
-#define dprintf(...) \
-  do {               \
-  } while (0);
+#define dprintf(x)
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
