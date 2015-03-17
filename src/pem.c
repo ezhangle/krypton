@@ -106,8 +106,12 @@ PEM *pem_load(const char *fn, int type_mask) {
   for (state = cur = 0; fgets(buf, sizeof(buf), f);) {
     char *lf;
 
+    /* Trim trailing whitespaces*/
     lf = strchr(buf, '\n');
-    *lf = '\0';
+    while (lf > buf && isspace(* (unsigned char *) lf)) {
+      *lf-- = '\0';
+    }
+    lf++;
 
     switch (state) {
       case 0: /* begin marker */
