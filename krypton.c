@@ -105,6 +105,9 @@ typedef unsigned long uintptr_t;
 typedef long ssize_t;
 #define __func__ ""
 #define __packed
+#ifndef alloca(x)
+#define alloca(x) _alloca(x)
+#endif
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #endif
@@ -140,11 +143,8 @@ typedef long ssize_t;
 
 #ifndef htobe64
 #if BYTE_ORDER == LITTLE_ENDIAN
-#define htobe64(x) (((uint64_t)htonl((x) & 0xffffffff) << 32) | htonl((x) >> 32))
+#define htobe64(x) (((uint64_t)htonl((x) & 0xffffffff)<<32) | htonl((x)>>32))
 #define xxhtobe64(x) __builtin_bswap64(x)
-#define xhtobe64(x)                                     \
-  ((uint64_t)htonl((uint32_t)(x & 0xffffffff))) >> 32 | \
-      htonl((uint32_t)(x >> 32))
 #else
 #define htobe64
 #endif
@@ -3561,8 +3561,12 @@ PEM *pem_load(const char *fn, int type_mask) {
   for (state = cur = 0; fgets(buf, sizeof(buf), f);) {
     char *lf;
 
+    /* Trim trailing whitespaces*/
     lf = strchr(buf, '\n');
-    *lf = '\0';
+    while (lf > buf && isspace(* (unsigned char *) lf)) {
+      *lf-- = '\0';
+    }
+    lf++;
 
     switch (state) {
       case 0: /* begin marker */

@@ -39,6 +39,9 @@ typedef unsigned long uintptr_t;
 typedef long ssize_t;
 #define __func__ ""
 #define __packed
+#ifndef alloca(x)
+#define alloca(x) _alloca(x)
+#endif
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #endif
