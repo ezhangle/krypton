@@ -111,11 +111,13 @@ typedef long ssize_t;
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #endif
+#define SOCKET_ERRNO WSAGetLastError()
 #pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
 #else
 #include <sys/socket.h>
 #include <stdint.h>
 #define __packed __attribute__((packed))
+#define SOCKET_ERRNO errno
 #endif
 
 #ifndef BYTE_ORDER
@@ -5045,10 +5047,10 @@ again:
   ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
 #endif
   if (ret < 0) {
-    if (errno == EWOULDBLOCK) {
+    if (SOCKET_ERRNO == EWOULDBLOCK) {
       goto shuffle;
     }
-    dprintf(("send: %s\n", strerror(errno)));
+    dprintf(("send: %s\n", strerror(SOCKET_ERRNO)));
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     ssl->tx_len = 0;
     ssl->write_pending = 0;
@@ -5124,8 +5126,9 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 #endif
 
   ret = recv(ssl->fd, ptr, len, MSG_NOSIGNAL);
+  /*dprintf(("recv(%d, %p, %d): %d %d\n", ssl->fd, ptr, (int) len, (int) ret, errno));*/
   if (ret < 0) {
-    if (errno == EAGAIN) {
+    if (SOCKET_ERRNO == EWOULDBLOCK) {
       ssl_err(ssl, SSL_ERROR_WANT_READ);
       return 0;
     }
@@ -5340,7 +5343,7 @@ int SSL_read(SSL *ssl, void *buf, int num) {
     }
 
     if (!do_recv(ssl, buf, num)) {
-      return -1;
+      return ssl->err == SSL_ERROR_ZERO_RETURN ? 0 : -1;
     }
   }
 
@@ -5349,6 +5352,7 @@ int SSL_read(SSL *ssl, void *buf, int num) {
 }
 
 int SSL_write(SSL *ssl, const void *buf, int num) {
+  int res = num;
   if (ssl->fatal) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return -1;
@@ -5376,7 +5380,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
    * his mind after a WANT_READ or a WANT_WRITE.
   */
   if (!ssl->write_pending) {
-    if (tls_write(ssl, buf, num) <= 0) {
+    if ((res = tls_write(ssl, buf, num)) <= 0) {
       return -1;
     }
     ssl->write_pending = 1;
@@ -5385,7 +5389,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
     return -1;
 
   ssl_err(ssl, SSL_ERROR_NONE);
-  return num;
+  return res;
 }
 
 int SSL_get_error(const SSL *ssl, int ret) {
@@ -5587,7 +5591,7 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
     size_t new_len;
     void *new;
 
-    new_len = ssl->tx_max_len + 1024;
+    new_len = ssl->tx_max_len + (len < 512 ? 512 : len);
     new = realloc(ssl->tx_buf, new_len);
     if (NULL == new) {
       /* or block? */
@@ -5610,14 +5614,11 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   struct tls_hmac_hdr phdr;
   uint8_t digest[MD5_SIZE];
   size_t buf_ofs;
-  size_t mac_len;
+  size_t mac_len = ssl->tx_enc ? MD5_SIZE : 0, max = (1 << 14) - MD5_SIZE;
 
-  if (ssl->tx_enc)
-    mac_len = MD5_SIZE;
-  else
-    mac_len = 0;
-
-  assert(len < (1 << 14));
+  if (len > max) {
+    len = max;
+  }
 
   hdr.type = type;
   hdr.vers = htobe16(0x0303);
@@ -5675,14 +5676,13 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
     }
   }
 
-  return 1;
+  return len;
 }
 
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
   /* FIXME: break up in to max-sized packets */
-  if (!tls_send(ssl, TLS_APP_DATA, buf, sz))
-    return -1;
-  return sz;
+  int res = tls_send(ssl, TLS_APP_DATA, buf, sz);
+  return res == 0 ? -1 : res;
 }
 
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {

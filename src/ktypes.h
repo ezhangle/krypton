@@ -45,11 +45,13 @@ typedef long ssize_t;
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #endif
+#define SOCKET_ERRNO WSAGetLastError()
 #pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
 #else
 #include <sys/socket.h>
 #include <stdint.h>
 #define __packed __attribute__((packed))
+#define SOCKET_ERRNO errno
 #endif
 
 #ifndef BYTE_ORDER
