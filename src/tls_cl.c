@@ -12,6 +12,7 @@
 
 NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   struct tls_cl_hello hello;
+  unsigned int i = 0;
 
   /* hello */
   hello.type = HANDSHAKE_CLIENT_HELLO;
@@ -26,15 +27,25 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.sess_id_len = 0;
   hello.cipher_suites_len =
       htobe16((NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1) * 2);
+
+  /* ciphers listed in preference order */
 #if ALLOW_NULL_CIPHERS
   /* if we allow them, it's for testing reasons, so NULL comes first */
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_NULL_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[2] = htobe16(CIPHER_EMPTY_RENEG_EXT);
-#else
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_NULL_MD5);
 #endif
+#if WITH_AEAD_CIPHERS
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_AES128_GCM);
+#endif
+#if ALLOW_RC4_CIPHERS
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_RC4_SHA1);
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_RC4_MD5);
+#endif
+
+  /* apart from this one which is a signalling-value for the renegotiation
+   * extension and must come after legit cipher suites
+  */
+  hello.cipher_suite[i++] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+
   hello.num_compressors = 1;
   hello.compressor[0] = 0;
   hello.ext_len = htobe16(sizeof(hello.ext_reneg));
@@ -96,24 +107,20 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
     return 0;
 
-  if (ssl->cur) {
-    tls_free_security(ssl->cur);
-  }
-  ssl->cur = ssl->nxt;
-  ssl->nxt = NULL;
-  ssl->tx_enc = 1;
-
   /* finished */
   finished.type = HANDSHAKE_FINISHED;
   finished.len_hi = 0;
   finished.len = htobe16(sizeof(finished.vrfy));
   memset(finished.vrfy, 0, sizeof(finished.vrfy));
-  tls_generate_client_finished(ssl->cur, finished.vrfy, sizeof(finished.vrfy));
+  tls_generate_client_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
+
+  tls_client_cipher_spec(ssl->nxt, &ssl->tx_ctx);
+  ssl->tx_enc = 1;
 
   if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished)))
     return 0;
 
-  SHA256_Update(&ssl->cur->handshakes_hash, ((uint8_t *)&finished),
+  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&finished),
                 sizeof(finished));
 
   return 1;

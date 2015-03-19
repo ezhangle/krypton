@@ -13,10 +13,7 @@ typedef struct tls_security {
    * client_write_key
    * server_write_key
   */
-  uint8_t keys[MD5_SIZE * 2 + RC4_KEY_SIZE * 2];
-
-  uint64_t client_write_seq;
-  uint64_t server_write_seq;
+  uint8_t keys[MAX_KEYMAT_LEN];
 
   uint16_t cipher_suite;
   uint16_t peer_vers;
@@ -24,16 +21,15 @@ typedef struct tls_security {
 
   uint8_t cipher_negotiated : 1;
   uint8_t compressor_negotiated : 1;
-  uint8_t bitpad : 6;
+  uint8_t server_write_pending : 1;
+  uint8_t client_write_pending : 1;
+  uint8_t bitpad : 4;
 
   RSA_CTX *svr_key;
 
   uint8_t master_secret[48];
   struct tls_random cl_rnd;
   struct tls_random sv_rnd;
-
-  RC4_CTX server_write_ctx;
-  RC4_CTX client_write_ctx;
 
   SHA256_CTX handshakes_hash;
 } * tls_sec_t;
@@ -49,6 +45,9 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
+
+NS_INTERNAL void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
+NS_INTERNAL void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);

@@ -16,7 +16,7 @@ options:
      OpenSSL:  cc app.c -lssl -lcrypto
      Krypton:  cc app.c krypton.c
 
-If you're not using OpenSSL and OpenSSL headers are not installed on you're
+If you're not using OpenSSL and OpenSSL headers are not installed on your
 workstation, just copy over `openssl` directory to your build as well.
 
 ## Supported API
@@ -47,8 +47,6 @@ several optimisations and code cleanups possible.
 For example:
 
   - if not verifying, don't bother hashing servers cert
-  - make security struct be temporary
-  - assigned read/write keys/state in to main ssl struct
   - if a packet is too big for recieve buffer, peek its size for buf realloc
   - strip handshake header in handle_handshake(), would reduce code size
 
@@ -65,31 +63,16 @@ Not supported. This wouldn't be too difficult to support:
   - debug with s_client renegotiation
 
 
-## Implementing more secure cipher modes
-
-RC4 is being phased out. The best bet for a new cipher that will ensure forward
-compatibility is probably AES in CBC mode. This would require generating IV's
-from the master secret and implementing padding and CBC. However, CBC mode may
-be phased out in favour of GCM or AEAD modes. The block cipher mode
-implementations are probably the most complex parts of such an upgrade.
-
-More secure HMAC functions are pretty trivial to add. X509 already requires
-SHA1 and TLS1.2 already requires SHA256. It's just a matter of wiring up the
-relevant cipher spec ID's.
-
-More secure key exchange protocols such as Diffie-Hellman with ECDSA would be
-rather complex to add.
-
 ## Limitations
 
-It supports only TLSv1.2 and only one cipher suite (RSA-RC4-MD5) in
-both blocking and non-blocking socket modes.
-Renegotiation, more secure cipher suites, CRL's,
-OCSP stapling, session ticketing, client certificates, and other advanced
-features are not supported.
+It supports only TLSv1.2 and only one good cipher suite
+(TLS\_RSA\_WITH\_AES\_128\_GCM\_SHA256) in both blocking and non-blocking
+socket modes.
+Perfect forward secrecy, renegotiation, CRL's, OCSP stapling, session
+ticketing, client certificates, and other advanced features are not supported.
 
 The `SSL_read()` buffer must always be big enough.
-If a large appdata packet is recieved and the buffer passed to SSL_read() doesn't have space for it, then some data will be discarded.
+If a large appdata packet is recieved and the buffer passed to SSL\_read() doesn't have space for it, then some data will be discarded.
 
 Some high bits of 3-byte length fields are ignored, which could mean we fail to
 parse some messages over 64KiB in length. For example, huge certificate chains.
@@ -101,7 +84,7 @@ could lead to unexpected, possibly exploitable, conditions.
 Some timing attacks are not worked around, but there are defences against
 Bleichenbacher attacks. No key material is ever scrubbed from memory. The RC4
 cipher is weak. Although the MD5 hash is weak, there are currently no known
-practical attacks when it is used in the HMAC configuration.
+practical attacks when it is used in the HMAC construction.
 
 # Contributions
 

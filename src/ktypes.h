@@ -113,67 +113,16 @@ struct x509_store_ctx_st {
   int dummy;
 };
 
-struct ssl_method_st {
-  uint8_t sv_undefined : 1;
-  uint8_t cl_undefined : 1;
-};
+typedef struct _bigint bigint; /**< An alias for _bigint */
 
-struct ssl_ctx_st {
-  X509 *ca_store;
-  PEM *pem_cert;
-  RSA_CTX *rsa_privkey;
-  uint8_t mode;
-  uint8_t vrfy_mode;
-  struct ssl_method_st meth;
-};
-
-#define STATE_INITIAL 0
-#define STATE_CL_HELLO_SENT 1
-#define STATE_CL_HELLO_WAIT 2
-#define STATE_CL_HELLO_RCVD 3
-#define STATE_SV_HELLO_SENT 4
-#define STATE_SV_HELLO_RCVD 5
-#define STATE_SV_CERT_RCVD 6
-#define STATE_SV_DONE_RCVD 7
-#define STATE_CLIENT_FINISHED 8
-#define STATE_ESTABLISHED 9
-#define STATE_CLOSING 10
-
-struct ssl_st {
-  struct ssl_ctx_st *ctx;
-
-  struct tls_security *cur;
-  struct tls_security *nxt;
-
-/* rcv buffer: can be 16bit lens? */
-#define RX_INITIAL_BUF 1024
-  uint8_t *rx_buf;
-  uint32_t rx_len;
-  uint32_t rx_max_len;
-
-  uint8_t *tx_buf;
-  uint32_t tx_len;
-  uint32_t tx_max_len;
-
-  int fd;
-  int err;
-
-  /* for handling appdata recvs */
-  unsigned int copied;
-
-  uint8_t state;
-
-  uint8_t vrfy_result;
-
-  uint8_t mode_defined : 1;
-  uint8_t is_server : 1;
-  uint8_t got_appdata : 1;
-  uint8_t tx_enc : 1;
-  uint8_t rx_enc : 1;
-  uint8_t close_notify : 1;
-  uint8_t fatal : 1;
-  uint8_t write_pending : 1;
-};
+#include "../openssl/ssl.h"
+#include "bigint_impl.h"
+#include "bigint.h"
+#include "tlsproto.h"
+#include "crypto.h"
+#include "tls.h"
+#include "pem.h"
+#include "x509.h"
 
 NS_INTERNAL void ssl_err(struct ssl_st *ssl, int err);
 
@@ -185,17 +134,7 @@ NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #define hex_dump(a, b, c) do {} while(0);
 #endif
 
-typedef struct _bigint bigint; /**< An alias for _bigint */
-
-#include "bigint_impl.h"
-#include "bigint.h"
-#include "crypto.h"
-#include "pem.h"
+#include "ssl.h"
 #include "ber.h"
-#include "../openssl/ssl.h"
-#include "tlsproto.h"
-#include "tls.h"
-#include "ber.h"
-#include "x509.h"
 
 #endif /* _KTYPES_H */

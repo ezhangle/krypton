@@ -204,7 +204,7 @@ static void aes_gcm_prepare_y0(const uint8_t *iv, size_t iv_len, const uint8_t *
 {
 	uint8_t len_buf[16];
 
-	if (iv_len == 12) {
+	if (iv_len == GCM_IV_SIZE) {
 		/* Prepare block Y_0 = IV || 0^31 || 1 [len(IV) = 96] */
 		memcpy(Y0, iv, iv_len);
 		memset(Y0 + iv_len, 0, AES_BLOCKSIZE - iv_len);
@@ -257,11 +257,9 @@ static void aes_gcm_ghash(const uint8_t *H, const uint8_t *aad, size_t aad_len,
 }
 
 void aes_gcm_ctx(AES_GCM_CTX *ctx,
-               const uint8_t *key, size_t key_len,
-               const uint8_t *iv, size_t iv_len)
+               const uint8_t *key, size_t key_len)
 {
 	aes_gcm_init_hash_subkey(&ctx->aes, key, key_len, ctx->H);
-	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
 }
 
 /**
@@ -269,10 +267,13 @@ void aes_gcm_ctx(AES_GCM_CTX *ctx,
  */
 void aes_gcm_ae(AES_GCM_CTX *ctx,
                 const uint8_t *plain, size_t plain_len,
+                const uint8_t *iv, size_t iv_len,
                 const uint8_t *aad, size_t aad_len,
                 uint8_t *crypt, uint8_t *tag)
 {
 	uint8_t S[16];
+
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
 
 	/* C = GCTR_K(inc_32(Y_0), P) */
 	aes_gcm_gctr(&ctx->aes, ctx->Y0, plain, plain_len, crypt);
@@ -290,10 +291,13 @@ void aes_gcm_ae(AES_GCM_CTX *ctx,
  */
 int aes_gcm_ad(AES_GCM_CTX *ctx,
                const uint8_t *crypt, size_t crypt_len,
+               const uint8_t *iv, size_t iv_len,
                const uint8_t *aad, size_t aad_len,
                const uint8_t *tag, uint8_t *plain)
 {
 	uint8_t S[16], T[16];
+
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
 
 	/* P = GCTR_K(inc_32(Y_0), C) */
 	aes_gcm_gctr(&ctx->aes, ctx->Y0, crypt, crypt_len, plain);

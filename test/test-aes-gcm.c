@@ -14,7 +14,6 @@
 #include <errno.h>
 
 #include "ktypes.h"
-#include "crypto.h"
 
 struct test_vec {
   const void *key;
@@ -43,10 +42,11 @@ static int test_vector(const struct test_vec *v)
   memset(cipher, 0, sizeof(cipher));
   memset(tag, 0, sizeof(tag));
 
-  aes_gcm_ctx(&ctx, v->key, v->key_len, v->iv, v->iv_len);
+  aes_gcm_ctx(&ctx, v->key, v->key_len);
 
   aes_gcm_ae(&ctx,
              v->plain, v->plain_len,
+             v->iv, v->iv_len,
              v->aad, v->aad_len,
              cipher, tag);
 
@@ -65,6 +65,7 @@ static int test_vector(const struct test_vec *v)
 
   if ( !aes_gcm_ad(&ctx,
              cipher, v->plain_len,
+             v->iv, v->iv_len,
              v->aad, v->aad_len,
              tag, plain) ) {
     printf("Reverse tag check failed\n");

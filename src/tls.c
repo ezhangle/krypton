@@ -5,7 +5,7 @@
 
 #include "ktypes.h"
 
-NS_INTERNAL tls_sec_t tls_new_security(void) {
+tls_sec_t tls_new_security(void) {
   struct tls_security *sec;
 
   sec = calloc(1, sizeof(*sec));
@@ -17,14 +17,14 @@ NS_INTERNAL tls_sec_t tls_new_security(void) {
   return sec;
 }
 
-NS_INTERNAL void tls_free_security(tls_sec_t sec) {
+void tls_free_security(tls_sec_t sec) {
   if (sec) {
     RSA_free(sec->svr_key);
     free(sec);
   }
 }
 
-NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
+void tls_compute_master_secret(tls_sec_t sec,
                                            struct tls_premaster_secret *pre) {
   uint8_t buf[13 + sizeof(sec->cl_rnd) + sizeof(sec->sv_rnd)];
 
@@ -42,7 +42,7 @@ NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
 #endif
 }
 
-NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
+int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   uint8_t check[12];
@@ -62,7 +62,7 @@ NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
   return !memcmp(check, vrfy, sizeof(check));
 }
 
-NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
+int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   uint8_t check[12];
@@ -82,7 +82,7 @@ NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
   return !memcmp(check, vrfy, vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
+void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
                                               size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   SHA256_CTX tmp_hash;
@@ -97,7 +97,7 @@ NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
       vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
+void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
                                               size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   SHA256_CTX tmp_hash;
@@ -112,7 +112,7 @@ NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
       vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
+void tls_generate_keys(tls_sec_t sec) {
   uint8_t buf[13 + sizeof(sec->cl_rnd) + sizeof(sec->sv_rnd)];
 
   memcpy(buf, "key expansion", 13);
@@ -120,13 +120,31 @@ NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
   memcpy(buf + 13 + sizeof(sec->sv_rnd), &sec->cl_rnd, sizeof(sec->cl_rnd));
 
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf),
-      sec->keys, sizeof(sec->keys));
+      sec->keys, suite_key_mat_len(sec->cipher_suite));
 
-  RC4_setup(&sec->client_write_ctx, sec->keys + 32, 16);
-  RC4_setup(&sec->server_write_ctx, sec->keys + 48, 16);
+  sec->server_write_pending = 1;
+  sec->client_write_pending = 1;
 }
 
-NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
+void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+{
+  assert(sec->client_write_pending);
+  ctx->cipher_suite = sec->cipher_suite;
+  ctx->seq = 0;
+  suite_init(ctx, sec->keys, 1);
+  sec->client_write_pending = 0;
+}
+
+void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+{
+  assert(sec->server_write_pending);
+  ctx->cipher_suite = sec->cipher_suite;
+  ctx->seq = 0;
+  suite_init(ctx, sec->keys, 0);
+  sec->server_write_pending = 0;
+}
+
+int tls_tx_push(SSL *ssl, const void *data, size_t len) {
   if (ssl->tx_len + len > ssl->tx_max_len) {
     size_t new_len;
     void *new;
@@ -143,89 +161,64 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
     ssl->tx_max_len = new_len;
   }
 
-  memcpy(ssl->tx_buf + ssl->tx_len, data, len);
+  /* if data is NULL, then just 'assure' the buffer space so the caller
+   * can copy in to it directly. Useful for encryption.
+  */
+  if ( data )
+    memcpy(ssl->tx_buf + ssl->tx_len, data, len);
+
   ssl->tx_len += len;
 
   return 1;
 }
 
-NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
+int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   struct tls_hdr hdr;
-  struct tls_hmac_hdr phdr;
-  uint8_t digest[MD5_SIZE];
-  size_t buf_ofs;
-  size_t mac_len = ssl->tx_enc ? MD5_SIZE : 0, max = (1 << 14) - MD5_SIZE;
+  size_t max;
+  size_t mac_len;
+  size_t exp_len;
 
-  if (len > max) {
-    len = max;
+  if (ssl->tx_enc) {
+    mac_len = suite_mac_len(ssl->tx_ctx.cipher_suite);
+    exp_len = suite_expansion(ssl->tx_ctx.cipher_suite);
+  }else{
+    mac_len = 0;
+    exp_len = 0;
   }
+
+  max = (1 << 14) - (mac_len + exp_len);
+  if ( len > max )
+    len = max - (mac_len + exp_len);
 
   hdr.type = type;
   hdr.vers = htobe16(0x0303);
-  hdr.len = htobe16(len + mac_len);
+  hdr.len = htobe16(len + exp_len + mac_len);
 
   if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
     return 0;
 
-  buf_ofs = ssl->tx_len;
-  if (!tls_tx_push(ssl, buf, len))
-    return 0;
-
-  if (ssl->tx_enc) {
-    if (ssl->is_server) {
-      phdr.seq = htobe64(ssl->cur->server_write_seq);
-    } else {
-      phdr.seq = htobe64(ssl->cur->client_write_seq);
-    }
-    phdr.type = hdr.type;
-    phdr.vers = hdr.vers;
-    phdr.len = htobe16(len);
-    if (ssl->is_server) {
-      hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *)&phdr,
-               sizeof(phdr), buf, len, digest);
-    } else {
-      hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *)&phdr, sizeof(phdr), buf,
-               len, digest);
-    }
-
-    if (!tls_tx_push(ssl, digest, sizeof(digest)))
+  if ( ssl->tx_enc ) {
+    size_t buf_ofs;
+    buf_ofs = ssl->tx_len;
+    if (!tls_tx_push(ssl, NULL, len + exp_len + mac_len))
       return 0;
 
-    if (ssl->is_server) {
-      ssl->cur->server_write_seq++;
-    } else {
-      ssl->cur->client_write_seq++;
-    }
-
-    switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-      case CIPHER_TLS_NULL_MD5:
-        break;
-#endif
-      case CIPHER_TLS_RC4_MD5:
-        if (ssl->is_server) {
-          RC4_crypt(&ssl->cur->server_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        } else {
-          RC4_crypt(&ssl->cur->client_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        }
-        break;
-      default:
-        abort();
-    }
+    suite_box(&ssl->tx_ctx, &hdr, buf, len, ssl->tx_buf + buf_ofs);
+  }else{
+    if (!tls_tx_push(ssl, buf, len))
+      return 0;
   }
 
   return len;
 }
 
-NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
+ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
   /* FIXME: break up in to max-sized packets */
   int res = tls_send(ssl, TLS_APP_DATA, buf, sz);
   return res == 0 ? -1 : res;
 }
 
-NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
+int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   struct tls_alert alert;
   if (ssl->fatal)
     return 1;
@@ -236,6 +229,6 @@ NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   return tls_send(ssl, TLS_ALERT, &alert, sizeof(alert));
 }
 
-NS_INTERNAL int tls_close_notify(SSL *ssl) {
+int tls_close_notify(SSL *ssl) {
   return tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_CLOSE_NOTIFY);
 }

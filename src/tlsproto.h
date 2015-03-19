@@ -6,11 +6,17 @@
 #ifndef _TLSPROTO_H
 #define _TLSPROTO_H
 
-/* set to number of null ciphers */
-#define ALLOW_NULL_CIPHERS 0
+/* set to number of null cipher suites */
+#define ALLOW_NULL_CIPHERS  0
+
+/* set to number of RC4 cipher suites */
+#define ALLOW_RC4_CIPHERS   2
+
+/* set to number of AEAD cipher suites */
+#define WITH_AEAD_CIPHERS   1
 
 /* just count non-NULL ciphers */
-#define NUM_CIPHER_SUITES 1
+#define NUM_CIPHER_SUITES (ALLOW_RC4_CIPHERS + WITH_AEAD_CIPHERS)
 
 #define NUM_COMPRESSORS 1
 
@@ -163,6 +169,8 @@ struct tls_alert {
 
 #define CIPHER_TLS_NULL_MD5 0x0001
 #define CIPHER_TLS_RC4_MD5 0x0004
+#define CIPHER_TLS_RC4_SHA1 0x0005
+#define CIPHER_TLS_AES128_GCM 0x009c
 #define CIPHER_EMPTY_RENEG_EXT 0x00ff
 
 #define COMPRESSOR_NULL 0x00

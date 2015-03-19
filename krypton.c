@@ -179,67 +179,8 @@ struct x509_store_ctx_st {
   int dummy;
 };
 
-struct ssl_method_st {
-  uint8_t sv_undefined : 1;
-  uint8_t cl_undefined : 1;
-};
+typedef struct _bigint bigint; /**< An alias for _bigint */
 
-struct ssl_ctx_st {
-  X509 *ca_store;
-  PEM *pem_cert;
-  RSA_CTX *rsa_privkey;
-  uint8_t mode;
-  uint8_t vrfy_mode;
-  struct ssl_method_st meth;
-};
-
-#define STATE_INITIAL 0
-#define STATE_CL_HELLO_SENT 1
-#define STATE_CL_HELLO_WAIT 2
-#define STATE_CL_HELLO_RCVD 3
-#define STATE_SV_HELLO_SENT 4
-#define STATE_SV_HELLO_RCVD 5
-#define STATE_SV_CERT_RCVD 6
-#define STATE_SV_DONE_RCVD 7
-#define STATE_CLIENT_FINISHED 8
-#define STATE_ESTABLISHED 9
-#define STATE_CLOSING 10
-
-struct ssl_st {
-  struct ssl_ctx_st *ctx;
-
-  struct tls_security *cur;
-  struct tls_security *nxt;
-
-/* rcv buffer: can be 16bit lens? */
-#define RX_INITIAL_BUF 1024
-  uint8_t *rx_buf;
-  uint32_t rx_len;
-  uint32_t rx_max_len;
-
-  uint8_t *tx_buf;
-  uint32_t tx_len;
-  uint32_t tx_max_len;
-
-  int fd;
-  int err;
-
-  /* for handling appdata recvs */
-  unsigned int copied;
-
-  uint8_t state;
-
-  uint8_t vrfy_result;
-
-  uint8_t mode_defined : 1;
-  uint8_t is_server : 1;
-  uint8_t got_appdata : 1;
-  uint8_t tx_enc : 1;
-  uint8_t rx_enc : 1;
-  uint8_t close_notify : 1;
-  uint8_t fatal : 1;
-  uint8_t write_pending : 1;
-};
 
 NS_INTERNAL void ssl_err(struct ssl_st *ssl, int err);
 
@@ -250,8 +191,6 @@ NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 #define hex_dumpf(f, a, b, c) do {} while(0);
 #define hex_dump(a, b, c) do {} while(0);
 #endif
-
-typedef struct _bigint bigint; /**< An alias for _bigint */
 
 
 #endif /* _KTYPES_H */
@@ -495,168 +434,20 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
  * All rights reserved
  */
 
-#ifndef _CRYPTO_H
-#define _CRYPTO_H
-
-NS_INTERNAL int get_random(uint8_t *out, size_t len);
-NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
-
-/* axTLS crypto functions, see C files for copyright info */
-typedef struct _SHA256_CTX SHA256_CTX;
-
-NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
-                     int seed_len, uint8_t *out, int olen);
-
-/* SHA256 */
-#define SHA256_SIZE 32
-#define SHA256_BLOCK_LENGTH 64
-struct _SHA256_CTX {
-  uint32_t state[8];
-  uint64_t bitcount;
-  uint8_t buffer[SHA256_BLOCK_LENGTH];
-};
-
-NS_INTERNAL void SHA256_Init(SHA256_CTX *c);
-NS_INTERNAL void SHA256_Update(SHA256_CTX *, const uint8_t *input, size_t len);
-NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
-
-/* SHA1 */
-#define SHA1_SIZE 20
-typedef struct {
-  uint64_t size;
-  unsigned int H[5];
-  unsigned int W[16];
-} SHA_CTX;
-
-NS_INTERNAL void SHA1_Init(SHA_CTX *ctx);
-NS_INTERNAL void SHA1_Update(SHA_CTX *ctx, const void *in, unsigned long len);
-NS_INTERNAL void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx);
-
-/* MD5 */
-#define MD5_SIZE 16
-typedef struct {
-  uint32_t state[4];  /* state (ABCD) */
-  uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
-  uint8_t buffer[64]; /* input buffer */
-} MD5_CTX;
-
-NS_INTERNAL void MD5_Init(MD5_CTX *);
-NS_INTERNAL void MD5_Update(MD5_CTX *, const uint8_t *msg, int len);
-NS_INTERNAL void MD5_Final(uint8_t *digest, MD5_CTX *);
-
-#define MAX_DIGEST_SIZE SHA256_SIZE
-
-/* RC4 */
-#define RC4_KEY_SIZE 16
-typedef struct {
-  uint8_t x, y;
-  uint8_t m[256];
-} RC4_CTX;
-
-NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
-NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
-                           int length);
-
-/* AES */
-#define AES_MAXROUNDS 14
-#define AES_BLOCKSIZE 16
-#define AES_IV_SIZE 16
-
-typedef struct aes_key_st
-{
-    uint16_t rounds;
-    uint16_t key_size;
-    uint32_t ks[(AES_MAXROUNDS+1)*8];
-} AES_CTX;
-
-typedef enum
-{
-    AES_MODE_128,
-    AES_MODE_256
-} AES_MODE;
-
-NS_INTERNAL void AES_set_key(AES_CTX *ctx, const uint8_t *key, AES_MODE mode);
-NS_INTERNAL void AES_ecb_encrypt(AES_CTX *ctx, const uint8_t *in, uint8_t *out);
-
-#if 0
-NS_INTERNAL void AES_cbc_encrypt(AES_CTX *ctx, uint8_t iv[AES_IV_SIZE],
-        const uint8_t *msg,
-        uint8_t *out, int length);
-NS_INTERNAL void AES_cbc_decrypt(AES_CTX *ks, uint8_t iv[AES_IV_SIZE],
-        const uint8_t *in,
-        uint8_t *out, int length);
-NS_INTERNAL void AES_convert_key(AES_CTX *ctx);
-#endif
-
-/* GCM */
-typedef struct aes_gcm_st {
-  AES_CTX aes;
-  uint8_t H[AES_BLOCKSIZE];
-  uint8_t Y0[AES_BLOCKSIZE];
-} AES_GCM_CTX;
-
-NS_INTERNAL void aes_gcm_ctx(AES_GCM_CTX *ctx,
-               const uint8_t *key, size_t key_len,
-               const uint8_t *iv, size_t iv_len);
-NS_INTERNAL void aes_gcm_ae(AES_GCM_CTX *ctx,
-               const uint8_t *plain, size_t plain_len,
-               const uint8_t *aad, size_t aad_len,
-               uint8_t *crypt, uint8_t *tag);
-NS_INTERNAL int aes_gcm_ad(AES_GCM_CTX *ctx,
-               const uint8_t *crypt, size_t crypt_len,
-               const uint8_t *aad, size_t aad_len,
-               const uint8_t *tag, uint8_t *plain);
-
-/* HMAC */
-NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
-                             int key_len, uint8_t *digest);
-NS_INTERNAL void hmac_md5(const uint8_t *key, size_t key_len,
-                          const uint8_t *msg, size_t msg_len,
-                          const uint8_t *msg2, size_t msg2_len,
-                          uint8_t *digest);
-
-/* RSA */
-NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
-                                  int mod_len, const uint8_t *pub_exp,
-                                  int pub_len, const uint8_t *priv_exp,
-                                  int priv_len, const uint8_t *p, int p_len,
-                                  const uint8_t *q, int q_len,
-                                  const uint8_t *dP, int dP_len,
-                                  const uint8_t *dQ, int dQ_len,
-                                  const uint8_t *qInv, int qInv_len);
-NS_INTERNAL void RSA_pub_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
-                                 int mod_len, const uint8_t *pub_exp,
-                                 int pub_len);
-NS_INTERNAL void RSA_free(RSA_CTX *ctx);
-NS_INTERNAL int RSA_decrypt(const RSA_CTX *ctx, const uint8_t *in_data,
-                            uint8_t *out_data, int out_len, int is_decryption);
-NS_INTERNAL bigint *RSA_private(const RSA_CTX *c, bigint *bi_msg);
-NS_INTERNAL int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data,
-                            uint16_t in_len, uint8_t *out_data, int is_signing);
-NS_INTERNAL bigint *RSA_public(const RSA_CTX *c, bigint *bi_msg);
-NS_INTERNAL int RSA_block_size(RSA_CTX *ctx);
-#if defined(CONFIG_SSL_CERT_VERIFICATION) || \
-    defined(CONFIG_SSL_GENERATE_X509_CERT)
-NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx, const uint8_t *sig,
-                                    int sig_len, bigint *modulus,
-                                    bigint *pub_exp);
-NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
-#endif
-
-#endif /* _CRYPTO_H */
-/*
- * Copyright (c) 2015 Cesanta Software Limited
- * All rights reserved
- */
-
 #ifndef _TLSPROTO_H
 #define _TLSPROTO_H
 
-/* set to number of null ciphers */
-#define ALLOW_NULL_CIPHERS 0
+/* set to number of null cipher suites */
+#define ALLOW_NULL_CIPHERS  0
+
+/* set to number of RC4 cipher suites */
+#define ALLOW_RC4_CIPHERS   2
+
+/* set to number of AEAD cipher suites */
+#define WITH_AEAD_CIPHERS   1
 
 /* just count non-NULL ciphers */
-#define NUM_CIPHER_SUITES 1
+#define NUM_CIPHER_SUITES (ALLOW_RC4_CIPHERS + WITH_AEAD_CIPHERS)
 
 #define NUM_COMPRESSORS 1
 
@@ -809,6 +600,459 @@ struct tls_alert {
 
 #define CIPHER_TLS_NULL_MD5 0x0001
 #define CIPHER_TLS_RC4_MD5 0x0004
+#define CIPHER_TLS_RC4_SHA1 0x0005
+#define CIPHER_TLS_AES128_GCM 0x009c
+#define CIPHER_EMPTY_RENEG_EXT 0x00ff
+
+#define COMPRESSOR_NULL 0x00
+
+#endif /* _TLSPROTO_H */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+#ifndef _CRYPTO_H
+#define _CRYPTO_H
+
+NS_INTERNAL int get_random(uint8_t *out, size_t len);
+NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
+
+/* axTLS crypto functions, see C files for copyright info */
+typedef struct _SHA256_CTX SHA256_CTX;
+
+NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
+                     int seed_len, uint8_t *out, int olen);
+
+/* SHA256 */
+#define SHA256_SIZE 32
+#define SHA256_BLOCK_LENGTH 64
+struct _SHA256_CTX {
+  uint32_t state[8];
+  uint64_t bitcount;
+  uint8_t buffer[SHA256_BLOCK_LENGTH];
+};
+
+NS_INTERNAL void SHA256_Init(SHA256_CTX *c);
+NS_INTERNAL void SHA256_Update(SHA256_CTX *, const uint8_t *input, size_t len);
+NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
+
+/* SHA1 */
+#define SHA1_SIZE 20
+typedef struct {
+  uint64_t size;
+  unsigned int H[5];
+  unsigned int W[16];
+} SHA_CTX;
+
+NS_INTERNAL void SHA1_Init(SHA_CTX *ctx);
+NS_INTERNAL void SHA1_Update(SHA_CTX *ctx, const void *in, unsigned long len);
+NS_INTERNAL void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx);
+
+/* MD5 */
+#define MD5_SIZE 16
+typedef struct {
+  uint32_t state[4];  /* state (ABCD) */
+  uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
+  uint8_t buffer[64]; /* input buffer */
+} MD5_CTX;
+
+NS_INTERNAL void MD5_Init(MD5_CTX *);
+NS_INTERNAL void MD5_Update(MD5_CTX *, const uint8_t *msg, int len);
+NS_INTERNAL void MD5_Final(uint8_t *digest, MD5_CTX *);
+
+/* RC4 */
+#define RC4_KEY_SIZE 16
+typedef struct {
+  uint8_t x, y;
+  uint8_t m[256];
+} RC4_CTX;
+
+NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
+NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
+                           int length);
+
+/* AES */
+#define AES_MAXROUNDS 14
+#define AES_BLOCKSIZE 16
+#define AES_IV_SIZE 16
+
+typedef struct aes_key_st
+{
+    uint16_t rounds;
+    uint16_t key_size;
+    uint32_t ks[(AES_MAXROUNDS+1)*8];
+} AES_CTX;
+
+typedef enum
+{
+    AES_MODE_128,
+    AES_MODE_256
+} AES_MODE;
+
+NS_INTERNAL void AES_set_key(AES_CTX *ctx, const uint8_t *key, AES_MODE mode);
+NS_INTERNAL void AES_ecb_encrypt(AES_CTX *ctx, const uint8_t *in, uint8_t *out);
+
+#if 0
+NS_INTERNAL void AES_cbc_encrypt(AES_CTX *ctx, uint8_t iv[AES_IV_SIZE],
+        const uint8_t *msg,
+        uint8_t *out, int length);
+NS_INTERNAL void AES_cbc_decrypt(AES_CTX *ks, uint8_t iv[AES_IV_SIZE],
+        const uint8_t *in,
+        uint8_t *out, int length);
+NS_INTERNAL void AES_convert_key(AES_CTX *ctx);
+#endif
+
+/* GCM */
+#define GCM_IV_SIZE 12
+#define AES_GCM_IV_KEY_MAT 4 /* GCMNonce.salt */
+typedef struct aes_gcm_st {
+  AES_CTX aes;
+  uint8_t H[AES_BLOCKSIZE];
+  uint8_t Y0[AES_BLOCKSIZE];
+} AES_GCM_CTX;
+
+NS_INTERNAL void aes_gcm_ctx(AES_GCM_CTX *ctx,
+               const uint8_t *key, size_t key_len);
+NS_INTERNAL void aes_gcm_ae(AES_GCM_CTX *ctx,
+               const uint8_t *plain, size_t plain_len,
+               const uint8_t *iv, size_t iv_len,
+               const uint8_t *aad, size_t aad_len,
+               uint8_t *crypt, uint8_t *tag);
+NS_INTERNAL int aes_gcm_ad(AES_GCM_CTX *ctx,
+               const uint8_t *crypt, size_t crypt_len,
+               const uint8_t *iv, size_t iv_len,
+               const uint8_t *aad, size_t aad_len,
+               const uint8_t *tag, uint8_t *plain);
+
+/* HMAC */
+NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
+                             int key_len, uint8_t *digest);
+void hmac_sha1(const uint8_t *key, size_t key_len,
+		const uint8_t *msg, size_t msg_len,
+		const uint8_t *msg2, size_t msg2_len,
+		uint8_t *digest);
+NS_INTERNAL void hmac_md5(const uint8_t *key, size_t key_len,
+                          const uint8_t *msg, size_t msg_len,
+                          const uint8_t *msg2, size_t msg2_len,
+                          uint8_t *digest);
+
+/* RSA */
+NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
+                                  int mod_len, const uint8_t *pub_exp,
+                                  int pub_len, const uint8_t *priv_exp,
+                                  int priv_len, const uint8_t *p, int p_len,
+                                  const uint8_t *q, int q_len,
+                                  const uint8_t *dP, int dP_len,
+                                  const uint8_t *dQ, int dQ_len,
+                                  const uint8_t *qInv, int qInv_len);
+NS_INTERNAL void RSA_pub_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
+                                 int mod_len, const uint8_t *pub_exp,
+                                 int pub_len);
+NS_INTERNAL void RSA_free(RSA_CTX *ctx);
+NS_INTERNAL int RSA_decrypt(const RSA_CTX *ctx, const uint8_t *in_data,
+                            uint8_t *out_data, int out_len, int is_decryption);
+NS_INTERNAL bigint *RSA_private(const RSA_CTX *c, bigint *bi_msg);
+NS_INTERNAL int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data,
+                            uint16_t in_len, uint8_t *out_data, int is_signing);
+NS_INTERNAL bigint *RSA_public(const RSA_CTX *c, bigint *bi_msg);
+NS_INTERNAL int RSA_block_size(RSA_CTX *ctx);
+#if defined(CONFIG_SSL_CERT_VERIFICATION) || \
+    defined(CONFIG_SSL_GENERATE_X509_CERT)
+NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx, const uint8_t *sig,
+                                    int sig_len, bigint *modulus,
+                                    bigint *pub_exp);
+NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
+#endif
+
+#define MAX_KEYMAT_LEN (SHA1_SIZE * 2 + RC4_KEY_SIZE * 2)
+#define MAX_DIGEST_SIZE SHA256_SIZE
+NS_INTERNAL size_t suite_mac_len(uint16_t suite);
+NS_INTERNAL size_t suite_expansion(uint16_t suite);
+NS_INTERNAL size_t suite_key_mat_len(uint16_t suite);
+
+struct cipher_ctx {
+  union {
+    struct {
+      RC4_CTX rc4;
+      uint8_t md5[MD5_SIZE];
+    }rc4_md5;
+    struct {
+      RC4_CTX rc4;
+      uint8_t sha1[SHA1_SIZE];
+    }rc4_sha1;
+    struct {
+      uint8_t salt[AES_GCM_IV_KEY_MAT];
+      AES_GCM_CTX ctx;
+    }aes_gcm;
+  }u;
+  uint64_t seq;
+  uint16_t cipher_suite;
+};
+
+NS_INTERNAL void suite_init(struct cipher_ctx *ctx,
+                            uint8_t *keys,
+                            int client_write);
+
+/* crypto black-box encrypt+auth and copy to buffer */
+NS_INTERNAL void suite_box(struct cipher_ctx *ctx,
+                           const struct tls_hdr *hdr,
+                           const uint8_t *plain, size_t plain_len,
+                           uint8_t *out);
+
+/* crypto unbox in place and authenticate, return auth result, plaintext len */
+NS_INTERNAL int suite_unbox(struct cipher_ctx *ctx,
+                            const struct tls_hdr *hdr,
+                            uint8_t *data, size_t data_len,
+                            struct vec *plain);
+
+#endif /* _CRYPTO_H */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+#ifndef _SSL_H
+#define _SSL_H
+
+struct ssl_method_st {
+  uint8_t sv_undefined : 1;
+  uint8_t cl_undefined : 1;
+};
+
+struct ssl_ctx_st {
+  X509 *ca_store;
+  PEM *pem_cert;
+  RSA_CTX *rsa_privkey;
+  uint8_t mode;
+  uint8_t vrfy_mode;
+  struct ssl_method_st meth;
+};
+
+#define STATE_INITIAL 0
+#define STATE_CL_HELLO_SENT 1
+#define STATE_CL_HELLO_WAIT 2
+#define STATE_CL_HELLO_RCVD 3
+#define STATE_SV_HELLO_SENT 4
+#define STATE_SV_HELLO_RCVD 5
+#define STATE_SV_CERT_RCVD 6
+#define STATE_SV_DONE_RCVD 7
+#define STATE_CLIENT_FINISHED 8
+#define STATE_ESTABLISHED 9
+#define STATE_CLOSING 10
+
+struct ssl_st {
+  struct ssl_ctx_st *ctx;
+
+  struct tls_security *nxt;
+
+/* rcv buffer: can be 16bit lens? */
+#define RX_INITIAL_BUF 1024
+  uint8_t *rx_buf;
+  uint32_t rx_len;
+  uint32_t rx_max_len;
+
+  uint8_t *tx_buf;
+  uint32_t tx_len;
+  uint32_t tx_max_len;
+
+  int fd;
+  int err;
+
+  /* for handling appdata recvs */
+  unsigned int copied;
+
+  uint8_t state;
+
+  uint8_t vrfy_result;
+
+  uint8_t mode_defined : 1;
+  uint8_t is_server : 1;
+  uint8_t got_appdata : 1;
+  uint8_t tx_enc : 1;
+  uint8_t rx_enc : 1;
+  uint8_t close_notify : 1;
+  uint8_t fatal : 1;
+  uint8_t write_pending : 1;
+
+  struct cipher_ctx rx_ctx;
+  struct cipher_ctx tx_ctx;
+};
+
+#endif /* _SSL_H */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+#ifndef _TLSPROTO_H
+#define _TLSPROTO_H
+
+/* set to number of null cipher suites */
+#define ALLOW_NULL_CIPHERS  0
+
+/* set to number of RC4 cipher suites */
+#define ALLOW_RC4_CIPHERS   2
+
+/* set to number of AEAD cipher suites */
+#define WITH_AEAD_CIPHERS   1
+
+/* just count non-NULL ciphers */
+#define NUM_CIPHER_SUITES (ALLOW_RC4_CIPHERS + WITH_AEAD_CIPHERS)
+
+#define NUM_COMPRESSORS 1
+
+#pragma pack(1)
+struct tls_random {
+  uint32_t time;
+  uint8_t opaque[28];
+} __packed;
+
+struct tls_premaster_secret {
+  uint16_t version;
+  uint8_t opaque[46];
+} __packed;
+
+struct tls_hmac_hdr {
+  uint64_t seq;
+  uint8_t type;
+  uint16_t vers;
+  uint16_t len;
+} __packed;
+
+struct tls_hdr {
+  uint8_t type;
+  uint16_t vers;
+  uint16_t len;
+} __packed;
+
+struct tls_EXT_reneg {
+  uint16_t type;
+  uint16_t len;
+  uint8_t ri_len;
+} __packed;
+
+struct tls_svr_hello {
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint16_t version;
+  struct tls_random random;
+  uint8_t sess_id_len;
+  uint16_t cipher_suite;
+  uint8_t compressor;
+  uint16_t ext_len;
+
+  struct tls_EXT_reneg ext_reneg;
+} __packed;
+
+struct tls_cl_hello {
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint16_t version;
+  struct tls_random random;
+  uint8_t sess_id_len;
+  uint16_t cipher_suites_len;
+  uint16_t cipher_suite[NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1];
+  uint8_t num_compressors;
+  uint8_t compressor[NUM_COMPRESSORS];
+  uint16_t ext_len;
+
+  struct tls_EXT_reneg ext_reneg;
+} __packed;
+
+struct tls_cert {
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint8_t certs_len_hi;
+  uint16_t certs_len;
+} __packed;
+
+struct tls_cert_hdr {
+  /* for chains */
+  uint8_t cert_len_hi;
+  uint16_t cert_len;
+} __packed;
+
+struct tls_svr_hello_done {
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+} __packed;
+
+struct tls_change_cipher_spec {
+  uint8_t one;
+} __packed;
+
+struct tls_finished {
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint8_t vrfy[12];
+} __packed;
+
+struct tls_alert {
+  uint8_t level;
+  uint8_t desc;
+} __packed;
+#pragma pack()
+
+#define TLS_CHANGE_CIPHER_SPEC 20
+#define TLS_ALERT 21
+#define TLS_HANDSHAKE 22
+#define TLS_APP_DATA 23
+#define TLS_HEARTBEAT 24
+
+#define HANDSHAKE_HELLO_REQ 0
+#define HANDSHAKE_CLIENT_HELLO 1
+#define HANDSHAKE_SERVER_HELLO 2
+#define HANDSHAKE_NEW_SESSION_TICKET 4
+#define HANDSHAKE_CERTIFICATE 11
+#define HANDSHAKE_SERVER_KEY_EXCH 12
+#define HANDSHAKE_CERTIFICATE_REQ 13
+#define HANDSHAKE_SERVER_HELLO_DONE 14
+#define HANDSHAKE_CERTIFICATE_VRFY 15
+#define HANDSHAKE_CLIENT_KEY_EXCH 16
+#define HANDSHAKE_FINISHED 20
+
+#define EXT_SERVER_NAME 0x0000
+#define EXT_SESSION_TICKET 0x0023
+#define EXT_HEARTBEAT 0x000f
+#define EXT_SIG_ALGOS 0x000d
+#define EXT_NPN 0x3374
+#define EXT_RENEG_INFO 0xff01
+
+#define ALERT_LEVEL_WARNING 1
+#define ALERT_LEVEL_FATAL 2
+
+#define ALERT_CLOSE_NOTIFY 0
+#define ALERT_UNEXPECTED_MESSAGE 10
+#define ALERT_BAD_RECORD_MAC 20
+#define ALERT_RECORD_OVERFLOW 22
+#define ALERT_HANDSHAKE_FAILURE 40
+#define ALERT_BAD_CERT 42
+#define ALERT_UNSUPPORTED_CERT 43
+#define ALERT_CERT_REVOKED 44
+#define ALERT_CERT_EXPIRED 43
+#define ALERT_CERT_UNKNOWN 46
+#define ALERT_ILLEGAL_PARAMETER 47
+#define ALERT_UNKNOWN_CA 48
+#define ALERT_ACCESS_DENIED 49
+#define ALERT_DECODE_ERROR 50
+#define ALERT_DECRYPT_ERROR 51
+#define ALERT_PROTOCOL_VERSION 70
+#define ALERT_INSUFFICIENT_SECURITY 71
+#define ALERT_INTERNAL_ERROR 80
+#define ALERT_USER_CANCELLED 90
+#define ALERT_NO_RENEGOTIATION 100
+#define ALERT_UNSUPPORTED_EXT 110
+
+#define CIPHER_TLS_NULL_MD5 0x0001
+#define CIPHER_TLS_RC4_MD5 0x0004
+#define CIPHER_TLS_RC4_SHA1 0x0005
+#define CIPHER_TLS_AES128_GCM 0x009c
 #define CIPHER_EMPTY_RENEG_EXT 0x00ff
 
 #define COMPRESSOR_NULL 0x00
@@ -829,10 +1073,7 @@ typedef struct tls_security {
    * client_write_key
    * server_write_key
   */
-  uint8_t keys[MD5_SIZE * 2 + RC4_KEY_SIZE * 2];
-
-  uint64_t client_write_seq;
-  uint64_t server_write_seq;
+  uint8_t keys[MAX_KEYMAT_LEN];
 
   uint16_t cipher_suite;
   uint16_t peer_vers;
@@ -840,16 +1081,15 @@ typedef struct tls_security {
 
   uint8_t cipher_negotiated : 1;
   uint8_t compressor_negotiated : 1;
-  uint8_t bitpad : 6;
+  uint8_t server_write_pending : 1;
+  uint8_t client_write_pending : 1;
+  uint8_t bitpad : 4;
 
   RSA_CTX *svr_key;
 
   uint8_t master_secret[48];
   struct tls_random cl_rnd;
   struct tls_random sv_rnd;
-
-  RC4_CTX server_write_ctx;
-  RC4_CTX client_write_ctx;
 
   SHA256_CTX handshakes_hash;
 } * tls_sec_t;
@@ -865,6 +1105,9 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
+
+NS_INTERNAL void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
+NS_INTERNAL void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);
@@ -3154,6 +3397,44 @@ void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
 }
 
 /**
+ * Perform HMAC-SHA1
+ * NOTE: does not handle keys larger than the block size.
+ */
+void hmac_sha1(const uint8_t *key, size_t key_len,
+		const uint8_t *msg, size_t msg_len,
+		const uint8_t *msg2, size_t msg2_len,
+		uint8_t *digest)
+{
+    SHA_CTX context;
+    uint8_t k_ipad[64];
+    uint8_t k_opad[64];
+    int i;
+
+    memset(k_ipad, 0, sizeof k_ipad);
+    memset(k_opad, 0, sizeof k_opad);
+    memcpy(k_ipad, key, key_len);
+    memcpy(k_opad, key, key_len);
+
+    for (i = 0; i < 64; i++)
+    {
+        k_ipad[i] ^= 0x36;
+        k_opad[i] ^= 0x5c;
+    }
+
+    SHA1_Init(&context);
+    SHA1_Update(&context, k_ipad, 64);
+    if ( msg_len )
+	    SHA1_Update(&context, msg, msg_len);
+    if ( msg2_len )
+	    SHA1_Update(&context, msg2, msg2_len);
+    SHA1_Final(digest, &context);
+    SHA1_Init(&context);
+    SHA1_Update(&context, k_opad, 64);
+    SHA1_Update(&context, digest, SHA1_SIZE);
+    SHA1_Final(digest, &context);
+}
+
+/**
  * Perform HMAC-MD5
  * NOTE: does not handle keys larger than the block size.
  */
@@ -5277,6 +5558,8 @@ int SSL_accept(SSL *ssl) {
       }
 
       ssl->state = STATE_ESTABLISHED;
+      tls_free_security(ssl->nxt);
+      ssl->nxt = NULL;
       if (!do_send(ssl))
         return -1;
 
@@ -5481,7 +5764,6 @@ int SSL_shutdown(SSL *ssl) {
 
 void SSL_free(SSL *ssl) {
   if (ssl) {
-    tls_free_security(ssl->cur);
     tls_free_security(ssl->nxt);
     free(ssl->rx_buf);
     free(ssl->tx_buf);
@@ -5518,7 +5800,7 @@ void ssl_err(SSL *ssl, int err) {
  */
 
 
-NS_INTERNAL tls_sec_t tls_new_security(void) {
+tls_sec_t tls_new_security(void) {
   struct tls_security *sec;
 
   sec = calloc(1, sizeof(*sec));
@@ -5530,14 +5812,14 @@ NS_INTERNAL tls_sec_t tls_new_security(void) {
   return sec;
 }
 
-NS_INTERNAL void tls_free_security(tls_sec_t sec) {
+void tls_free_security(tls_sec_t sec) {
   if (sec) {
     RSA_free(sec->svr_key);
     free(sec);
   }
 }
 
-NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
+void tls_compute_master_secret(tls_sec_t sec,
                                            struct tls_premaster_secret *pre) {
   uint8_t buf[13 + sizeof(sec->cl_rnd) + sizeof(sec->sv_rnd)];
 
@@ -5555,7 +5837,7 @@ NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
 #endif
 }
 
-NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
+int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   uint8_t check[12];
@@ -5575,7 +5857,7 @@ NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
   return !memcmp(check, vrfy, sizeof(check));
 }
 
-NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
+int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   uint8_t check[12];
@@ -5595,7 +5877,7 @@ NS_INTERNAL int tls_check_client_finished(tls_sec_t sec, const uint8_t *vrfy,
   return !memcmp(check, vrfy, vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
+void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
                                               size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   SHA256_CTX tmp_hash;
@@ -5610,7 +5892,7 @@ NS_INTERNAL void tls_generate_server_finished(tls_sec_t sec, uint8_t *vrfy,
       vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
+void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
                                               size_t vrfy_len) {
   uint8_t buf[15 + SHA256_SIZE];
   SHA256_CTX tmp_hash;
@@ -5625,7 +5907,7 @@ NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
       vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
+void tls_generate_keys(tls_sec_t sec) {
   uint8_t buf[13 + sizeof(sec->cl_rnd) + sizeof(sec->sv_rnd)];
 
   memcpy(buf, "key expansion", 13);
@@ -5633,13 +5915,31 @@ NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
   memcpy(buf + 13 + sizeof(sec->sv_rnd), &sec->cl_rnd, sizeof(sec->cl_rnd));
 
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf),
-      sec->keys, sizeof(sec->keys));
+      sec->keys, suite_key_mat_len(sec->cipher_suite));
 
-  RC4_setup(&sec->client_write_ctx, sec->keys + 32, 16);
-  RC4_setup(&sec->server_write_ctx, sec->keys + 48, 16);
+  sec->server_write_pending = 1;
+  sec->client_write_pending = 1;
 }
 
-NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
+void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+{
+  assert(sec->client_write_pending);
+  ctx->cipher_suite = sec->cipher_suite;
+  ctx->seq = 0;
+  suite_init(ctx, sec->keys, 1);
+  sec->client_write_pending = 0;
+}
+
+void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+{
+  assert(sec->server_write_pending);
+  ctx->cipher_suite = sec->cipher_suite;
+  ctx->seq = 0;
+  suite_init(ctx, sec->keys, 0);
+  sec->server_write_pending = 0;
+}
+
+int tls_tx_push(SSL *ssl, const void *data, size_t len) {
   if (ssl->tx_len + len > ssl->tx_max_len) {
     size_t new_len;
     void *new;
@@ -5656,89 +5956,64 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
     ssl->tx_max_len = new_len;
   }
 
-  memcpy(ssl->tx_buf + ssl->tx_len, data, len);
+  /* if data is NULL, then just 'assure' the buffer space so the caller
+   * can copy in to it directly. Useful for encryption.
+  */
+  if ( data )
+    memcpy(ssl->tx_buf + ssl->tx_len, data, len);
+
   ssl->tx_len += len;
 
   return 1;
 }
 
-NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
+int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   struct tls_hdr hdr;
-  struct tls_hmac_hdr phdr;
-  uint8_t digest[MD5_SIZE];
-  size_t buf_ofs;
-  size_t mac_len = ssl->tx_enc ? MD5_SIZE : 0, max = (1 << 14) - MD5_SIZE;
+  size_t max;
+  size_t mac_len;
+  size_t exp_len;
 
-  if (len > max) {
-    len = max;
+  if (ssl->tx_enc) {
+    mac_len = suite_mac_len(ssl->tx_ctx.cipher_suite);
+    exp_len = suite_expansion(ssl->tx_ctx.cipher_suite);
+  }else{
+    mac_len = 0;
+    exp_len = 0;
   }
+
+  max = (1 << 14) - (mac_len + exp_len);
+  if ( len > max )
+    len = max - (mac_len + exp_len);
 
   hdr.type = type;
   hdr.vers = htobe16(0x0303);
-  hdr.len = htobe16(len + mac_len);
+  hdr.len = htobe16(len + exp_len + mac_len);
 
   if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
     return 0;
 
-  buf_ofs = ssl->tx_len;
-  if (!tls_tx_push(ssl, buf, len))
-    return 0;
-
-  if (ssl->tx_enc) {
-    if (ssl->is_server) {
-      phdr.seq = htobe64(ssl->cur->server_write_seq);
-    } else {
-      phdr.seq = htobe64(ssl->cur->client_write_seq);
-    }
-    phdr.type = hdr.type;
-    phdr.vers = hdr.vers;
-    phdr.len = htobe16(len);
-    if (ssl->is_server) {
-      hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *)&phdr,
-               sizeof(phdr), buf, len, digest);
-    } else {
-      hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *)&phdr, sizeof(phdr), buf,
-               len, digest);
-    }
-
-    if (!tls_tx_push(ssl, digest, sizeof(digest)))
+  if ( ssl->tx_enc ) {
+    size_t buf_ofs;
+    buf_ofs = ssl->tx_len;
+    if (!tls_tx_push(ssl, NULL, len + exp_len + mac_len))
       return 0;
 
-    if (ssl->is_server) {
-      ssl->cur->server_write_seq++;
-    } else {
-      ssl->cur->client_write_seq++;
-    }
-
-    switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-      case CIPHER_TLS_NULL_MD5:
-        break;
-#endif
-      case CIPHER_TLS_RC4_MD5:
-        if (ssl->is_server) {
-          RC4_crypt(&ssl->cur->server_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        } else {
-          RC4_crypt(&ssl->cur->client_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        }
-        break;
-      default:
-        abort();
-    }
+    suite_box(&ssl->tx_ctx, &hdr, buf, len, ssl->tx_buf + buf_ofs);
+  }else{
+    if (!tls_tx_push(ssl, buf, len))
+      return 0;
   }
 
   return len;
 }
 
-NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
+ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
   /* FIXME: break up in to max-sized packets */
   int res = tls_send(ssl, TLS_APP_DATA, buf, sz);
   return res == 0 ? -1 : res;
 }
 
-NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
+int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   struct tls_alert alert;
   if (ssl->fatal)
     return 1;
@@ -5749,7 +6024,7 @@ NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   return tls_send(ssl, TLS_ALERT, &alert, sizeof(alert));
 }
 
-NS_INTERNAL int tls_close_notify(SSL *ssl) {
+int tls_close_notify(SSL *ssl) {
   return tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_CLOSE_NOTIFY);
 }
 /*
@@ -5762,6 +6037,7 @@ NS_INTERNAL int tls_close_notify(SSL *ssl) {
 
 NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   struct tls_cl_hello hello;
+  unsigned int i = 0;
 
   /* hello */
   hello.type = HANDSHAKE_CLIENT_HELLO;
@@ -5776,15 +6052,25 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.sess_id_len = 0;
   hello.cipher_suites_len =
       htobe16((NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1) * 2);
+
+  /* ciphers listed in preference order */
 #if ALLOW_NULL_CIPHERS
   /* if we allow them, it's for testing reasons, so NULL comes first */
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_NULL_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[2] = htobe16(CIPHER_EMPTY_RENEG_EXT);
-#else
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_NULL_MD5);
 #endif
+#if WITH_AEAD_CIPHERS
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_AES128_GCM);
+#endif
+#if ALLOW_RC4_CIPHERS
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_RC4_SHA1);
+  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_RC4_MD5);
+#endif
+
+  /* apart from this one which is a signalling-value for the renegotiation
+   * extension and must come after legit cipher suites
+  */
+  hello.cipher_suite[i++] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+
   hello.num_compressors = 1;
   hello.compressor[0] = 0;
   hello.ext_len = htobe16(sizeof(hello.ext_reneg));
@@ -5846,24 +6132,20 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
     return 0;
 
-  if (ssl->cur) {
-    tls_free_security(ssl->cur);
-  }
-  ssl->cur = ssl->nxt;
-  ssl->nxt = NULL;
-  ssl->tx_enc = 1;
-
   /* finished */
   finished.type = HANDSHAKE_FINISHED;
   finished.len_hi = 0;
   finished.len = htobe16(sizeof(finished.vrfy));
   memset(finished.vrfy, 0, sizeof(finished.vrfy));
-  tls_generate_client_finished(ssl->cur, finished.vrfy, sizeof(finished.vrfy));
+  tls_generate_client_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
+
+  tls_client_cipher_spec(ssl->nxt, &ssl->tx_ctx);
+  ssl->tx_enc = 1;
 
   if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished)))
     return 0;
 
-  SHA256_Update(&ssl->cur->handshakes_hash, ((uint8_t *)&finished),
+  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&finished),
                 sizeof(finished));
 
   return 1;
@@ -5879,7 +6161,13 @@ static int check_cipher(uint16_t suite) {
 #if ALLOW_NULL_CIPHERS
     case CIPHER_TLS_NULL_MD5:
 #endif
+#if WITH_AEAD_CIPHERS
+    case CIPHER_TLS_AES128_GCM:
+#endif
+#if ALLOW_RC4_CIPHERS
+    case CIPHER_TLS_RC4_SHA1:
     case CIPHER_TLS_RC4_MD5:
+#endif
       return 1;
     default:
       return 0;
@@ -5902,7 +6190,13 @@ static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
 #if ALLOW_NULL_CIPHERS
     case CIPHER_TLS_NULL_MD5:
 #endif
+#if WITH_AEAD_CIPHERS
+    case CIPHER_TLS_AES128_GCM:
+#endif
+#if ALLOW_RC4_CIPHERS
+    case CIPHER_TLS_RC4_SHA1:
     case CIPHER_TLS_RC4_MD5:
+#endif
       break;
     default:
       return;
@@ -6289,18 +6583,14 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   if (buf + len > end)
     goto err;
 
-  if (NULL == ssl->cur) {
-    dprintf(("No change cipher-spec before finished\n"));
-    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
-    return 0;
-  }
-
   if (ssl->is_server) {
-    ret = tls_check_client_finished(ssl->cur, buf, len);
+    ret = tls_check_client_finished(ssl->nxt, buf, len);
     ssl->state = STATE_CLIENT_FINISHED;
   } else {
-    ret = tls_check_server_finished(ssl->cur, buf, len);
+    ret = tls_check_server_finished(ssl->nxt, buf, len);
     ssl->state = STATE_ESTABLISHED;
+    tls_free_security(ssl->nxt);
+    ssl->nxt = NULL;
   }
   if (!ret) {
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
@@ -6346,8 +6636,6 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   if (ssl->nxt) {
     SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
-  } else if (ssl->cur) {
-    SHA256_Update(&ssl->cur->handshakes_hash, buf, end - buf);
   }
 
   return ret;
@@ -6404,8 +6692,6 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   if (ssl->nxt) {
     SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
-  } else if (ssl->cur) {
-    SHA256_Update(&ssl->cur->handshakes_hash, buf, end - buf);
   }
 
   return ret;
@@ -6421,20 +6707,19 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
 static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
                                 const uint8_t *buf, const uint8_t *end) {
-  dprintf(("change cipher spec\n"));
   (void)hdr;
   (void)end;
   (void)buf;
+
+  dprintf(("change cipher spec\n"));
+
   if (ssl->is_server) {
     tls_generate_keys(ssl->nxt);
-    if (ssl->nxt) {
-      if (ssl->cur) {
-        free(ssl->cur);
-      }
-      ssl->cur = ssl->nxt;
-      ssl->nxt = NULL;
-    }
+    tls_client_cipher_spec(ssl->nxt, &ssl->rx_ctx);
+  }else{
+    tls_server_cipher_spec(ssl->nxt, &ssl->rx_ctx);
   }
+
   ssl->rx_enc = 1;
   return 1;
 }
@@ -6493,6 +6778,7 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
       break;
     case ALERT_LEVEL_FATAL:
       dprintf(("alert fatal(%u)\n", buf[1]));
+      ssl->fatal = 1;
     default:
       return 0;
   }
@@ -6502,9 +6788,7 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
 static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
                             const uint8_t *end, struct vec *out) {
-  struct tls_hmac_hdr phdr;
-  uint8_t digest[MD5_SIZE];
-  const uint8_t *mac;
+  size_t mac_len;
   size_t len = end - buf;
 
   if (!ssl->rx_enc) {
@@ -6513,68 +6797,19 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     return 1;
   }
 
-  if (len < MD5_SIZE) {
+  mac_len = suite_mac_len(ssl->rx_ctx.cipher_suite);
+  if (len < mac_len) {
     dprintf(("No room for MAC\n"));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
     return 0;
   }
 
-  switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
-      break;
-#endif
-    case CIPHER_TLS_RC4_MD5:
-      if (ssl->is_server) {
-        RC4_crypt(&ssl->cur->client_write_ctx, buf, buf, len);
-      } else {
-        RC4_crypt(&ssl->cur->server_write_ctx, buf, buf, len);
-      }
-      break;
-    default:
-      abort();
-  }
-
-  out->ptr = buf;
-  out->len = len - MD5_SIZE;
-
-  mac = out->ptr + out->len;
-
-  if (ssl->is_server) {
-    phdr.seq = htobe64(ssl->cur->client_write_seq);
-  } else {
-    phdr.seq = htobe64(ssl->cur->server_write_seq);
-  }
-  phdr.type = hdr->type;
-  phdr.vers = hdr->vers;
-  phdr.len = htobe16(out->len);
-
-  /*
-   * MAC(MAC_write_key, seq_num +
-   *      TLSCompressed.type +
-   *      TLSCompressed.version +
-   *      TLSCompressed.length +
-   *      TLSCompressed.fragment);
-   */
-
-  if (ssl->is_server) {
-    hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *)&phdr, sizeof(phdr), out->ptr,
-             out->len, digest);
-  } else {
-    hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *)&phdr,
-             sizeof(phdr), out->ptr, out->len, digest);
-  }
-
-  if (memcmp(digest, mac, MD5_SIZE)) {
+  if ( !suite_unbox(&ssl->rx_ctx, hdr, buf, len, out) ) {
     dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
   }
 
-  if (ssl->is_server) {
-    ssl->cur->client_write_seq++;
-  } else {
-    ssl->cur->server_write_seq++;
-  }
   return 1;
 }
 
@@ -6619,13 +6854,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       goto out;
     }
 
-    if (ssl->cur) {
-      if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
-        goto out;
-      }
-    } else {
-      v.ptr = buf2;
-      v.len = msg_end - buf2;
+    if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
+      goto out;
     }
 
     switch (hdr->type) {
@@ -6766,14 +6996,15 @@ NS_INTERNAL int tls_sv_finish(SSL *ssl) {
   if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
     return 0;
 
-  ssl->tx_enc = 1;
-
   /* finished */
   finished.type = HANDSHAKE_FINISHED;
   finished.len_hi = 0;
   finished.len = htobe16(sizeof(finished.vrfy));
   memset(finished.vrfy, 0, sizeof(finished.vrfy));
-  tls_generate_server_finished(ssl->cur, finished.vrfy, sizeof(finished.vrfy));
+  tls_generate_server_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
+
+  tls_server_cipher_spec(ssl->nxt, &ssl->tx_ctx);
+  ssl->tx_enc = 1;
 
   return tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished));
 }
@@ -7995,7 +8226,7 @@ static void aes_gcm_prepare_y0(const uint8_t *iv, size_t iv_len, const uint8_t *
 {
 	uint8_t len_buf[16];
 
-	if (iv_len == 12) {
+	if (iv_len == GCM_IV_SIZE) {
 		/* Prepare block Y_0 = IV || 0^31 || 1 [len(IV) = 96] */
 		memcpy(Y0, iv, iv_len);
 		memset(Y0 + iv_len, 0, AES_BLOCKSIZE - iv_len);
@@ -8048,11 +8279,9 @@ static void aes_gcm_ghash(const uint8_t *H, const uint8_t *aad, size_t aad_len,
 }
 
 void aes_gcm_ctx(AES_GCM_CTX *ctx,
-               const uint8_t *key, size_t key_len,
-               const uint8_t *iv, size_t iv_len)
+               const uint8_t *key, size_t key_len)
 {
 	aes_gcm_init_hash_subkey(&ctx->aes, key, key_len, ctx->H);
-	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
 }
 
 /**
@@ -8060,10 +8289,13 @@ void aes_gcm_ctx(AES_GCM_CTX *ctx,
  */
 void aes_gcm_ae(AES_GCM_CTX *ctx,
                 const uint8_t *plain, size_t plain_len,
+                const uint8_t *iv, size_t iv_len,
                 const uint8_t *aad, size_t aad_len,
                 uint8_t *crypt, uint8_t *tag)
 {
 	uint8_t S[16];
+
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
 
 	/* C = GCTR_K(inc_32(Y_0), P) */
 	aes_gcm_gctr(&ctx->aes, ctx->Y0, plain, plain_len, crypt);
@@ -8081,10 +8313,13 @@ void aes_gcm_ae(AES_GCM_CTX *ctx,
  */
 int aes_gcm_ad(AES_GCM_CTX *ctx,
                const uint8_t *crypt, size_t crypt_len,
+               const uint8_t *iv, size_t iv_len,
                const uint8_t *aad, size_t aad_len,
                const uint8_t *tag, uint8_t *plain)
 {
 	uint8_t S[16], T[16];
+
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
 
 	/* P = GCTR_K(inc_32(Y_0), C) */
 	aes_gcm_gctr(&ctx->aes, ctx->Y0, crypt, crypt_len, plain);
@@ -8100,4 +8335,327 @@ int aes_gcm_ad(AES_GCM_CTX *ctx,
 	}
 
 	return 1;
+}
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+
+size_t suite_mac_len(uint16_t suite)
+{
+  switch(suite) {
+  case CIPHER_TLS_NULL_MD5:
+  case CIPHER_TLS_RC4_MD5:
+    return MD5_SIZE;
+  case CIPHER_TLS_RC4_SHA1:
+    return SHA1_SIZE;
+  case CIPHER_TLS_AES128_GCM:
+    return AES_BLOCKSIZE;
+  default:
+    abort();
+    break;
+  }
+}
+
+size_t suite_expansion(uint16_t suite)
+{
+  switch(suite) {
+  /* AEAD ciphers expand by explicit nonce length */
+  case CIPHER_TLS_AES128_GCM:
+    return 8;
+  default:
+    return 0;
+  }
+}
+
+size_t suite_key_mat_len(uint16_t suite)
+{
+  switch(suite) {
+  case CIPHER_TLS_NULL_MD5:
+    return MD5_SIZE * 2;
+  case CIPHER_TLS_RC4_MD5:
+    return MD5_SIZE * 2 + RC4_KEY_SIZE * 2;
+  case CIPHER_TLS_RC4_SHA1:
+    return SHA1_SIZE * 2 + RC4_KEY_SIZE * 2;
+  case CIPHER_TLS_AES128_GCM:
+    return AES_BLOCKSIZE * 2 + AES_GCM_IV_KEY_MAT * 2;
+  default:
+    abort();
+    break;
+  }
+}
+
+void suite_init(struct cipher_ctx *ctx,
+                            uint8_t *keys,
+                            int client_write)
+{
+  switch(ctx->cipher_suite) {
+  case CIPHER_TLS_RC4_MD5:
+    if ( client_write ) {
+      RC4_setup(&ctx->u.rc4_md5.rc4, keys + 32, RC4_KEY_SIZE);
+      memcpy(&ctx->u.rc4_md5.md5, keys, MD5_SIZE);
+    }else{
+      RC4_setup(&ctx->u.rc4_md5.rc4, keys + 48, RC4_KEY_SIZE);
+      memcpy(&ctx->u.rc4_md5.md5, keys + MD5_SIZE, MD5_SIZE);
+    }
+    break;
+  case CIPHER_TLS_RC4_SHA1:
+    if ( client_write ) {
+      RC4_setup(&ctx->u.rc4_sha1.rc4, keys + 40, RC4_KEY_SIZE);
+      memcpy(&ctx->u.rc4_sha1.sha1, keys, SHA1_SIZE);
+    }else{
+      RC4_setup(&ctx->u.rc4_sha1.rc4, keys + 56, RC4_KEY_SIZE);
+      memcpy(&ctx->u.rc4_sha1.sha1, keys + SHA1_SIZE, SHA1_SIZE);
+    }
+    break;
+#if WITH_AEAD_CIPHERS
+  case CIPHER_TLS_AES128_GCM:
+    if ( client_write ) {
+      aes_gcm_ctx(&ctx->u.aes_gcm.ctx, keys, AES_BLOCKSIZE);
+      memcpy(ctx->u.aes_gcm.salt,
+            keys + AES_BLOCKSIZE * 2,
+            AES_GCM_IV_KEY_MAT);
+    }else{
+      aes_gcm_ctx(&ctx->u.aes_gcm.ctx, keys + AES_BLOCKSIZE, AES_BLOCKSIZE);
+      memcpy(ctx->u.aes_gcm.salt,
+            keys + (AES_BLOCKSIZE * 2) + AES_GCM_IV_KEY_MAT,
+            AES_GCM_IV_KEY_MAT);
+    }
+    break;
+#endif
+  default:
+    abort();
+  }
+}
+
+#if ALLOW_RC4_CIPHERS
+static void box_stream_and_hmac(struct cipher_ctx *ctx,
+                                const struct tls_hdr *hdr,
+                                const uint8_t *plain, size_t plain_len,
+                                uint8_t *out)
+{
+  struct tls_hmac_hdr phdr;
+
+  /* copy plaintext to output buffer */
+  memcpy(out, plain, plain_len);
+
+  phdr.seq = htobe64(ctx->seq);
+  phdr.type = hdr->type;
+  phdr.vers = hdr->vers;
+  phdr.len = htobe16(plain_len);
+
+  /* append HMAC */
+  switch (ctx->cipher_suite) {
+    case CIPHER_TLS_RC4_MD5:
+      hmac_md5(ctx->u.rc4_md5.md5, MD5_SIZE,
+               (uint8_t *)&phdr, sizeof(phdr),
+               out, plain_len,
+               out + plain_len);
+      break;
+    case CIPHER_TLS_RC4_SHA1:
+      hmac_sha1(ctx->u.rc4_sha1.sha1, SHA1_SIZE,
+               (uint8_t *)&phdr, sizeof(phdr),
+               out, plain_len,
+               out + plain_len);
+      break;
+    default:
+      abort();
+  }
+
+  /* Encrypt the lot */
+  switch (ctx->cipher_suite) {
+#if ALLOW_NULL_CIPHERS
+    case CIPHER_TLS_NULL_MD5:
+      break;
+#endif
+    case CIPHER_TLS_RC4_MD5:
+      RC4_crypt(&ctx->u.rc4_md5.rc4, out, out, plain_len + MD5_SIZE);
+      break;
+    case CIPHER_TLS_RC4_SHA1:
+      RC4_crypt(&ctx->u.rc4_sha1.rc4, out, out, plain_len + SHA1_SIZE);
+      break;
+    default:
+      abort();
+  }
+
+  /* Bump the sequence number for the HMAC */
+  ctx->seq++;
+}
+#endif
+
+#if WITH_AEAD_CIPHERS
+static void box_aead(struct cipher_ctx *ctx,
+                                const struct tls_hdr *hdr,
+                                const uint8_t *plain, size_t plain_len,
+                                uint8_t *out)
+{
+  struct tls_hmac_hdr phdr;
+  uint8_t nonce[12];
+
+  *(uint64_t *)out = htobe64(ctx->seq);
+
+  phdr.seq = htobe64(ctx->seq);
+  phdr.type = hdr->type;
+  phdr.vers = hdr->vers;
+  phdr.len = htobe16(plain_len);
+
+  memcpy(nonce, ctx->u.aes_gcm.salt, 4);
+  memcpy(nonce + 4, out, 8);
+
+  aes_gcm_ae(&ctx->u.aes_gcm.ctx,
+             plain, plain_len,
+             nonce, sizeof(nonce),
+             (void *)&phdr, sizeof(phdr),
+             out + 8,
+             out + 8 + plain_len);
+  ctx->seq++;
+}
+#endif
+
+/* crypto black-box encrypt+auth and copy to buffer */
+void suite_box(struct cipher_ctx *ctx,
+               const struct tls_hdr *hdr,
+               const uint8_t *plain, size_t plain_len,
+               uint8_t *out)
+{
+  switch(ctx->cipher_suite) {
+#if ALLOW_RC4_CIPHERS
+  case CIPHER_TLS_RC4_MD5:
+  case CIPHER_TLS_RC4_SHA1:
+    box_stream_and_hmac(ctx, hdr, plain, plain_len, out);
+    break;
+#endif
+#if WITH_AEAD_CIPHERS
+  case CIPHER_TLS_AES128_GCM:
+    box_aead(ctx, hdr, plain, plain_len, out);
+    break;
+#endif
+  default:
+    abort();
+  }
+}
+
+#if ALLOW_RC4_CIPHERS
+static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
+                                 const struct tls_hdr *hdr,
+                                 uint8_t *data, size_t data_len,
+                                 struct vec *plain)
+{
+  struct tls_hmac_hdr phdr;
+  uint8_t digest[MAX_DIGEST_SIZE];
+  size_t mac_len, out_len;
+  const uint8_t *mac;
+
+  mac_len = suite_mac_len(ctx->cipher_suite);
+  if ( data_len < mac_len )
+    return 0;
+
+  out_len = data_len - mac_len;
+
+  switch (ctx->cipher_suite) {
+#if ALLOW_NULL_CIPHERS
+    case CIPHER_TLS_NULL_MD5:
+      break;
+#endif
+    case CIPHER_TLS_RC4_MD5:
+      RC4_crypt(&ctx->u.rc4_md5.rc4, data, data, data_len);
+      break;
+    case CIPHER_TLS_RC4_SHA1:
+      RC4_crypt(&ctx->u.rc4_sha1.rc4, data, data, data_len);
+      break;
+    default:
+      abort();
+  }
+
+  phdr.seq = htobe64(ctx->seq);
+  phdr.type = hdr->type;
+  phdr.vers = hdr->vers;
+  phdr.len = htobe16(out_len);
+
+  switch(ctx->cipher_suite) {
+    case CIPHER_TLS_RC4_MD5:
+      hmac_md5(ctx->u.rc4_md5.md5, MD5_SIZE,
+               (uint8_t *)&phdr, sizeof(phdr),
+               data, out_len,
+               digest);
+      break;
+    case CIPHER_TLS_RC4_SHA1:
+      hmac_sha1(ctx->u.rc4_sha1.sha1, SHA1_SIZE,
+               (uint8_t *)&phdr, sizeof(phdr),
+               data, out_len,
+               digest);
+      break;
+    default:
+      abort();
+  }
+
+  mac = data + out_len;
+  if ( memcmp(digest, mac, mac_len) )
+    return 0;
+
+  ctx->seq++;
+  plain->ptr = data;
+  plain->len = out_len;
+
+  return 1;
+}
+#endif
+
+#if WITH_AEAD_CIPHERS
+static int unbox_aead(struct cipher_ctx *ctx,
+                                 const struct tls_hdr *hdr,
+                                 uint8_t *data, size_t data_len,
+                                 struct vec *plain)
+{
+  static struct tls_hmac_hdr phdr;
+  static uint8_t nonce[12];
+  static uint8_t buff[1024];
+
+  assert(data_len >= 8 + 16);
+
+  phdr.seq = htobe64(ctx->seq);
+  phdr.type = hdr->type;
+  phdr.vers = hdr->vers;
+  phdr.len = htobe16(data_len - (8 + 16));
+
+  memcpy(nonce, ctx->u.aes_gcm.salt, 4);
+  memcpy(nonce + 4, data, 8);
+
+  if ( !aes_gcm_ad(&ctx->u.aes_gcm.ctx,
+             data + 8, data_len - (8 + 16),
+             nonce, sizeof(nonce),
+             (void *)&phdr, sizeof(phdr),
+             data + (data_len - 16),
+             buff) )
+    return 0;
+
+  plain->ptr = data + 8;
+  plain->len = data_len - (8 + 16);
+  memcpy(plain->ptr, buff, plain->len);
+  ctx->seq++;
+  return 1;
+}
+#endif
+
+/* crypto unbox in place and authenticate, return auth result, plaintext len */
+int suite_unbox(struct cipher_ctx *ctx,
+                const struct tls_hdr *hdr,
+                uint8_t *data, size_t data_len,
+                struct vec *plain)
+{
+  switch(ctx->cipher_suite) {
+#if ALLOW_RC4_CIPHERS
+  case CIPHER_TLS_RC4_MD5:
+  case CIPHER_TLS_RC4_SHA1:
+    return unbox_stream_and_hmac(ctx, hdr, data, data_len, plain);
+#endif
+#if WITH_AEAD_CIPHERS
+  case CIPHER_TLS_AES128_GCM:
+    return unbox_aead(ctx, hdr, data, data_len, plain);
+#endif
+  default:
+    abort();
+  }
+  return 0;
 }

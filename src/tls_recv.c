@@ -10,7 +10,13 @@ static int check_cipher(uint16_t suite) {
 #if ALLOW_NULL_CIPHERS
     case CIPHER_TLS_NULL_MD5:
 #endif
+#if WITH_AEAD_CIPHERS
+    case CIPHER_TLS_AES128_GCM:
+#endif
+#if ALLOW_RC4_CIPHERS
+    case CIPHER_TLS_RC4_SHA1:
     case CIPHER_TLS_RC4_MD5:
+#endif
       return 1;
     default:
       return 0;
@@ -33,7 +39,13 @@ static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
 #if ALLOW_NULL_CIPHERS
     case CIPHER_TLS_NULL_MD5:
 #endif
+#if WITH_AEAD_CIPHERS
+    case CIPHER_TLS_AES128_GCM:
+#endif
+#if ALLOW_RC4_CIPHERS
+    case CIPHER_TLS_RC4_SHA1:
     case CIPHER_TLS_RC4_MD5:
+#endif
       break;
     default:
       return;
@@ -420,18 +432,14 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   if (buf + len > end)
     goto err;
 
-  if (NULL == ssl->cur) {
-    dprintf(("No change cipher-spec before finished\n"));
-    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
-    return 0;
-  }
-
   if (ssl->is_server) {
-    ret = tls_check_client_finished(ssl->cur, buf, len);
+    ret = tls_check_client_finished(ssl->nxt, buf, len);
     ssl->state = STATE_CLIENT_FINISHED;
   } else {
-    ret = tls_check_server_finished(ssl->cur, buf, len);
+    ret = tls_check_server_finished(ssl->nxt, buf, len);
     ssl->state = STATE_ESTABLISHED;
+    tls_free_security(ssl->nxt);
+    ssl->nxt = NULL;
   }
   if (!ret) {
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
@@ -477,8 +485,6 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   if (ssl->nxt) {
     SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
-  } else if (ssl->cur) {
-    SHA256_Update(&ssl->cur->handshakes_hash, buf, end - buf);
   }
 
   return ret;
@@ -535,8 +541,6 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
   if (ssl->nxt) {
     SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
-  } else if (ssl->cur) {
-    SHA256_Update(&ssl->cur->handshakes_hash, buf, end - buf);
   }
 
   return ret;
@@ -552,20 +556,19 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
 
 static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
                                 const uint8_t *buf, const uint8_t *end) {
-  dprintf(("change cipher spec\n"));
   (void)hdr;
   (void)end;
   (void)buf;
+
+  dprintf(("change cipher spec\n"));
+
   if (ssl->is_server) {
     tls_generate_keys(ssl->nxt);
-    if (ssl->nxt) {
-      if (ssl->cur) {
-        free(ssl->cur);
-      }
-      ssl->cur = ssl->nxt;
-      ssl->nxt = NULL;
-    }
+    tls_client_cipher_spec(ssl->nxt, &ssl->rx_ctx);
+  }else{
+    tls_server_cipher_spec(ssl->nxt, &ssl->rx_ctx);
   }
+
   ssl->rx_enc = 1;
   return 1;
 }
@@ -624,6 +627,7 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
       break;
     case ALERT_LEVEL_FATAL:
       dprintf(("alert fatal(%u)\n", buf[1]));
+      ssl->fatal = 1;
     default:
       return 0;
   }
@@ -633,9 +637,7 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 
 static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
                             const uint8_t *end, struct vec *out) {
-  struct tls_hmac_hdr phdr;
-  uint8_t digest[MD5_SIZE];
-  const uint8_t *mac;
+  size_t mac_len;
   size_t len = end - buf;
 
   if (!ssl->rx_enc) {
@@ -644,68 +646,19 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     return 1;
   }
 
-  if (len < MD5_SIZE) {
+  mac_len = suite_mac_len(ssl->rx_ctx.cipher_suite);
+  if (len < mac_len) {
     dprintf(("No room for MAC\n"));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
     return 0;
   }
 
-  switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
-      break;
-#endif
-    case CIPHER_TLS_RC4_MD5:
-      if (ssl->is_server) {
-        RC4_crypt(&ssl->cur->client_write_ctx, buf, buf, len);
-      } else {
-        RC4_crypt(&ssl->cur->server_write_ctx, buf, buf, len);
-      }
-      break;
-    default:
-      abort();
-  }
-
-  out->ptr = buf;
-  out->len = len - MD5_SIZE;
-
-  mac = out->ptr + out->len;
-
-  if (ssl->is_server) {
-    phdr.seq = htobe64(ssl->cur->client_write_seq);
-  } else {
-    phdr.seq = htobe64(ssl->cur->server_write_seq);
-  }
-  phdr.type = hdr->type;
-  phdr.vers = hdr->vers;
-  phdr.len = htobe16(out->len);
-
-  /*
-   * MAC(MAC_write_key, seq_num +
-   *      TLSCompressed.type +
-   *      TLSCompressed.version +
-   *      TLSCompressed.length +
-   *      TLSCompressed.fragment);
-   */
-
-  if (ssl->is_server) {
-    hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *)&phdr, sizeof(phdr), out->ptr,
-             out->len, digest);
-  } else {
-    hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *)&phdr,
-             sizeof(phdr), out->ptr, out->len, digest);
-  }
-
-  if (memcmp(digest, mac, MD5_SIZE)) {
+  if ( !suite_unbox(&ssl->rx_ctx, hdr, buf, len, out) ) {
     dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
   }
 
-  if (ssl->is_server) {
-    ssl->cur->client_write_seq++;
-  } else {
-    ssl->cur->server_write_seq++;
-  }
   return 1;
 }
 
@@ -750,13 +703,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       goto out;
     }
 
-    if (ssl->cur) {
-      if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
-        goto out;
-      }
-    } else {
-      v.ptr = buf2;
-      v.len = msg_end - buf2;
+    if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
+      goto out;
     }
 
     switch (hdr->type) {

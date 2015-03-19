@@ -244,6 +244,8 @@ int SSL_accept(SSL *ssl) {
       }
 
       ssl->state = STATE_ESTABLISHED;
+      tls_free_security(ssl->nxt);
+      ssl->nxt = NULL;
       if (!do_send(ssl))
         return -1;
 
@@ -448,7 +450,6 @@ int SSL_shutdown(SSL *ssl) {
 
 void SSL_free(SSL *ssl) {
   if (ssl) {
-    tls_free_security(ssl->cur);
     tls_free_security(ssl->nxt);
     free(ssl->rx_buf);
     free(ssl->tx_buf);

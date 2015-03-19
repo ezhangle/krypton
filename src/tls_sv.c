@@ -99,14 +99,15 @@ NS_INTERNAL int tls_sv_finish(SSL *ssl) {
   if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
     return 0;
 
-  ssl->tx_enc = 1;
-
   /* finished */
   finished.type = HANDSHAKE_FINISHED;
   finished.len_hi = 0;
   finished.len = htobe16(sizeof(finished.vrfy));
   memset(finished.vrfy, 0, sizeof(finished.vrfy));
-  tls_generate_server_finished(ssl->cur, finished.vrfy, sizeof(finished.vrfy));
+  tls_generate_server_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
+
+  tls_server_cipher_spec(ssl->nxt, &ssl->tx_ctx);
+  ssl->tx_enc = 1;
 
   return tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished));
 }

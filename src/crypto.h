@@ -52,8 +52,6 @@ NS_INTERNAL void MD5_Init(MD5_CTX *);
 NS_INTERNAL void MD5_Update(MD5_CTX *, const uint8_t *msg, int len);
 NS_INTERNAL void MD5_Final(uint8_t *digest, MD5_CTX *);
 
-#define MAX_DIGEST_SIZE SHA256_SIZE
-
 /* RC4 */
 #define RC4_KEY_SIZE 16
 typedef struct {
@@ -97,6 +95,8 @@ NS_INTERNAL void AES_convert_key(AES_CTX *ctx);
 #endif
 
 /* GCM */
+#define GCM_IV_SIZE 12
+#define AES_GCM_IV_KEY_MAT 4 /* GCMNonce.salt */
 typedef struct aes_gcm_st {
   AES_CTX aes;
   uint8_t H[AES_BLOCKSIZE];
@@ -104,20 +104,25 @@ typedef struct aes_gcm_st {
 } AES_GCM_CTX;
 
 NS_INTERNAL void aes_gcm_ctx(AES_GCM_CTX *ctx,
-               const uint8_t *key, size_t key_len,
-               const uint8_t *iv, size_t iv_len);
+               const uint8_t *key, size_t key_len);
 NS_INTERNAL void aes_gcm_ae(AES_GCM_CTX *ctx,
                const uint8_t *plain, size_t plain_len,
+               const uint8_t *iv, size_t iv_len,
                const uint8_t *aad, size_t aad_len,
                uint8_t *crypt, uint8_t *tag);
 NS_INTERNAL int aes_gcm_ad(AES_GCM_CTX *ctx,
                const uint8_t *crypt, size_t crypt_len,
+               const uint8_t *iv, size_t iv_len,
                const uint8_t *aad, size_t aad_len,
                const uint8_t *tag, uint8_t *plain);
 
 /* HMAC */
 NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
                              int key_len, uint8_t *digest);
+void hmac_sha1(const uint8_t *key, size_t key_len,
+		const uint8_t *msg, size_t msg_len,
+		const uint8_t *msg2, size_t msg2_len,
+		uint8_t *digest);
 NS_INTERNAL void hmac_md5(const uint8_t *key, size_t key_len,
                           const uint8_t *msg, size_t msg_len,
                           const uint8_t *msg2, size_t msg2_len,
@@ -150,5 +155,46 @@ NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx, const uint8_t *sig,
                                     bigint *pub_exp);
 NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #endif
+
+#define MAX_KEYMAT_LEN (SHA1_SIZE * 2 + RC4_KEY_SIZE * 2)
+#define MAX_DIGEST_SIZE SHA256_SIZE
+NS_INTERNAL size_t suite_mac_len(uint16_t suite);
+NS_INTERNAL size_t suite_expansion(uint16_t suite);
+NS_INTERNAL size_t suite_key_mat_len(uint16_t suite);
+
+struct cipher_ctx {
+  union {
+    struct {
+      RC4_CTX rc4;
+      uint8_t md5[MD5_SIZE];
+    }rc4_md5;
+    struct {
+      RC4_CTX rc4;
+      uint8_t sha1[SHA1_SIZE];
+    }rc4_sha1;
+    struct {
+      uint8_t salt[AES_GCM_IV_KEY_MAT];
+      AES_GCM_CTX ctx;
+    }aes_gcm;
+  }u;
+  uint64_t seq;
+  uint16_t cipher_suite;
+};
+
+NS_INTERNAL void suite_init(struct cipher_ctx *ctx,
+                            uint8_t *keys,
+                            int client_write);
+
+/* crypto black-box encrypt+auth and copy to buffer */
+NS_INTERNAL void suite_box(struct cipher_ctx *ctx,
+                           const struct tls_hdr *hdr,
+                           const uint8_t *plain, size_t plain_len,
+                           uint8_t *out);
+
+/* crypto unbox in place and authenticate, return auth result, plaintext len */
+NS_INTERNAL int suite_unbox(struct cipher_ctx *ctx,
+                            const struct tls_hdr *hdr,
+                            uint8_t *data, size_t data_len,
+                            struct vec *plain);
 
 #endif /* _CRYPTO_H */
