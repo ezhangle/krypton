@@ -21,7 +21,7 @@ workstation, just copy over `openssl` directory to your build as well.
 
 ## Supported API
 
-See `openssl/ssl.h` header file for the list of supported functions.
+See [openssl/ssl.h](openssl/ssl.h) header file for the list of supported functions.
 
 ## Certificate Verification
 
@@ -88,10 +88,7 @@ Renegotiation, more secure cipher suites, CRL's,
 OCSP stapling, session ticketing, client certificates, and other advanced
 features are not supported.
 
-The maximum packet length is ignored, so a large SSL_write can produce
-heinously wrong output. Large writes should be split up.
-
-The `SSL_read()`` buffer must always be big enough.
+The `SSL_read()` buffer must always be big enough.
 If a large appdata packet is recieved and the buffer passed to SSL_read() doesn't have space for it, then some data will be discarded.
 
 Some high bits of 3-byte length fields are ignored, which could mean we fail to
@@ -99,7 +96,7 @@ parse some messages over 64KiB in length. For example, huge certificate chains.
 
 The code should be robust against bad message formatting. But unexpected
 messages (such as renegotiations, or server requests for client certificates)
-could lead to unexpected, possibly explotable, conditions.
+could lead to unexpected, possibly exploitable, conditions.
 
 Some timing attacks are not worked around, but there are defences against
 Bleichenbacher attacks. No key material is ever scrubbed from memory. The RC4
@@ -117,7 +114,7 @@ You retain the copyright on your contributions.
 ## Licensing
 
 Krypton is released under commercial and
-[GNU GPL v.2](http://www.gnu.org/licenses/old-licenses/gpl-2.0.html) open
+[GPL v.2](http://www.gnu.org/licenses/old-licenses/gpl-2.0.html) open
 source licenses. The GPLv2 open source License does not generally permit
 incorporating this software into non-open source programs.
 For those customers who do not wish to comply with the GPLv2 open
