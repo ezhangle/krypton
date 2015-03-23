@@ -31,6 +31,16 @@
 #ifndef BIGINT_IMPL_HEADER
 #define BIGINT_IMPL_HEADER
 
+/* Faster modular arithmetic, bigger code */
+#define CONFIG_BIGINT_BARRETT 1
+
+/* faster multiplies, bigger code, only worth it for bigger keys or systems
+ * with very slow multiplys. Not worth it on x86.
+*/
+/* #define CONFIG_BIGINT_KARATSUBA 1 */
+#define MUL_KARATSUBA_THRESH 20
+#define SQU_KARATSUBA_THRESH 40
+
 /* Maintain a number of precomputed variables when doing reduction */
 #define BIGINT_M_OFFSET     0    /**< Normal modulo offset. */
 #define BIGINT_P_OFFSET     1    /**< p modulo offset. */

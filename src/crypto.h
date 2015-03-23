@@ -65,6 +65,56 @@ NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
 NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
                            int length);
 
+/* AES */
+#define AES_MAXROUNDS 14
+#define AES_BLOCKSIZE 16
+#define AES_IV_SIZE 16
+
+typedef struct aes_key_st
+{
+    uint16_t rounds;
+    uint16_t key_size;
+    uint32_t ks[(AES_MAXROUNDS+1)*8];
+} AES_CTX;
+
+typedef enum
+{
+    AES_MODE_128,
+    AES_MODE_256
+} AES_MODE;
+
+NS_INTERNAL void AES_set_key(AES_CTX *ctx, const uint8_t *key, AES_MODE mode);
+NS_INTERNAL void AES_ecb_encrypt(AES_CTX *ctx, const uint8_t *in, uint8_t *out);
+
+#if 0
+NS_INTERNAL void AES_cbc_encrypt(AES_CTX *ctx, uint8_t iv[AES_IV_SIZE],
+        const uint8_t *msg,
+        uint8_t *out, int length);
+NS_INTERNAL void AES_cbc_decrypt(AES_CTX *ks, uint8_t iv[AES_IV_SIZE],
+        const uint8_t *in,
+        uint8_t *out, int length);
+NS_INTERNAL void AES_convert_key(AES_CTX *ctx);
+#endif
+
+/* GCM */
+typedef struct aes_gcm_st {
+  AES_CTX aes;
+  uint8_t H[AES_BLOCKSIZE];
+  uint8_t Y0[AES_BLOCKSIZE];
+} AES_GCM_CTX;
+
+NS_INTERNAL void aes_gcm_ctx(AES_GCM_CTX *ctx,
+               const uint8_t *key, size_t key_len,
+               const uint8_t *iv, size_t iv_len);
+NS_INTERNAL void aes_gcm_ae(AES_GCM_CTX *ctx,
+               const uint8_t *plain, size_t plain_len,
+               const uint8_t *aad, size_t aad_len,
+               uint8_t *crypt, uint8_t *tag);
+NS_INTERNAL int aes_gcm_ad(AES_GCM_CTX *ctx,
+               const uint8_t *crypt, size_t crypt_len,
+               const uint8_t *aad, size_t aad_len,
+               const uint8_t *tag, uint8_t *plain);
+
 /* HMAC */
 NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
                              int key_len, uint8_t *digest);
@@ -100,15 +150,5 @@ NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx, const uint8_t *sig,
                                     bigint *pub_exp);
 NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #endif
-
-/* Faster modular arithmetic, bigger code */
-#define CONFIG_BIGINT_BARRETT 1
-
-/* faster multiplies, bigger code, only worth it for bigger keys or systems
- * with very slow multiplys. Not worth it on x86.
-*/
-/* #define CONFIG_BIGINT_KARATSUBA 1 */
-#define MUL_KARATSUBA_THRESH 20
-#define SQU_KARATSUBA_THRESH 40
 
 #endif /* _CRYPTO_H */

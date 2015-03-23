@@ -180,13 +180,16 @@ NS_INTERNAL void ssl_err(struct ssl_st *ssl, int err);
 #if KRYPTON_DEBUG
 NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
 NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
+#else
+#define hex_dumpf(f, a, b, c) do {} while(0);
+#define hex_dump(a, b, c) do {} while(0);
 #endif
 
 typedef struct _bigint bigint; /**< An alias for _bigint */
 
-#include "crypto.h"
-#include "bigint.h"
 #include "bigint_impl.h"
+#include "bigint.h"
+#include "crypto.h"
 #include "pem.h"
 #include "ber.h"
 #include "../openssl/ssl.h"
