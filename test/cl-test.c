@@ -20,13 +20,16 @@
 #include <errno.h>
 
 #include <openssl/ssl.h>
+#if !USE_KRYPTON
+#include <openssl/err.h>
+#endif
 
 #define TEST_PORT 4343
 
 static SSL_CTX *setup_ctx(const char *cert_chain) {
   SSL_CTX *ctx;
 
-  ctx = SSL_CTX_new(SSLv23_client_method());
+  ctx = SSL_CTX_new(TLSv1_2_client_method());
   if (NULL == ctx)
     goto out;
 
@@ -40,8 +43,7 @@ static SSL_CTX *setup_ctx(const char *cert_chain) {
     goto out_free;
 
 #ifdef SSL_F_CLIENT_CERTIFICATE
-  SSL_CTX_set_cipher_list(ctx, "RC4-MD5,NULL-MD5");
-/* SSL_CTX_set_cipher_list(ctx, "NULL-MD5,RC4-MD5"); */
+  SSL_CTX_set_cipher_list(ctx, "AES128-GCM-SHA256,RC4-MD5,NULL-MD5");
 #endif
   goto out;
 
@@ -234,6 +236,9 @@ out_ssl:
 out_ctx:
   SSL_CTX_free(ctx);
 out:
+#if !USE_KRYPTON
+  ERR_print_errors_fp(stdout);
+#endif
   return ret;
 }
 

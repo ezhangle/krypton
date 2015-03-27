@@ -26,7 +26,7 @@
 static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
   SSL_CTX *ctx;
 
-  ctx = SSL_CTX_new(SSLv23_server_method());
+  ctx = SSL_CTX_new(TLSv1_2_server_method());
   if (NULL == ctx)
     goto out;
 
@@ -42,6 +42,9 @@ static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
     goto out_free;
   }
 
+#ifdef SSL_F_CLIENT_CERTIFICATE
+  SSL_CTX_set_cipher_list(ctx, "AES128-GCM-SHA256,RC4-MD5,NULL-MD5");
+#endif
   goto out;
 
 out_free:
