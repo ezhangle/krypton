@@ -9,7 +9,7 @@ SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c src/hmac.c \
 HEADERS = src/ktypes.h src/bigint_impl.h src/bigint.h src/crypto.h \
 					src/tlsproto.h src/tls.h src/ber.h src/pem.h src/x509.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c
-CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA)
+CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA) -g -fno-inline
 
 .PHONY: all clean tests crypto-tests openssl-tests krypton-tests
 
