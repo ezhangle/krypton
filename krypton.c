@@ -105,7 +105,7 @@ typedef unsigned long uintptr_t;
 typedef long ssize_t;
 #define __func__ ""
 #define __packed
-#ifndef alloca(x)
+#ifndef alloca
 #define alloca(x) _alloca(x)
 #endif
 #ifndef EWOULDBLOCK
