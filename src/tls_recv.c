@@ -358,11 +358,11 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   uint32_t len;
   uint16_t ilen;
   size_t out_size = RSA_block_size(ssl->ctx->rsa_privkey);
-  uint8_t out[512];
+  uint8_t *out = malloc(out_size);
   int ret;
 
   (void)hdr;
-  assert(out_size < sizeof(out)); /* TODO(lsm): fix this */
+  if (out == NULL) goto err;
 
   if (buf + sizeof(len) > end)
     goto err;
@@ -395,10 +395,12 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
   }
 
   tls_compute_master_secret(ssl->nxt, (struct tls_premaster_secret *)out);
+  free(out);
   dprintf((" + master secret computed\n"));
 
   return 1;
 err:
+  free(out);
   tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
   return 0;
 }
