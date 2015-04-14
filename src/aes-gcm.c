@@ -171,12 +171,22 @@ static void aes_gctr(AES_CTX *ctx, const uint8_t *icb, const uint8_t *x, size_t 
 
 	memcpy(cb, icb, AES_BLOCKSIZE);
 	/* Full blocks */
-	for (i = 0; i < n; i++) {
-		AES_ecb_encrypt(ctx, cb, ypos);
-		xor_block(ypos, xpos);
-		xpos += AES_BLOCKSIZE;
-		ypos += AES_BLOCKSIZE;
-		inc32(cb);
+	if ( x == y ) {
+		for (i = 0; i < n; i++) {
+			AES_ecb_encrypt(ctx, cb, tmp);
+			xor_block(ypos, tmp);
+			xpos += AES_BLOCKSIZE;
+			ypos += AES_BLOCKSIZE;
+			inc32(cb);
+		}
+	}else{
+		for (i = 0; i < n; i++) {
+			AES_ecb_encrypt(ctx, cb, ypos);
+			xor_block(ypos, xpos);
+			xpos += AES_BLOCKSIZE;
+			ypos += AES_BLOCKSIZE;
+			inc32(cb);
+		}
 	}
 
 	last = x + xlen - xpos;
@@ -272,16 +282,17 @@ void aes_gcm_ae(AES_GCM_CTX *ctx,
                 uint8_t *crypt, uint8_t *tag)
 {
 	uint8_t S[16];
+	uint8_t Y0[AES_BLOCKSIZE];
 
-	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, Y0);
 
 	/* C = GCTR_K(inc_32(Y_0), P) */
-	aes_gcm_gctr(&ctx->aes, ctx->Y0, plain, plain_len, crypt);
+	aes_gcm_gctr(&ctx->aes, Y0, plain, plain_len, crypt);
 
 	aes_gcm_ghash(ctx->H, aad, aad_len, crypt, plain_len, S);
 
 	/* T = MSB_t(GCTR_K(Y_0, S)) */
-	aes_gctr(&ctx->aes, ctx->Y0, S, sizeof(S), tag);
+	aes_gctr(&ctx->aes, Y0, S, sizeof(S), tag);
 
 	/* Return (C, T) */
 }
@@ -296,16 +307,17 @@ int aes_gcm_ad(AES_GCM_CTX *ctx,
                const uint8_t *tag, uint8_t *plain)
 {
 	uint8_t S[16], T[16];
+	uint8_t Y0[AES_BLOCKSIZE];
 
-	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
-
-	/* P = GCTR_K(inc_32(Y_0), C) */
-	aes_gcm_gctr(&ctx->aes, ctx->Y0, crypt, crypt_len, plain);
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, Y0);
 
 	aes_gcm_ghash(ctx->H, aad, aad_len, crypt, crypt_len, S);
 
+	/* P = GCTR_K(inc_32(Y_0), C) */
+	aes_gcm_gctr(&ctx->aes, Y0, crypt, crypt_len, plain);
+
 	/* T' = MSB_t(GCTR_K(Y_0, S)) */
-	aes_gctr(&ctx->aes, ctx->Y0, S, sizeof(S), T);
+	aes_gctr(&ctx->aes, Y0, S, sizeof(S), T);
 
 	if (memcmp(tag, T, 16) != 0) {
 		dprintf(("GCM: Tag mismatch\n"));

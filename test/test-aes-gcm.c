@@ -33,22 +33,19 @@ struct test_vec {
 static int test_vector(const struct test_vec *v)
 {
   AES_GCM_CTX ctx;
-  uint8_t cipher[256];
-  uint8_t plain[256];
-  uint8_t tag[32];
+  uint8_t buf[v->cipher_len];
+  uint8_t tag[v->tag_len];
 
-  assert(v->plain_len <= sizeof(cipher));
   assert(v->plain_len == v->cipher_len);
-  memset(cipher, 0, sizeof(cipher));
-  memset(tag, 0, sizeof(tag));
 
   aes_gcm_ctx(&ctx, v->key, v->key_len);
 
+  memcpy(buf, v->plain, v->plain_len);
   aes_gcm_ae(&ctx,
-             v->plain, v->plain_len,
+             buf, v->plain_len,
              v->iv, v->iv_len,
              v->aad, v->aad_len,
-             cipher, tag);
+             buf, tag);
 
   if ( memcmp(tag, v->tag, v->tag_len) ) {
     printf("Tag failed: (expected, got)\n");
@@ -56,25 +53,25 @@ static int test_vector(const struct test_vec *v)
     hex_dump(tag, v->tag_len, 0);
     return 0;
   }
-  if ( memcmp(cipher, v->cipher, v->cipher_len) ) {
+  if ( memcmp(buf, v->cipher, v->cipher_len) ) {
     printf("Ciphertext failed: (expected, got)\n");
     hex_dump(v->cipher, v->cipher_len, 0);
-    hex_dump(cipher, v->cipher_len, 0);
+    hex_dump(buf, v->cipher_len, 0);
     return 0;
   }
 
   if ( !aes_gcm_ad(&ctx,
-             cipher, v->plain_len,
+             buf, v->plain_len,
              v->iv, v->iv_len,
              v->aad, v->aad_len,
-             tag, plain) ) {
+             tag, buf) ) {
     printf("Reverse tag check failed\n");
     return 0;
   }
-  if ( memcmp(plain, v->plain, v->plain_len) ) {
+  if ( memcmp(buf, v->plain, v->plain_len) ) {
     printf("Reverse failed: (expected, got)\n");
     hex_dump(v->plain, v->plain_len, 0);
-    hex_dump(plain, v->plain_len, 0);
+    hex_dump(buf, v->plain_len, 0);
     return 0;
   }
 

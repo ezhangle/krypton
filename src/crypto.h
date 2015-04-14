@@ -100,7 +100,6 @@ NS_INTERNAL void AES_convert_key(AES_CTX *ctx);
 typedef struct aes_gcm_st {
   AES_CTX aes;
   uint8_t H[AES_BLOCKSIZE];
-  uint8_t Y0[AES_BLOCKSIZE];
 } AES_GCM_CTX;
 
 NS_INTERNAL void aes_gcm_ctx(AES_GCM_CTX *ctx,

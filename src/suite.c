@@ -102,7 +102,8 @@ static void box_stream_and_hmac(struct cipher_ctx *ctx,
   struct tls_hmac_hdr phdr;
 
   /* copy plaintext to output buffer */
-  memcpy(out, plain, plain_len);
+  if ( out != plain )
+    memcpy(out, plain, plain_len);
 
   phdr.seq = htobe64(ctx->seq);
   phdr.type = hdr->type;
