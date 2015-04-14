@@ -37,6 +37,22 @@ out:
   return ssl;
 }
 
+long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
+{
+  switch(cmd) {
+#ifdef KRYPTON_DTLS
+  case DTLS_CTRL_LISTEN:
+    if ( !ssl->ctx->meth.dtls )
+      return 0;
+    //SSL_set_options(s, SSL_OP_COOKIE_EXCHANGE);
+    ssl->sa = parg;
+    return 1;
+#endif
+  default:
+    return 0;
+  }
+}
+
 int SSL_set_fd(SSL *ssl, int fd) {
   ssl->fd = fd;
   ssl_err(ssl, SSL_ERROR_NONE);

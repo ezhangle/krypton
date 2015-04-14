@@ -38,6 +38,10 @@ struct ssl_st {
 
   struct tls_security *nxt;
 
+#if KRYPTON_DTLS
+  struct sockaddr *sa;
+#endif
+
 /* rcv buffer: can be 16bit lens? */
 #define RX_INITIAL_BUF 1024
   uint8_t *rx_buf;

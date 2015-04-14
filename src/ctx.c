@@ -34,13 +34,13 @@ out:
 }
 
 long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long mode, void *ptr) {
-  (void)ctx;
-  (void)cmd;
-  (void)ptr;
-  if (cmd == 33) {
+  switch(cmd) {
+  case SSL_CTRL_MODE:
     ctx->mode |= mode;
+    return ctx->mode;
+  default:
+    return 0;
   }
-  return ctx->mode;
 }
 
 void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,

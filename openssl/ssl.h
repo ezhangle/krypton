@@ -13,6 +13,7 @@ typedef struct ssl_method_st SSL_METHOD;
 
 int SSL_library_init(void);
 SSL *SSL_new(SSL_CTX *ctx);
+long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg);
 int SSL_set_fd(SSL *ssl, int fd);
 int SSL_get_fd(SSL *ssl);
 int SSL_accept(SSL *ssl);
@@ -49,7 +50,9 @@ const SSL_METHOD *DTLSv1_client_method(void);
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth);
 
 #define SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER 0x00000002L
-#define SSL_CTX_set_mode(ctx,op) SSL_CTX_ctrl((ctx),33,(op),NULL)
+#define SSL_CTRL_MODE 33
+#define SSL_CTX_set_mode(ctx,op) SSL_CTX_ctrl((ctx),SSL_CTRL_MODE,(op),NULL)
+#define SSL_CTX_get_mode(ctx) SSL_CTX_ctrl((ctx),SSL_CTRL_MODE,0,NULL)
 long SSL_CTX_ctrl(SSL_CTX *, int, long, void *);
 
 /* for the client */
@@ -69,5 +72,8 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type);
 int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type);
 
 void SSL_CTX_free(SSL_CTX *);
+
+#define DTLS_CTRL_LISTEN 75
+#define DTLSv1_listen(ssl, sa) SSL_ctrl(ssl, DTLS_CTRL_LISTEN, 0, sa)
 
 #endif /* _KRYPTON_H */
