@@ -182,7 +182,7 @@ int tls_record_begin(SSL *ssl, uint8_t type,
   st->suite = ssl->tx_ctx.cipher_suite;
 
   hdr.type = type;
-  hdr.vers = htobe16(0x0303);
+  hdr.vers = htobe16(TLSv1_2);
   hdr.len = ~0;
 
   if ( !tls_tx_push(ssl, &hdr, sizeof(hdr)) )

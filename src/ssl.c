@@ -228,6 +228,7 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
+
   return 1;
 }
 #endif

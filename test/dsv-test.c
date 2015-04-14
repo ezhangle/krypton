@@ -249,6 +249,7 @@ static int do_test(const char *cert_file, const char *key_file) {
   }while(0);
 #endif
 
+  printf("Listening\n");
   if (do_listen(ssl) <= 0) {
     goto shutdown;
   }

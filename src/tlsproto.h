@@ -6,6 +6,9 @@
 #ifndef _TLSPROTO_H
 #define _TLSPROTO_H
 
+#define TLSv1_2 0x0303
+#define DTLSv1_2 0xfefd
+
 /* set to number of null cipher suites */
 #define ALLOW_NULL_CIPHERS  0
 
@@ -44,6 +47,15 @@ struct tls_hdr {
   uint16_t len;
 } __packed;
 
+struct dtls_hdr {
+  uint8_t type;
+  uint16_t vers;
+  uint16_t epoch;
+  uint16_t seq_hi;
+  uint32_t seq;
+  uint16_t len;
+} __packed;
+
 struct tls_EXT_reneg {
   uint16_t type;
   uint16_t len;
@@ -54,6 +66,17 @@ struct tls_handshake {
   uint8_t type;
   uint8_t len_hi;
   uint16_t len;
+} __packed;
+
+struct dtls_handshake {
+  uint8_t type;
+  uint8_t len_hi;
+  uint16_t len;
+  uint16_t msg_seq;
+  uint8_t frag_off_hi;
+  uint16_t frag_off;
+  uint8_t frag_len_hi;
+  uint16_t frag_len;
 } __packed;
 
 struct tls_svr_hello {
@@ -118,6 +141,7 @@ struct tls_alert {
 #define HANDSHAKE_HELLO_REQ 0
 #define HANDSHAKE_CLIENT_HELLO 1
 #define HANDSHAKE_SERVER_HELLO 2
+#define HANDSHAKE_HELLO_VERIFY_REQUEST 3
 #define HANDSHAKE_NEW_SESSION_TICKET 4
 #define HANDSHAKE_CERTIFICATE 11
 #define HANDSHAKE_SERVER_KEY_EXCH 12

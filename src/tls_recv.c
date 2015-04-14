@@ -67,12 +67,31 @@ static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
   ssl->nxt->compressor_negotiated = 1;
 }
 
+static int hello_vers_check(SSL *ssl, uint16_t proto)
+{
+  if ( ssl->ctx->meth.dtls ) {
+    return (
+           proto == 0xfeff /* DTLS v1.0 */
+        || proto == 0xfefd /* DTLS v1.2 */
+        );
+  }else{
+    return (
+           proto == 0x0303    /* TLS v1.2 */
+        || proto == 0x0302 /* TLS v1.1 */
+        || proto == 0x0301 /* TLS v1.0 */
+        || proto == 0x0300 /* SSL 3.0 */
+        );
+  }
+}
+
 static int handle_hello(SSL *ssl, const uint8_t *buf,
                         const uint8_t *end) {
   unsigned num_ciphers, num_compressions;
   const uint16_t *cipher_suites;
   const uint8_t *compressions;
   const uint8_t *rand;
+  const uint8_t *cookie;
+  uint8_t cookie_len;
   unsigned int i;
   size_t ext_len;
   uint8_t sess_id_len;
@@ -88,13 +107,8 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   proto = be16toh(*(uint16_t *)buf);
   buf += 2;
 
-  if (proto != 0x0303    /* TLS v1.2 */
-      && proto != 0x0302 /* TLS v1.1 */
-      && proto != 0x0301 /* TLS v1.0 */
-      && proto != 0x0300 /* SSL 3.0 */
-      ) {
+  if (!hello_vers_check(ssl, proto))
     goto bad_vers;
-  }
 
   /* peer random */
   if (buf + sizeof(struct tls_random) > end)
@@ -110,6 +124,24 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   buf += 1 + sess_id_len;
   if (buf > end)
     goto err;
+
+  /* extract DTLS cookie if present */
+  if (ssl->is_server && ssl->ctx->meth.dtls) {
+    if (buf + sizeof(cookie_len) > end)
+      goto err;
+    cookie_len = be16toh(*(uint16_t *)buf);
+    buf += sizeof(cookie_len);
+
+    if (cookie_len) {
+      if (buf + cookie_len > end)
+        goto err;
+      cookie = buf;
+      buf += cookie_len;
+      hex_dump(cookie, cookie_len, 0);
+    }
+  }else{
+    cookie_len = 0;
+  }
 
   if (ssl->is_server) {
     uint16_t cipher_suites_len;
@@ -493,33 +525,33 @@ static int handle_cl_handshake(SSL *ssl, uint8_t type,
   return ret;
 }
 
-static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
-                            const uint8_t *buf, const uint8_t *end) {
+static int handle_handshake(SSL *ssl, struct vec *v) {
+  const uint8_t *buf = v->ptr, *end = v->ptr + v->len;
   const uint8_t *ibuf, *iend;
+  const struct tls_handshake *hdr;
   uint32_t len;
   int ret;
-  uint8_t type;
 
-  if (buf + 4 > end) {
+  hdr = (struct tls_handshake *)buf;
+  if (buf + sizeof(*hdr) > end) {
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
     return 0;
   }
 
-  type = buf[0];
-  len = be32toh(*(uint32_t *)buf) & 0xffffff;
+  len = ((uint32_t)hdr->len_hi << 16) | be16toh(hdr->len);
 
-  if ( end < buf + 4 + len ) {
+  if ( end < buf + sizeof(*hdr) + len ) {
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
     return 0;
   }
 
-  ibuf = buf + 4;
+  ibuf = buf + sizeof(*hdr);
   iend = ibuf + len;
 
   if (ssl->is_server)
-    ret = handle_sv_handshake(ssl, type, ibuf, iend);
+    ret = handle_sv_handshake(ssl, hdr->type, ibuf, iend);
   else
-    ret = handle_cl_handshake(ssl, type, ibuf, iend);
+    ret = handle_cl_handshake(ssl, hdr->type, ibuf, iend);
 
   if (ssl->nxt) {
     SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
@@ -528,12 +560,56 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
   return ret;
 }
 
-static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
-                                const uint8_t *buf, const uint8_t *end) {
-  (void)hdr;
-  (void)end;
-  (void)buf;
+static int handle_dtls_handshake(SSL *ssl, struct vec *v) {
+  const uint8_t *buf = v->ptr, *end = v->ptr + v->len;
+  const uint8_t *ibuf, *iend;
+  const struct dtls_handshake *hdr;
+  uint32_t len, frag_off, frag_len;
+  int ret;
 
+  hdr = (struct dtls_handshake *)buf;
+  if (buf + sizeof(*hdr) > end) {
+    dprintf(("Handshake too short for header\n"));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
+    return 0;
+  }
+
+  len = ((uint32_t)hdr->len_hi << 16) | be16toh(hdr->len);
+  frag_off = ((uint32_t)hdr->frag_off_hi << 16) | be16toh(hdr->frag_off);
+  frag_len = ((uint32_t)hdr->frag_len_hi << 16) | be16toh(hdr->frag_len);
+
+  /* FIXME: handle defragmentation */
+  if ( end < buf + sizeof(*hdr) + len ) {
+    dprintf(("Handshake too short for message\n"));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
+    return 0;
+  }
+
+  ibuf = buf + sizeof(*hdr);
+  iend = ibuf + len;
+
+  dprintf(("DTLS: Handshake: len: %u\n", len));
+  dprintf(("DTLS: Handshake: msg_seq: %u\n", be16toh(hdr->msg_seq)));
+  dprintf(("DTLS: Handshake: frag_off: %u\n", frag_off));
+  dprintf(("DTLS: Handshake: frag_len: %u\n", frag_len));
+  hex_dump(ibuf, len, 0);
+
+  if (ssl->is_server)
+    ret = handle_sv_handshake(ssl, hdr->type, ibuf, iend);
+  else
+    ret = handle_cl_handshake(ssl, hdr->type, ibuf, iend);
+
+  if (ssl->nxt) {
+    /* FIXME: For DTLS, do not include cookieless hello,
+     * or HelloVerifyRequest
+    */
+    SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
+  }
+
+  return ret;
+}
+
+static int handle_change_cipher(SSL *ssl, struct vec *v) {
   dprintf(("change cipher spec\n"));
 
   if (ssl->is_server) {
@@ -576,12 +652,12 @@ static int handle_appdata(SSL *ssl, struct vec *vec, uint8_t *out, size_t len) {
   return 1;
 }
 
-static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
-                        size_t len) {
+static int handle_alert(SSL *ssl, struct vec *v) {
+  const uint8_t *buf = v->ptr;
+  size_t len = v->len;
   if (len < 2)
     return 0;
 
-  (void)hdr;
   switch (buf[1]) {
     case ALERT_CLOSE_NOTIFY:
       dprintf(("recieved close notify\n"));
@@ -636,6 +712,28 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   return 1;
 }
 
+static int dispatch(SSL *ssl, uint8_t type, struct vec *v,
+                    uint8_t *out, size_t out_len)
+{
+    switch (type) {
+      case TLS_HANDSHAKE:
+        if ( ssl->ctx->meth.dtls ) {
+          return handle_dtls_handshake(ssl, v);
+        }else{
+          return handle_handshake(ssl, v);
+        }
+      case TLS_CHANGE_CIPHER_SPEC:
+        return handle_change_cipher(ssl, v);
+      case TLS_ALERT:
+        return handle_alert(ssl, v);
+      case TLS_APP_DATA:
+        return handle_appdata(ssl, v, out, out_len);
+      default:
+        dprintf(("unknown header type 0x%.2x\n", type));
+        return 0;
+    }
+}
+
 int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   const struct tls_hdr *hdr;
   uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
@@ -680,24 +778,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       goto out;
     }
 
-    switch (hdr->type) {
-      case TLS_HANDSHAKE:
-        iret = handle_handshake(ssl, hdr, v.ptr, v.ptr + v.len);
-        break;
-      case TLS_CHANGE_CIPHER_SPEC:
-        iret = handle_change_cipher(ssl, hdr, v.ptr, v.ptr + v.len);
-        break;
-      case TLS_ALERT:
-        iret = handle_alert(ssl, hdr, v.ptr, v.len);
-        break;
-      case TLS_APP_DATA:
-        iret = handle_appdata(ssl, &v, out, out_len);
-        break;
-      default:
-        dprintf(("unknown header type 0x%.2x\n", hdr->type));
-        iret = 0;
-        break;
-    }
+    iret = dispatch(ssl, hdr->type, &v, out, out_len);
 
     if (!iret) {
       ssl->rx_len = 0;
@@ -725,6 +806,35 @@ out:
 
 int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 {
-  hex_dump(ssl->rx_buf, ssl->rx_len, 0);
-  return 1;
+  uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
+  struct dtls_hdr *hdr;
+  struct vec v;
+  uint64_t seq;
+  uint16_t len;
+
+  if ( buf + sizeof(*hdr) > end ) {
+    dprintf(("Datagram too small\n"));
+    hex_dump(buf, end - buf, 0);
+    return 0;
+  }
+
+  hdr = (struct dtls_hdr *)buf;
+  buf += sizeof(*hdr);
+
+  seq = ((uint64_t)be16toh(hdr->seq_hi) << 32) | be32toh(hdr->seq);
+  len = be16toh(hdr->len);
+
+  v.ptr = buf;
+  v.len = end - buf;
+
+  if ( v.len > len )
+    v.len = len;
+
+  dprintf(("DTLS: type=0x%.4x\n", hdr->type));
+  dprintf(("DTLS: vers=%u\n", be16toh(hdr->vers)));
+  dprintf(("DTLS: epoch=%u\n", be16toh(hdr->epoch)));
+  dprintf(("DTLS: seq=%lu\n", seq));
+  dprintf(("DTLS: len=%u\n", len));
+
+  return dispatch(ssl, hdr->type, &v, out, out_len);
 }
