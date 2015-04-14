@@ -48,7 +48,6 @@ For example:
 
   - if not verifying, don't bother hashing servers cert
   - if a packet is too big for recieve buffer, peek its size for buf realloc
-  - strip handshake header in handle_handshake(), would reduce code size
 
 Probably the bigger performance improvements would be to add session ticketing
 to avoid costly handshakes wherever possible.

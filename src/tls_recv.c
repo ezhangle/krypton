@@ -67,7 +67,7 @@ static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
   ssl->nxt->compressor_negotiated = 1;
 }
 
-static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
+static int handle_hello(SSL *ssl, const uint8_t *buf,
                         const uint8_t *end) {
   unsigned num_ciphers, num_compressions;
   const uint16_t *cipher_suites;
@@ -76,25 +76,16 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   unsigned int i;
   size_t ext_len;
   uint8_t sess_id_len;
-  uint32_t len;
   uint16_t proto;
 
-  (void)hdr;
   if (ssl->is_server && ssl->state != STATE_CL_HELLO_WAIT) {
     tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_NO_RENEGOTIATION);
     return 1;
   }
-  if (buf + 6 > end)
+  if (buf + 2 > end)
     goto err;
 
-  len = be32toh(*(uint32_t *)buf) & 0xffffff;
-  buf += 4;
   proto = be16toh(*(uint16_t *)buf);
-
-  if (buf + len < end) {
-    end = buf + len;
-  }
-
   buf += 2;
 
   if (proto != 0x0303    /* TLS v1.2 */
@@ -279,25 +270,19 @@ bad_vers:
   return 0;
 }
 
-static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
+static int handle_certificate(SSL *ssl,
                               const uint8_t *buf, const uint8_t *end) {
-  const struct tls_cert *cert;
   const struct tls_cert_hdr *chdr;
   unsigned int depth;
-  size_t clen, ilen;
+  size_t clen;
   X509 *final = NULL, *chain = NULL;
   int err = ALERT_DECODE_ERROR;
 
-  (void)hdr;
-  cert = (struct tls_cert *)buf;
-  buf += sizeof(*cert);
-  if (buf > end)
+  if (buf + 3 > end)
     goto err;
+  clen = ((size_t)buf[0] << 16) | be16toh(*(uint16_t *)(buf + 1));
+  buf += 3;
 
-  ilen = ((size_t)cert->len_hi << 16) | be16toh(cert->len);
-  clen = ((size_t)cert->certs_len_hi << 16) | be16toh(cert->certs_len);
-  if (buf + ilen < end)
-    end = buf + ilen;
   if (buf + clen < end)
     end = buf + clen;
 
@@ -365,24 +350,14 @@ err:
   return 0;
 }
 
-static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
+static int handle_key_exch(SSL *ssl,
                            const uint8_t *buf, const uint8_t *end) {
-  uint32_t len;
   uint16_t ilen;
   size_t out_size = RSA_block_size(ssl->ctx->rsa_privkey);
   uint8_t *out = malloc(out_size);
   int ret;
 
-  (void)hdr;
-  if (out == NULL) goto err;
-
-  if (buf + sizeof(len) > end)
-    goto err;
-
-  len = be32toh(*(uint32_t *)buf) & 0xffffff;
-  buf += sizeof(len);
-
-  if (buf + len > end)
+  if (out == NULL)
     goto err;
 
   ilen = be16toh(*(uint16_t *)buf);
@@ -417,26 +392,15 @@ err:
   return 0;
 }
 
-static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
+static int handle_finished(SSL *ssl,
                            const uint8_t *buf, const uint8_t *end) {
-  uint32_t len;
   int ret = 0;
 
-  (void)hdr;
-  if (buf + sizeof(len) > end)
-    goto err;
-
-  len = be32toh(*(uint32_t *)buf) & 0xffffff;
-  buf += sizeof(len);
-
-  if (buf + len > end)
-    goto err;
-
   if (ssl->is_server) {
-    ret = tls_check_client_finished(ssl->nxt, buf, len);
+    ret = tls_check_client_finished(ssl->nxt, buf, end - buf);
     ssl->state = STATE_CLIENT_FINISHED;
   } else {
-    ret = tls_check_server_finished(ssl->nxt, buf, len);
+    ret = tls_check_server_finished(ssl->nxt, buf, end - buf);
     ssl->state = STATE_ESTABLISHED;
     tls_free_security(ssl->nxt);
     ssl->nxt = NULL;
@@ -447,25 +411,16 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   dprintf(("finished (%s)\n", (ret) ? "OK" : "EVIL"));
 
   return ret;
-err:
-  tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
-  return 0;
 }
 
-static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
+static int handle_sv_handshake(SSL *ssl, uint8_t type,
                                const uint8_t *buf, const uint8_t *end) {
-  uint8_t type;
   int ret = 1;
-
-  if (buf + 1 > end)
-    return 0;
-
-  type = buf[0];
 
   switch (type) {
     case HANDSHAKE_CLIENT_HELLO:
       dprintf(("client hello\n"));
-      ret = handle_hello(ssl, hdr, buf, end);
+      ret = handle_hello(ssl, buf, end);
       break;
     case HANDSHAKE_CERTIFICATE_VRFY:
       dprintf(("cert verify\n"));
@@ -474,10 +429,10 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
       break;
     case HANDSHAKE_CLIENT_KEY_EXCH:
       dprintf(("key exch\n"));
-      ret = handle_key_exch(ssl, hdr, buf, end);
+      ret = handle_key_exch(ssl, buf, end);
       break;
     case HANDSHAKE_FINISHED:
-      ret = handle_finished(ssl, hdr, buf, end);
+      ret = handle_finished(ssl, buf, end);
       break;
     default:
       dprintf(("unknown type 0x%.2x (encrypted?)\n", type));
@@ -485,22 +440,12 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
       return 0;
   }
 
-  if (ssl->nxt) {
-    SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
-  }
-
   return ret;
 }
 
-static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
+static int handle_cl_handshake(SSL *ssl, uint8_t type,
                                const uint8_t *buf, const uint8_t *end) {
-  uint8_t type;
   int ret = 1;
-
-  if (buf + 1 > end)
-    return 0;
-
-  type = buf[0];
 
   switch (type) {
     case HANDSHAKE_HELLO_REQ:
@@ -509,7 +454,7 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
       break;
     case HANDSHAKE_SERVER_HELLO:
       dprintf(("server hello\n"));
-      ret = handle_hello(ssl, hdr, buf, end);
+      ret = handle_hello(ssl, buf, end);
       break;
     case HANDSHAKE_NEW_SESSION_TICKET:
       dprintf(("new session ticket\n"));
@@ -518,11 +463,11 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
       break;
     case HANDSHAKE_CERTIFICATE:
       dprintf(("certificate\n"));
-      ret = handle_certificate(ssl, hdr, buf, end);
+      ret = handle_certificate(ssl, buf, end);
       break;
     case HANDSHAKE_SERVER_KEY_EXCH:
       dprintf(("server key exch\n"));
-      ret = handle_key_exch(ssl, hdr, buf, end);
+      ret = handle_key_exch(ssl, buf, end);
       break;
     case HANDSHAKE_CERTIFICATE_REQ:
       dprintf(("cert req\n"));
@@ -537,7 +482,7 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
       dprintf(("cert verify\n"));
       break;
     case HANDSHAKE_FINISHED:
-      ret = handle_finished(ssl, hdr, buf, end);
+      ret = handle_finished(ssl, buf, end);
       break;
     default:
       dprintf(("unknown type 0x%.2x (encrypted?)\n", type));
@@ -545,19 +490,40 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
       return 0;
   }
 
-  if (ssl->nxt) {
-    SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
-  }
-
   return ret;
 }
 
 static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
                             const uint8_t *buf, const uint8_t *end) {
+  const uint8_t *ibuf, *iend;
+  uint32_t len;
+  int ret;
+  uint8_t type;
+
+  if (buf + 4 > end)
+    return 0;
+
+  type = buf[0];
+  len = be32toh(*(uint32_t *)buf) & 0xffffff;
+
+  if ( end < buf + 4 + len ) {
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
+    return 0;
+  }
+
+  ibuf = buf + 4;
+  iend = ibuf + len;
+
   if (ssl->is_server)
-    return handle_sv_handshake(ssl, hdr, buf, end);
+    ret = handle_sv_handshake(ssl, type, ibuf, iend);
   else
-    return handle_cl_handshake(ssl, hdr, buf, end);
+    ret = handle_cl_handshake(ssl, type, ibuf, iend);
+
+  if (ssl->nxt) {
+    SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
+  }
+
+  return ret;
 }
 
 static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
