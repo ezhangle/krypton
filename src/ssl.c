@@ -63,7 +63,41 @@ int SSL_get_fd(SSL *ssl) {
   return ssl->fd;
 }
 
-static int do_send(SSL *ssl) {
+#if KRYPTON_DTLS
+static int dgram_send(SSL *ssl) {
+  const uint8_t *buf;
+  size_t len;
+  ssize_t ret;
+
+  buf = ssl->tx_buf;
+  len = ssl->tx_len;
+
+  /* FIXME: transmit individual records */
+  ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+  if (ret <= 0) {
+    if (SOCKET_ERRNO == EWOULDBLOCK) {
+      ssl_err(ssl, SSL_ERROR_WANT_WRITE);
+      return 0;
+    }
+    dprintf(("send: %s\n", strerror(SOCKET_ERRNO)));
+    ssl_err(ssl, SSL_ERROR_SYSCALL);
+    ssl->tx_len = 0;
+    ssl->write_pending = 0;
+    return 0;
+  }
+
+  if ( (size_t)ret < len )
+    return 0;
+
+  /* TODO: If not in handshake, clear buffer,
+   * since we won't need to re-transmit
+  */
+
+  return 1;
+}
+#endif
+
+static int stream_send(SSL *ssl) {
   const uint8_t *buf;
   size_t len;
   ssize_t ret;
@@ -123,7 +157,21 @@ shuffle:
   return 0;
 }
 
-static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
+static int do_send(SSL *ssl) {
+#ifdef KRYPTON_DTLS
+  if ( ssl->ctx->meth.dtls )
+    return dgram_send(ssl);
+#endif
+  return stream_send(ssl);
+}
+
+#if KRYPTON_DTLS
+static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
+  return 0;
+}
+#endif
+
+static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   uint8_t *ptr;
   ssize_t ret;
   size_t len;
@@ -198,6 +246,14 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 #endif
 
   return 1;
+}
+
+static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
+#ifdef KRYPTON_DTLS
+  if ( ssl->ctx->meth.dtls )
+    return dgram_recv(ssl, out, out_len);
+#endif
+  return stream_recv(ssl, out, out_len);
 }
 
 int SSL_accept(SSL *ssl) {
