@@ -722,3 +722,9 @@ out:
 
   return ret;
 }
+
+int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
+{
+  hex_dump(ssl->rx_buf, ssl->rx_len, 0);
+  return 1;
+}

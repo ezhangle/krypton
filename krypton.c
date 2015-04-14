@@ -1133,6 +1133,11 @@ NS_INTERNAL int tls_record_data(SSL *ssl, tls_record_state *st,
                                 const void *buf, size_t len);
 NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 
+/* dtls */
+#ifdef KRYPTON_DTLS
+NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
+#endif
+
 /* generic */
 NS_INTERNAL int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL void tls_generate_keys(tls_sec_t sec);
@@ -3844,22 +3849,22 @@ const SSL_METHOD dsv_meth = {0, 1, 1};
 const SSL_METHOD dcl_meth = {1, 0, 1};
 
 const SSL_METHOD *DTLSv1_2_method(void) {
-  return &meth;
+  return &dmeth;
 }
 const SSL_METHOD *DTLSv1_2_server_method(void) {
-  return &sv_meth;
+  return &dsv_meth;
 }
 const SSL_METHOD *DTLSv1_2_client_method(void) {
-  return &cl_meth;
+  return &dcl_meth;
 }
 const SSL_METHOD *DTLSv1_method(void) {
-  return &meth;
+  return &dmeth;
 }
 const SSL_METHOD *DTLSv1_server_method(void) {
-  return &sv_meth;
+  return &dsv_meth;
 }
 const SSL_METHOD *DTLSv1_client_method(void) {
-  return &cl_meth;
+  return &dcl_meth;
 }
 #endif
 /*
@@ -5395,6 +5400,7 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
 #endif
 
 #define MIN_LIKELY_MTU    256
+#define MAX_BUF (1 << 14)
 
 int SSL_library_init(void) {
   return 1;
@@ -5426,14 +5432,20 @@ out:
 
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
 {
+#ifdef KRYPTON_DTLS
+  long ret;
+#endif
+
   switch(cmd) {
 #ifdef KRYPTON_DTLS
   case DTLS_CTRL_LISTEN:
     if ( !ssl->ctx->meth.dtls )
       return 0;
-    //SSL_set_options(s, SSL_OP_COOKIE_EXCHANGE);
+    SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
     ssl->sa = parg;
-    return 1;
+    ret = SSL_accept(ssl);
+    ssl->sa = NULL;
+    return ret;
   case SSL_CTRL_OPTIONS:
     ssl->options |= larg;
     return (ssl->options);
@@ -5564,7 +5576,49 @@ static int do_send(SSL *ssl) {
 
 #if KRYPTON_DTLS
 static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
-  return 0;
+  struct sockaddr_storage st;
+  socklen_t salen = sizeof(st);
+  struct sockaddr *sa;
+  ssize_t ret;
+
+  if (NULL == ssl->rx_buf) {
+    ssl->rx_buf = malloc(MAX_BUF);
+    if (NULL == ssl->rx_buf) {
+      ssl_err(ssl, SSL_ERROR_SYSCALL);
+      return 0;
+    }
+    ssl->rx_max_len = MAX_BUF;
+    ssl->rx_len = 0;
+  }
+
+  if (ssl->sa)
+    sa = ssl->sa;
+  else
+    sa = (struct sockaddr *)&st;
+
+  ret = recvfrom(ssl->fd, ssl->rx_buf, ssl->rx_max_len, 0, sa, &salen);
+  if (ret < 0) {
+    if (SOCKET_ERRNO == EWOULDBLOCK) {
+      ssl_err(ssl, SSL_ERROR_WANT_READ);
+      return 0;
+    }
+    dprintf(("recv: %s\n", strerror(errno)));
+    ssl_err(ssl, SSL_ERROR_SYSCALL);
+    return 0;
+  }
+
+  ssl->rx_len = ret;
+
+  /* TODO:
+   * - Update PMTU estimates
+   * - clear tx retransmit flights
+  */
+
+  if (!dtls_handle_recv(ssl, out, out_len)) {
+    ssl_err(ssl, SSL_ERROR_SSL);
+    return 0;
+  }
+  return 1;
 }
 #endif
 
@@ -5587,7 +5641,7 @@ static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     uint8_t *new;
     size_t new_len;
 
-    /* FIXME: peek for size */
+    /* TODO: peek for size */
     new_len = ssl->rx_max_len + RX_INITIAL_BUF;
     new = realloc(ssl->rx_buf, new_len);
     if (NULL == new) {
@@ -7120,6 +7174,12 @@ out:
   }
 
   return ret;
+}
+
+int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
+{
+  hex_dump(ssl->rx_buf, ssl->rx_len, 0);
+  return 1;
 }
 /*
  * Copyright (c) 2015 Cesanta Software Limited

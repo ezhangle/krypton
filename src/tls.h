@@ -44,6 +44,11 @@ NS_INTERNAL int tls_record_data(SSL *ssl, tls_record_state *st,
                                 const void *buf, size_t len);
 NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 
+/* dtls */
+#ifdef KRYPTON_DTLS
+NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
+#endif
+
 /* generic */
 NS_INTERNAL int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL void tls_generate_keys(tls_sec_t sec);

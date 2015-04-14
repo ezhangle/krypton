@@ -10,6 +10,7 @@
 #endif
 
 #define MIN_LIKELY_MTU    256
+#define MAX_BUF (1 << 14)
 
 int SSL_library_init(void) {
   return 1;
@@ -41,14 +42,20 @@ out:
 
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
 {
+#ifdef KRYPTON_DTLS
+  long ret;
+#endif
+
   switch(cmd) {
 #ifdef KRYPTON_DTLS
   case DTLS_CTRL_LISTEN:
     if ( !ssl->ctx->meth.dtls )
       return 0;
-    //SSL_set_options(s, SSL_OP_COOKIE_EXCHANGE);
+    SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
     ssl->sa = parg;
-    return 1;
+    ret = SSL_accept(ssl);
+    ssl->sa = NULL;
+    return ret;
   case SSL_CTRL_OPTIONS:
     ssl->options |= larg;
     return (ssl->options);
@@ -179,7 +186,49 @@ static int do_send(SSL *ssl) {
 
 #if KRYPTON_DTLS
 static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
-  return 0;
+  struct sockaddr_storage st;
+  socklen_t salen = sizeof(st);
+  struct sockaddr *sa;
+  ssize_t ret;
+
+  if (NULL == ssl->rx_buf) {
+    ssl->rx_buf = malloc(MAX_BUF);
+    if (NULL == ssl->rx_buf) {
+      ssl_err(ssl, SSL_ERROR_SYSCALL);
+      return 0;
+    }
+    ssl->rx_max_len = MAX_BUF;
+    ssl->rx_len = 0;
+  }
+
+  if (ssl->sa)
+    sa = ssl->sa;
+  else
+    sa = (struct sockaddr *)&st;
+
+  ret = recvfrom(ssl->fd, ssl->rx_buf, ssl->rx_max_len, 0, sa, &salen);
+  if (ret < 0) {
+    if (SOCKET_ERRNO == EWOULDBLOCK) {
+      ssl_err(ssl, SSL_ERROR_WANT_READ);
+      return 0;
+    }
+    dprintf(("recv: %s\n", strerror(errno)));
+    ssl_err(ssl, SSL_ERROR_SYSCALL);
+    return 0;
+  }
+
+  ssl->rx_len = ret;
+
+  /* TODO:
+   * - Update PMTU estimates
+   * - clear tx retransmit flights
+  */
+
+  if (!dtls_handle_recv(ssl, out, out_len)) {
+    ssl_err(ssl, SSL_ERROR_SSL);
+    return 0;
+  }
+  return 1;
 }
 #endif
 
@@ -202,7 +251,7 @@ static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     uint8_t *new;
     size_t new_len;
 
-    /* FIXME: peek for size */
+    /* TODO: peek for size */
     new_len = ssl->rx_max_len + RX_INITIAL_BUF;
     new = realloc(ssl->rx_buf, new_len);
     if (NULL == new) {
