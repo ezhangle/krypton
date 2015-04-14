@@ -50,10 +50,13 @@ struct tls_EXT_reneg {
   uint8_t ri_len;
 } __packed;
 
-struct tls_svr_hello {
+struct tls_handshake {
   uint8_t type;
   uint8_t len_hi;
   uint16_t len;
+} __packed;
+
+struct tls_svr_hello {
   uint16_t version;
   struct tls_random random;
   uint8_t sess_id_len;
@@ -65,9 +68,6 @@ struct tls_svr_hello {
 } __packed;
 
 struct tls_cl_hello {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint16_t version;
   struct tls_random random;
   uint8_t sess_id_len;
@@ -80,10 +80,11 @@ struct tls_cl_hello {
   struct tls_EXT_reneg ext_reneg;
 } __packed;
 
+struct tls_key_exch {
+  uint16_t key_len;
+} __packed;
+
 struct tls_cert {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint8_t certs_len_hi;
   uint16_t certs_len;
 } __packed;
@@ -94,20 +95,11 @@ struct tls_cert_hdr {
   uint16_t cert_len;
 } __packed;
 
-struct tls_svr_hello_done {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
-} __packed;
-
 struct tls_change_cipher_spec {
   uint8_t one;
 } __packed;
 
 struct tls_finished {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint8_t vrfy[12];
 } __packed;
 

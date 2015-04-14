@@ -11,13 +11,13 @@
 #include <time.h>
 
 NS_INTERNAL int tls_cl_hello(SSL *ssl) {
+  tls_record_state st;
   struct tls_cl_hello hello;
   unsigned int i = 0;
 
   /* hello */
-  hello.type = HANDSHAKE_CLIENT_HELLO;
-  hello.len_hi = 0;
-  hello.len = htobe16(sizeof(hello) - 4);
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_HELLO, &st))
+    return 0;
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
   if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
@@ -54,9 +54,10 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
+  if (!tls_record_data(ssl, &st, &hello, sizeof(hello)))
     return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   /* store the random we generated */
   memcpy(&ssl->nxt->cl_rnd, &hello.random, sizeof(ssl->nxt->cl_rnd));
@@ -64,19 +65,23 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   return 1;
 }
 
-static void set16(unsigned char *p, uint16_t v) {
-  p[0] = (v >> 8) & 0xff;
-  p[1] = v & 0xff;
-}
-
 NS_INTERNAL int tls_cl_finish(SSL *ssl) {
+  tls_record_state st;
+  struct tls_key_exch exch;
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;
-  size_t buf_len = 6 + RSA_block_size(ssl->nxt->svr_key);
-  unsigned char buf[6 + 512];
+  size_t key_len = RSA_block_size(ssl->nxt->svr_key);
+  unsigned char buf[512];
   struct tls_premaster_secret in;
 
-  assert(buf_len < sizeof(buf)); /* Fix this */
+  assert(key_len < sizeof(buf)); /* Fix this */
+
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_KEY_EXCH, &st))
+    return 0;
+
+  exch.key_len = htobe16(key_len);
+  if (!tls_record_data(ssl, &st, &exch, sizeof(exch)))
+    return 0;
 
   in.version = htobe16(0x0303);
   if (!get_random(in.opaque, sizeof(in.opaque))) {
@@ -87,41 +92,36 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   tls_generate_keys(ssl->nxt);
   dprintf((" + master secret computed\n"));
 
-  if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *)&in, sizeof(in), buf + 6, 0) <=
-      1) {
+  if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *)&in, sizeof(in), buf, 0) <= 1) {
     dprintf(("RSA encrypt failed\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
 
-  buf[0] = HANDSHAKE_CLIENT_KEY_EXCH;
-  buf[1] = 0;
-  set16(buf + 2, buf_len - 4);
-  set16(buf + 4, buf_len - 6);
-  if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len))
+  if (!tls_record_data(ssl, &st, buf, key_len))
     return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, buf, buf_len);
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
+  if (!tls_record_begin(ssl, TLS_CHANGE_CIPHER_SPEC, 0, &st))
     return 0;
-
-  /* finished */
-  finished.type = HANDSHAKE_FINISHED;
-  finished.len_hi = 0;
-  finished.len = htobe16(sizeof(finished.vrfy));
-  memset(finished.vrfy, 0, sizeof(finished.vrfy));
-  tls_generate_client_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
-
+  if (!tls_record_data(ssl, &st, &cipher, sizeof(cipher)))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
   tls_client_cipher_spec(ssl->nxt, &ssl->tx_ctx);
   ssl->tx_enc = 1;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished)))
+  /* finished */
+  tls_generate_client_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_FINISHED, &st))
     return 0;
-
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&finished),
-                sizeof(finished));
+  if (!tls_record_data(ssl, &st, &finished, sizeof(finished)))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   return 1;
 }

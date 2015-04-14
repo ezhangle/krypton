@@ -503,10 +503,13 @@ struct tls_EXT_reneg {
   uint8_t ri_len;
 } __packed;
 
-struct tls_svr_hello {
+struct tls_handshake {
   uint8_t type;
   uint8_t len_hi;
   uint16_t len;
+} __packed;
+
+struct tls_svr_hello {
   uint16_t version;
   struct tls_random random;
   uint8_t sess_id_len;
@@ -518,9 +521,6 @@ struct tls_svr_hello {
 } __packed;
 
 struct tls_cl_hello {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint16_t version;
   struct tls_random random;
   uint8_t sess_id_len;
@@ -533,10 +533,11 @@ struct tls_cl_hello {
   struct tls_EXT_reneg ext_reneg;
 } __packed;
 
+struct tls_key_exch {
+  uint16_t key_len;
+} __packed;
+
 struct tls_cert {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint8_t certs_len_hi;
   uint16_t certs_len;
 } __packed;
@@ -547,20 +548,11 @@ struct tls_cert_hdr {
   uint16_t cert_len;
 } __packed;
 
-struct tls_svr_hello_done {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
-} __packed;
-
 struct tls_change_cipher_spec {
   uint8_t one;
 } __packed;
 
 struct tls_finished {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint8_t vrfy[12];
 } __packed;
 
@@ -731,7 +723,6 @@ NS_INTERNAL void AES_convert_key(AES_CTX *ctx);
 typedef struct aes_gcm_st {
   AES_CTX aes;
   uint8_t H[AES_BLOCKSIZE];
-  uint8_t Y0[AES_BLOCKSIZE];
 } AES_GCM_CTX;
 
 NS_INTERNAL void aes_gcm_ctx(AES_GCM_CTX *ctx,
@@ -962,10 +953,13 @@ struct tls_EXT_reneg {
   uint8_t ri_len;
 } __packed;
 
-struct tls_svr_hello {
+struct tls_handshake {
   uint8_t type;
   uint8_t len_hi;
   uint16_t len;
+} __packed;
+
+struct tls_svr_hello {
   uint16_t version;
   struct tls_random random;
   uint8_t sess_id_len;
@@ -977,9 +971,6 @@ struct tls_svr_hello {
 } __packed;
 
 struct tls_cl_hello {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint16_t version;
   struct tls_random random;
   uint8_t sess_id_len;
@@ -992,10 +983,11 @@ struct tls_cl_hello {
   struct tls_EXT_reneg ext_reneg;
 } __packed;
 
+struct tls_key_exch {
+  uint16_t key_len;
+} __packed;
+
 struct tls_cert {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint8_t certs_len_hi;
   uint16_t certs_len;
 } __packed;
@@ -1006,20 +998,11 @@ struct tls_cert_hdr {
   uint16_t cert_len;
 } __packed;
 
-struct tls_svr_hello_done {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
-} __packed;
-
 struct tls_change_cipher_spec {
   uint8_t one;
 } __packed;
 
 struct tls_finished {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
   uint8_t vrfy[12];
 } __packed;
 
@@ -1127,10 +1110,16 @@ typedef struct tls_security {
 NS_INTERNAL tls_sec_t tls_new_security(void);
 NS_INTERNAL void tls_free_security(tls_sec_t sec);
 
+typedef struct { size_t ofs; uint16_t suite; } tls_record_state;
+NS_INTERNAL int tls_record_begin(SSL *ssl, uint8_t type,
+                                 uint8_t subtype, tls_record_state *st);
+NS_INTERNAL int tls_record_data(SSL *ssl, tls_record_state *st,
+                                const void *buf, size_t len);
+NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
+
 /* generic */
 NS_INTERNAL int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL void tls_generate_keys(tls_sec_t sec);
-NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len);
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
@@ -4096,7 +4085,6 @@ int get_random(uint8_t *out, size_t len) {
   if (fp != NULL) {
     ret = fread(out, 1, len, fp);
   }
-
   return ret == len;
 }
 
@@ -6106,61 +6094,154 @@ int tls_tx_push(SSL *ssl, const void *data, size_t len) {
   return 1;
 }
 
-int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
+int tls_record_begin(SSL *ssl, uint8_t type,
+                     uint8_t subtype, tls_record_state *st)
+{
   struct tls_hdr hdr;
-  size_t max;
-  size_t mac_len;
-  size_t exp_len;
 
-  if (ssl->tx_enc) {
-    mac_len = suite_mac_len(ssl->tx_ctx.cipher_suite);
-    exp_len = suite_expansion(ssl->tx_ctx.cipher_suite);
-  }else{
-    mac_len = 0;
-    exp_len = 0;
-  }
-
-  max = (1 << 14) - (mac_len + exp_len);
-  if ( len > max )
-    len = max - (mac_len + exp_len);
+  /* record where we started */
+  st->ofs = ssl->tx_len;
+  st->suite = ssl->tx_ctx.cipher_suite;
 
   hdr.type = type;
   hdr.vers = htobe16(0x0303);
-  hdr.len = htobe16(len + exp_len + mac_len);
+  hdr.len = ~0;
 
-  if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
+  if ( !tls_tx_push(ssl, &hdr, sizeof(hdr)) )
     return 0;
 
-  if ( ssl->tx_enc ) {
-    size_t buf_ofs;
-    buf_ofs = ssl->tx_len;
-    if (!tls_tx_push(ssl, NULL, len + exp_len + mac_len))
-      return 0;
-
-    suite_box(&ssl->tx_ctx, &hdr, buf, len, ssl->tx_buf + buf_ofs);
-  }else{
-    if (!tls_tx_push(ssl, buf, len))
+  if (ssl->tx_enc) {
+    size_t exp_len;
+    exp_len = suite_expansion(ssl->tx_ctx.cipher_suite);
+    if (!tls_tx_push(ssl, NULL, exp_len))
       return 0;
   }
 
-  return len;
+  if ( type == TLS_HANDSHAKE ) {
+    struct tls_handshake hs_hdr;
+    hs_hdr.type = subtype;
+    if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
+      return 0;
+  }else{
+    assert(!subtype);
+  }
+
+  return 1;
+}
+
+int tls_record_data(SSL *ssl, tls_record_state *st,
+                    const void *buf, size_t len)
+{
+  return tls_tx_push(ssl, buf, len);
+}
+
+int tls_record_finish(SSL *ssl, const tls_record_state *st)
+{
+  struct tls_hdr *hdr;
+  uint8_t *payload;
+  size_t plen, tot_len;
+  size_t mac_len, exp_len;
+
+  /* cipher suite can't change half-way through record */
+  assert(st->suite == ssl->tx_ctx.cipher_suite);
+
+  /* add space for mac if necessary, before length check */
+  if (ssl->tx_enc) {
+    mac_len = suite_mac_len(ssl->tx_ctx.cipher_suite);
+    if (!tls_tx_push(ssl, NULL, mac_len))
+      return 0;
+  }else{
+    mac_len = 0;
+  }
+
+  /* figure out the length */
+  assert(ssl->tx_len > st->ofs);
+  tot_len = ssl->tx_len - st->ofs;
+  assert(tot_len >= sizeof(*hdr));
+  tot_len -= sizeof(*hdr);
+
+  /* grab the header */
+  hdr = (struct tls_hdr *)(ssl->tx_buf + st->ofs);
+
+  /* patch in the length field */
+  assert(tot_len <= 0xffff);
+  hdr->len = htobe16(tot_len);
+
+  /* locate and size the payload */
+  if ( ssl->tx_enc ) {
+    exp_len = suite_expansion(ssl->tx_ctx.cipher_suite);
+  }else{
+    exp_len = 0;
+  }
+  payload = ssl->tx_buf + st->ofs + sizeof(*hdr) + exp_len;
+  plen = tot_len - (exp_len + mac_len);
+
+  /* If it's a handshake, backpatch the handshake size and
+   * add the contents to the running hash of all handshake messages
+  */
+  if (hdr->type == TLS_HANDSHAKE) {
+    struct tls_handshake *hs;
+    size_t hs_len;
+
+    hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
+                                  sizeof(*hdr) + exp_len);
+    assert(plen >= sizeof(*hs));
+    hs_len = plen - sizeof(*hs);
+
+    hs->len_hi = (hs_len >> 16);
+    hs->len = htobe16(hs_len & 0xffff);
+
+    SHA256_Update(&ssl->nxt->handshakes_hash, payload, plen);
+  }
+
+  /* do the crypto */
+  if (ssl->tx_enc) {
+    uint8_t *buf;
+
+    buf = ssl->tx_buf + st->ofs + sizeof(*hdr);
+    suite_box(&ssl->tx_ctx, hdr, buf + exp_len, plen, buf);
+#if 0
+    hex_dump(tmp, plen, 0);
+    hex_dump(buf + exp_len, plen, 0);
+    hex_dump(buf, exp_len + plen + mac_len, 0);
+    hex_dump(ssl->tx_buf + st->ofs, ssl->tx_len - st->ofs, 0);
+#endif
+  }
+
+  return 1;
 }
 
 ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
   /* FIXME: break up in to max-sized packets */
-  int res = tls_send(ssl, TLS_APP_DATA, buf, sz);
-  return res == 0 ? -1 : res;
+  tls_record_state st;
+  if (!tls_record_begin(ssl, TLS_APP_DATA, 0, &st))
+    return -1;
+  if (!tls_record_data(ssl, &st, buf, sz))
+    return -1;
+  if (!tls_record_finish(ssl, &st))
+    return -1;
+  return sz;
 }
 
 int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   struct tls_alert alert;
+  tls_record_state st;
+
   if (ssl->fatal)
     return 1;
   if (level == ALERT_LEVEL_FATAL)
     ssl->fatal = 1;
+
   alert.level = level;
   alert.desc = desc;
-  return tls_send(ssl, TLS_ALERT, &alert, sizeof(alert));
+
+  if (!tls_record_begin(ssl, TLS_ALERT, 0, &st))
+    return 0;
+  if (!tls_record_data(ssl, &st, &alert, sizeof(alert)))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
+  return 1;
 }
 
 int tls_close_notify(SSL *ssl) {
@@ -6175,13 +6256,13 @@ int tls_close_notify(SSL *ssl) {
 #include <time.h>
 
 NS_INTERNAL int tls_cl_hello(SSL *ssl) {
+  tls_record_state st;
   struct tls_cl_hello hello;
   unsigned int i = 0;
 
   /* hello */
-  hello.type = HANDSHAKE_CLIENT_HELLO;
-  hello.len_hi = 0;
-  hello.len = htobe16(sizeof(hello) - 4);
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_HELLO, &st))
+    return 0;
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
   if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
@@ -6218,9 +6299,10 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
+  if (!tls_record_data(ssl, &st, &hello, sizeof(hello)))
     return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   /* store the random we generated */
   memcpy(&ssl->nxt->cl_rnd, &hello.random, sizeof(ssl->nxt->cl_rnd));
@@ -6228,19 +6310,23 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   return 1;
 }
 
-static void set16(unsigned char *p, uint16_t v) {
-  p[0] = (v >> 8) & 0xff;
-  p[1] = v & 0xff;
-}
-
 NS_INTERNAL int tls_cl_finish(SSL *ssl) {
+  tls_record_state st;
+  struct tls_key_exch exch;
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;
-  size_t buf_len = 6 + RSA_block_size(ssl->nxt->svr_key);
-  unsigned char buf[6 + 512];
+  size_t key_len = RSA_block_size(ssl->nxt->svr_key);
+  unsigned char buf[512];
   struct tls_premaster_secret in;
 
-  assert(buf_len < sizeof(buf)); /* Fix this */
+  assert(key_len < sizeof(buf)); /* Fix this */
+
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_KEY_EXCH, &st))
+    return 0;
+
+  exch.key_len = htobe16(key_len);
+  if (!tls_record_data(ssl, &st, &exch, sizeof(exch)))
+    return 0;
 
   in.version = htobe16(0x0303);
   if (!get_random(in.opaque, sizeof(in.opaque))) {
@@ -6251,41 +6337,36 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   tls_generate_keys(ssl->nxt);
   dprintf((" + master secret computed\n"));
 
-  if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *)&in, sizeof(in), buf + 6, 0) <=
-      1) {
+  if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *)&in, sizeof(in), buf, 0) <= 1) {
     dprintf(("RSA encrypt failed\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
 
-  buf[0] = HANDSHAKE_CLIENT_KEY_EXCH;
-  buf[1] = 0;
-  set16(buf + 2, buf_len - 4);
-  set16(buf + 4, buf_len - 6);
-  if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len))
+  if (!tls_record_data(ssl, &st, buf, key_len))
     return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, buf, buf_len);
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
+  if (!tls_record_begin(ssl, TLS_CHANGE_CIPHER_SPEC, 0, &st))
     return 0;
-
-  /* finished */
-  finished.type = HANDSHAKE_FINISHED;
-  finished.len_hi = 0;
-  finished.len = htobe16(sizeof(finished.vrfy));
-  memset(finished.vrfy, 0, sizeof(finished.vrfy));
-  tls_generate_client_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
-
+  if (!tls_record_data(ssl, &st, &cipher, sizeof(cipher)))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
   tls_client_cipher_spec(ssl->nxt, &ssl->tx_ctx);
   ssl->tx_enc = 1;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished)))
+  /* finished */
+  tls_generate_client_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_FINISHED, &st))
     return 0;
-
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&finished),
-                sizeof(finished));
+  if (!tls_record_data(ssl, &st, &finished, sizeof(finished)))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   return 1;
 }
@@ -6504,7 +6585,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   for (i = 0; i < num_ciphers; i++) {
     uint16_t suite = be16toh(cipher_suites[i]);
     dprintf((" + %s cipher_suite[%u]: 0x%.4x\n",
-            (ssl->is_server) ? "server" : "client", i, suite));
+            (ssl->is_server) ? "client" : "server", i, suite));
     if (ssl->is_server) {
       cipher_suite_negotiate(ssl, suite);
     } else {
@@ -6517,7 +6598,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   for (i = 0; i < num_compressions; i++) {
     uint8_t compressor = compressions[i];
     dprintf((" + %s compression[%u]: 0x%.2x\n",
-            (ssl->is_server) ? "server" : "client", i, compressor));
+            (ssl->is_server) ? "client" : "server", i, compressor));
     if (ssl->is_server) {
       compressor_negotiate(ssl, compressor);
     } else {
@@ -6790,8 +6871,10 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
   int ret;
   uint8_t type;
 
-  if (buf + 4 > end)
+  if (buf + 4 > end) {
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
     return 0;
+  }
 
   type = buf[0];
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
@@ -6964,7 +7047,6 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       /* incomplete data */
       goto out;
     }
-
     if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
       goto out;
     }
@@ -7020,17 +7102,15 @@ out:
 #include <time.h>
 
 NS_INTERNAL int tls_sv_hello(SSL *ssl) {
-  struct tls_hdr hdr;
+  tls_record_state st;
   struct tls_svr_hello hello;
   struct tls_cert cert;
   struct tls_cert_hdr chdr;
-  struct tls_svr_hello_done done;
   unsigned int i;
 
   /* hello */
-  hello.type = HANDSHAKE_SERVER_HELLO;
-  hello.len_hi = 0;
-  hello.len = htobe16(sizeof(hello) - 4);
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_SERVER_HELLO, &st))
+    return 0;
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
   if (!get_random(hello.random.opaque, sizeof(hello.random.opaque)))
@@ -7043,32 +7123,21 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hello.ext_reneg.type = htobe16(EXT_RENEG_INFO);
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
-
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
+  if (!tls_record_data(ssl, &st, &hello, sizeof(hello)))
     return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   /* certificate */
-  hdr.type = TLS_HANDSHAKE;
-  hdr.vers = htobe16(0x0303);
-  hdr.len = htobe16(sizeof(cert) + sizeof(chdr) * ssl->ctx->pem_cert->num_obj +
-                    ssl->ctx->pem_cert->tot_len);
-
-  if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CERTIFICATE, &st))
     return 0;
 
-  cert.type = HANDSHAKE_CERTIFICATE;
-  cert.len_hi = 0;
-  cert.len = htobe16(sizeof(chdr) + sizeof(chdr) * ssl->ctx->pem_cert->num_obj +
-                     ssl->ctx->pem_cert->tot_len);
   cert.certs_len_hi = 0;
   cert.certs_len = htobe16(sizeof(chdr) * ssl->ctx->pem_cert->num_obj +
                            ssl->ctx->pem_cert->tot_len);
 
-  if (!tls_tx_push(ssl, &cert, sizeof(cert)))
+  if (!tls_record_data(ssl, &st, &cert, sizeof(cert)))
     return 0;
-
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&cert), sizeof(cert));
 
   for (i = 0; i < ssl->ctx->pem_cert->num_obj; i++) {
     DER *d = &ssl->ctx->pem_cert->obj[i];
@@ -7076,21 +7145,19 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
     chdr.cert_len_hi = 0;
     chdr.cert_len = htobe16(d->der_len);
 
-    if (!tls_tx_push(ssl, &chdr, sizeof(chdr)))
+    if (!tls_record_data(ssl, &st, &chdr, sizeof(chdr)))
       return 0;
-    if (!tls_tx_push(ssl, d->der, d->der_len))
+    if (!tls_record_data(ssl, &st, d->der, d->der_len))
       return 0;
-    SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&chdr), sizeof(chdr));
-    SHA256_Update(&ssl->nxt->handshakes_hash, d->der, d->der_len);
   }
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   /* hello done */
-  done.type = HANDSHAKE_SERVER_HELLO_DONE;
-  done.len_hi = 0;
-  done.len = 0;
-  if (!tls_send(ssl, TLS_HANDSHAKE, &done, sizeof(done)))
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_SERVER_HELLO_DONE, &st))
     return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&done), sizeof(done));
+  if (!tls_record_finish(ssl, &st))
+    return 0;
 
   /* store the random we generated */
   memcpy(&ssl->nxt->sv_rnd, &hello.random, sizeof(ssl->nxt->sv_rnd));
@@ -7099,25 +7166,30 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
 }
 
 NS_INTERNAL int tls_sv_finish(SSL *ssl) {
+  tls_record_state st;
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
+  if (!tls_record_begin(ssl, TLS_CHANGE_CIPHER_SPEC, 0, &st))
     return 0;
-
-  /* finished */
-  finished.type = HANDSHAKE_FINISHED;
-  finished.len_hi = 0;
-  finished.len = htobe16(sizeof(finished.vrfy));
-  memset(finished.vrfy, 0, sizeof(finished.vrfy));
-  tls_generate_server_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
-
+  if (!tls_record_data(ssl, &st, &cipher, sizeof(cipher)))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
   tls_server_cipher_spec(ssl->nxt, &ssl->tx_ctx);
   ssl->tx_enc = 1;
 
-  return tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished));
+  /* finished */
+  tls_generate_server_finished(ssl->nxt, finished.vrfy, sizeof(finished.vrfy));
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_FINISHED, &st))
+    return 0;
+  if (!tls_record_data(ssl, &st, &finished, sizeof(finished)))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
+  return 1;
 }
 /*
  * Copyright (c) 2015 Cesanta Software Limited
@@ -8304,12 +8376,22 @@ static void aes_gctr(AES_CTX *ctx, const uint8_t *icb, const uint8_t *x, size_t 
 
 	memcpy(cb, icb, AES_BLOCKSIZE);
 	/* Full blocks */
-	for (i = 0; i < n; i++) {
-		AES_ecb_encrypt(ctx, cb, ypos);
-		xor_block(ypos, xpos);
-		xpos += AES_BLOCKSIZE;
-		ypos += AES_BLOCKSIZE;
-		inc32(cb);
+	if ( x == y ) {
+		for (i = 0; i < n; i++) {
+			AES_ecb_encrypt(ctx, cb, tmp);
+			xor_block(ypos, tmp);
+			xpos += AES_BLOCKSIZE;
+			ypos += AES_BLOCKSIZE;
+			inc32(cb);
+		}
+	}else{
+		for (i = 0; i < n; i++) {
+			AES_ecb_encrypt(ctx, cb, ypos);
+			xor_block(ypos, xpos);
+			xpos += AES_BLOCKSIZE;
+			ypos += AES_BLOCKSIZE;
+			inc32(cb);
+		}
 	}
 
 	last = x + xlen - xpos;
@@ -8405,16 +8487,17 @@ void aes_gcm_ae(AES_GCM_CTX *ctx,
                 uint8_t *crypt, uint8_t *tag)
 {
 	uint8_t S[16];
+	uint8_t Y0[AES_BLOCKSIZE];
 
-	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, Y0);
 
 	/* C = GCTR_K(inc_32(Y_0), P) */
-	aes_gcm_gctr(&ctx->aes, ctx->Y0, plain, plain_len, crypt);
+	aes_gcm_gctr(&ctx->aes, Y0, plain, plain_len, crypt);
 
 	aes_gcm_ghash(ctx->H, aad, aad_len, crypt, plain_len, S);
 
 	/* T = MSB_t(GCTR_K(Y_0, S)) */
-	aes_gctr(&ctx->aes, ctx->Y0, S, sizeof(S), tag);
+	aes_gctr(&ctx->aes, Y0, S, sizeof(S), tag);
 
 	/* Return (C, T) */
 }
@@ -8429,16 +8512,17 @@ int aes_gcm_ad(AES_GCM_CTX *ctx,
                const uint8_t *tag, uint8_t *plain)
 {
 	uint8_t S[16], T[16];
+	uint8_t Y0[AES_BLOCKSIZE];
 
-	aes_gcm_prepare_y0(iv, iv_len, ctx->H, ctx->Y0);
-
-	/* P = GCTR_K(inc_32(Y_0), C) */
-	aes_gcm_gctr(&ctx->aes, ctx->Y0, crypt, crypt_len, plain);
+	aes_gcm_prepare_y0(iv, iv_len, ctx->H, Y0);
 
 	aes_gcm_ghash(ctx->H, aad, aad_len, crypt, crypt_len, S);
 
+	/* P = GCTR_K(inc_32(Y_0), C) */
+	aes_gcm_gctr(&ctx->aes, Y0, crypt, crypt_len, plain);
+
 	/* T' = MSB_t(GCTR_K(Y_0, S)) */
-	aes_gctr(&ctx->aes, ctx->Y0, S, sizeof(S), T);
+	aes_gctr(&ctx->aes, Y0, S, sizeof(S), T);
 
 	if (memcmp(tag, T, 16) != 0) {
 		dprintf(("GCM: Tag mismatch\n"));
@@ -8549,7 +8633,8 @@ static void box_stream_and_hmac(struct cipher_ctx *ctx,
   struct tls_hmac_hdr phdr;
 
   /* copy plaintext to output buffer */
-  memcpy(out, plain, plain_len);
+  if ( out != plain )
+    memcpy(out, plain, plain_len);
 
   phdr.seq = htobe64(ctx->seq);
   phdr.type = hdr->type;

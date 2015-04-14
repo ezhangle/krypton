@@ -18,7 +18,6 @@ int get_random(uint8_t *out, size_t len) {
   if (fp != NULL) {
     ret = fread(out, 1, len, fp);
   }
-
   return ret == len;
 }
 

@@ -37,10 +37,16 @@ typedef struct tls_security {
 NS_INTERNAL tls_sec_t tls_new_security(void);
 NS_INTERNAL void tls_free_security(tls_sec_t sec);
 
+typedef struct { size_t ofs; uint16_t suite; } tls_record_state;
+NS_INTERNAL int tls_record_begin(SSL *ssl, uint8_t type,
+                                 uint8_t subtype, tls_record_state *st);
+NS_INTERNAL int tls_record_data(SSL *ssl, tls_record_state *st,
+                                const void *buf, size_t len);
+NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
+
 /* generic */
 NS_INTERNAL int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL void tls_generate_keys(tls_sec_t sec);
-NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len);
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);

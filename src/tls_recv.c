@@ -214,7 +214,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   for (i = 0; i < num_ciphers; i++) {
     uint16_t suite = be16toh(cipher_suites[i]);
     dprintf((" + %s cipher_suite[%u]: 0x%.4x\n",
-            (ssl->is_server) ? "server" : "client", i, suite));
+            (ssl->is_server) ? "client" : "server", i, suite));
     if (ssl->is_server) {
       cipher_suite_negotiate(ssl, suite);
     } else {
@@ -227,7 +227,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   for (i = 0; i < num_compressions; i++) {
     uint8_t compressor = compressions[i];
     dprintf((" + %s compression[%u]: 0x%.2x\n",
-            (ssl->is_server) ? "server" : "client", i, compressor));
+            (ssl->is_server) ? "client" : "server", i, compressor));
     if (ssl->is_server) {
       compressor_negotiate(ssl, compressor);
     } else {
@@ -500,8 +500,10 @@ static int handle_handshake(SSL *ssl, const struct tls_hdr *hdr,
   int ret;
   uint8_t type;
 
-  if (buf + 4 > end)
+  if (buf + 4 > end) {
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
     return 0;
+  }
 
   type = buf[0];
   len = be32toh(*(uint32_t *)buf) & 0xffffff;
@@ -674,7 +676,6 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       /* incomplete data */
       goto out;
     }
-
     if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
       goto out;
     }
