@@ -16,7 +16,7 @@ CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA) -g -fno-inline
 
 all: tests
 
-krypton.c: $(HEADERS) $(SOURCES) Makefile
+krypton.c: $(HEADERS) $(SOURCES) openssl/ssl.h Makefile
 	cat openssl/ssl.h $(HEADERS) $(SOURCES) | sed -E "/#include .*(ssl.h|`echo $(HEADERS) | sed -e 's,src/,,g' -e 's, ,|,g'`)/d" > $@
 
 tests: openssl-tests krypton-tests crypto-tests
