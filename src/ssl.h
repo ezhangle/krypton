@@ -9,6 +9,7 @@
 struct ssl_method_st {
   uint8_t sv_undefined : 1;
   uint8_t cl_undefined : 1;
+  uint8_t dtls : 1;
 };
 
 struct ssl_ctx_st {

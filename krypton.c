@@ -39,6 +39,13 @@ const SSL_METHOD *SSLv23_method(void);
 const SSL_METHOD *SSLv23_server_method(void);
 const SSL_METHOD *SSLv23_client_method(void);
 
+const SSL_METHOD *DTLSv1_2_method(void);
+const SSL_METHOD *DTLSv1_2_server_method(void);
+const SSL_METHOD *DTLSv1_2_client_method(void);
+const SSL_METHOD *DTLSv1_method(void);
+const SSL_METHOD *DTLSv1_server_method(void);
+const SSL_METHOD *DTLSv1_client_method(void);
+
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth);
 
 #define SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER 0x00000002L
@@ -818,6 +825,7 @@ NS_INTERNAL int suite_unbox(struct cipher_ctx *ctx,
 struct ssl_method_st {
   uint8_t sv_undefined : 1;
   uint8_t cl_undefined : 1;
+  uint8_t dtls : 1;
 };
 
 struct ssl_ctx_st {
@@ -3768,9 +3776,9 @@ static void Decode(uint32_t *output, const uint8_t *input, uint32_t len)
  */
 
 
-const SSL_METHOD meth = {0, 0};
-const SSL_METHOD sv_meth = {0, 1};
-const SSL_METHOD cl_meth = {1, 0};
+const SSL_METHOD meth = {0, 0, 0};
+const SSL_METHOD sv_meth = {0, 1, 0};
+const SSL_METHOD cl_meth = {1, 0, 0};
 
 const SSL_METHOD *TLSv1_2_method(void) {
   return &meth;
@@ -3790,6 +3798,31 @@ const SSL_METHOD *SSLv23_server_method(void) {
 const SSL_METHOD *SSLv23_client_method(void) {
   return &cl_meth;
 }
+
+#ifdef KRYPTON_DTLS
+const SSL_METHOD dmeth = {0, 0, 1};
+const SSL_METHOD dsv_meth = {0, 1, 1};
+const SSL_METHOD dcl_meth = {1, 0, 1};
+
+const SSL_METHOD *DTLSv1_2_method(void) {
+  return &meth;
+}
+const SSL_METHOD *DTLSv1_2_server_method(void) {
+  return &sv_meth;
+}
+const SSL_METHOD *DTLSv1_2_client_method(void) {
+  return &cl_meth;
+}
+const SSL_METHOD *DTLSv1_method(void) {
+  return &meth;
+}
+const SSL_METHOD *DTLSv1_server_method(void) {
+  return &sv_meth;
+}
+const SSL_METHOD *DTLSv1_client_method(void) {
+  return &cl_meth;
+}
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
