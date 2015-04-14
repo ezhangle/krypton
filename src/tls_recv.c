@@ -469,6 +469,8 @@ static int handle_sv_handshake(SSL *ssl, const struct tls_hdr *hdr,
       break;
     case HANDSHAKE_CERTIFICATE_VRFY:
       dprintf(("cert verify\n"));
+      tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
+      ret = 0;
       break;
     case HANDSHAKE_CLIENT_KEY_EXCH:
       dprintf(("key exch\n"));
@@ -503,6 +505,7 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
   switch (type) {
     case HANDSHAKE_HELLO_REQ:
       dprintf(("hello req\n"));
+      tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_NO_RENEGOTIATION);
       break;
     case HANDSHAKE_SERVER_HELLO:
       dprintf(("server hello\n"));
@@ -510,6 +513,8 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
       break;
     case HANDSHAKE_NEW_SESSION_TICKET:
       dprintf(("new session ticket\n"));
+      tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
+      ret = 0;
       break;
     case HANDSHAKE_CERTIFICATE:
       dprintf(("certificate\n"));
@@ -521,7 +526,8 @@ static int handle_cl_handshake(SSL *ssl, const struct tls_hdr *hdr,
       break;
     case HANDSHAKE_CERTIFICATE_REQ:
       dprintf(("cert req\n"));
-      ssl->state = STATE_SV_DONE_RCVD;
+      tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_UNEXPECTED_MESSAGE);
+      ret = 0;
       break;
     case HANDSHAKE_SERVER_HELLO_DONE:
       dprintf(("hello done\n"));
