@@ -14,6 +14,11 @@ CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA) -g -fno-inline
 
 .PHONY: all clean tests crypto-tests openssl-tests krypton-tests
 
+OPENSSL_FLAGS := \
+	-I/home/scara/libre/usr/local/include \
+	-L/home/scara/libre/usr/local/lib \
+	-lssl -lcrypto -ldl
+
 all: tests
 
 krypton.c: $(HEADERS) $(SOURCES) openssl/ssl.h Makefile
@@ -28,21 +33,35 @@ test-aes-gcm: test/test-aes-gcm.c krypton.c
 	$(CC) $(CFLAGS) -o $@ $< krypton.c
 
 krypton-tests: CFLAGS += -DUSE_KRYPTON=1 -I.
-krypton-tests: sv-test-krypton cl-test-krypton
+krypton-tests: sv-test-krypton cl-test-krypton dsv-test-krypton dcl-test-krypton
 
-openssl-tests: sv-test-openssl cl-test-openssl
+openssl-tests: sv-test-openssl cl-test-openssl dsv-test-openssl dcl-test-openssl
 
 sv-test-openssl: test/sv-test.c
-	$(CC) $(CFLAGS) -o $@ test/sv-test.c -lssl -lcrypto
+	$(CC) $(CFLAGS) -o $@ test/sv-test.c $(OPENSSL_FLAGS)
 
 cl-test-openssl: test/cl-test.c
-	$(CC) $(CFLAGS) -o $@ test/cl-test.c -lssl -lcrypto
+	$(CC) $(CFLAGS) -o $@ test/cl-test.c $(OPENSSL_FLAGS)
 
 sv-test-krypton: test/sv-test.c krypton.c
 	$(CC) $(CFLAGS) -o $@ test/sv-test.c krypton.c
 
 cl-test-krypton: test/cl-test.c krypton.c
 	$(CC) $(CFLAGS) -o $@ test/cl-test.c krypton.c
+
+dsv-test-openssl: test/dsv-test.c
+	$(CC) $(CFLAGS) -o $@ test/dsv-test.c $(OPENSSL_FLAGS)
+
+dcl-test-openssl: test/dcl-test.c
+	$(CC) $(CFLAGS) -o $@ test/dcl-test.c $(OPENSSL_FLAGS)
+
+dsv-test-krypton: CFLAGS += -DKRYPTON_DTLS=1
+dsv-test-krypton: test/dsv-test.c krypton.c
+	$(CC) $(CFLAGS) -o $@ test/dsv-test.c krypton.c
+
+dcl-test-krypton: CFLAGS += -DKRYPTON_DTLS=1
+dcl-test-krypton: test/dcl-test.c krypton.c
+	$(CC) $(CFLAGS) -o $@ test/dcl-test.c krypton.c
 
 vc6: krypton.c
 	wine cl -c $(SOURCES) -Isrc -DNOT_AMALGAMATED

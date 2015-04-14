@@ -13,6 +13,10 @@ struct ssl_method_st {
 };
 
 struct ssl_ctx_st {
+#ifdef KRYPTON_DTLS
+  krypton_gen_cookie_cb_t gen_cookie;
+  krypton_vrfy_cookie_cb_t vrfy_cookie;
+#endif
   X509 *ca_store;
   PEM *pem_cert;
   RSA_CTX *rsa_privkey;
@@ -35,7 +39,6 @@ struct ssl_ctx_st {
 
 struct ssl_st {
   struct ssl_ctx_st *ctx;
-
   struct tls_security *nxt;
 
 #if KRYPTON_DTLS

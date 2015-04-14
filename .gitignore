@@ -2,6 +2,10 @@ cl-test-krypton
 sv-test-krypton
 cl-test-openssl
 sv-test-openssl
+dcl-test-krypton
+dsv-test-krypton
+dcl-test-openssl
+dsv-test-openssl
 test-aes-gcm
 ca.crt
 server.crt

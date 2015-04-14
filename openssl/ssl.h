@@ -76,4 +76,13 @@ void SSL_CTX_free(SSL_CTX *);
 #define DTLS_CTRL_LISTEN 75
 #define DTLSv1_listen(ssl, sa) SSL_ctrl(ssl, DTLS_CTRL_LISTEN, 0, sa)
 
+typedef int (*krypton_gen_cookie_cb_t)(SSL *ssl,
+                                        unsigned char *cookie,
+                                        unsigned int *len);
+typedef int (*krypton_vrfy_cookie_cb_t)(SSL *ssl,
+                                        unsigned char *cookie,
+                                        unsigned int cookie_len);
+void SSL_CTX_set_cookie_generate_cb(SSL_CTX *ctx, krypton_gen_cookie_cb_t cb);
+void SSL_CTX_set_cookie_verify_cb(SSL_CTX *ctx, krypton_vrfy_cookie_cb_t cb);
+
 #endif /* _KRYPTON_H */

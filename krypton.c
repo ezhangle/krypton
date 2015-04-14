@@ -76,6 +76,15 @@ void SSL_CTX_free(SSL_CTX *);
 #define DTLS_CTRL_LISTEN 75
 #define DTLSv1_listen(ssl, sa) SSL_ctrl(ssl, DTLS_CTRL_LISTEN, 0, sa)
 
+typedef int (*krypton_gen_cookie_cb_t)(SSL *ssl,
+                                        unsigned char *cookie,
+                                        unsigned int *len);
+typedef int (*krypton_vrfy_cookie_cb_t)(SSL *ssl,
+                                        unsigned char *cookie,
+                                        unsigned int cookie_len);
+void SSL_CTX_set_cookie_generate_cb(SSL_CTX *ctx, krypton_gen_cookie_cb_t cb);
+void SSL_CTX_set_cookie_verify_cb(SSL_CTX *ctx, krypton_vrfy_cookie_cb_t cb);
+
 #endif /* _KRYPTON_H */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
@@ -835,6 +844,10 @@ struct ssl_method_st {
 };
 
 struct ssl_ctx_st {
+#ifdef KRYPTON_DTLS
+  krypton_gen_cookie_cb_t gen_cookie;
+  krypton_vrfy_cookie_cb_t vrfy_cookie;
+#endif
   X509 *ca_store;
   PEM *pem_cert;
   RSA_CTX *rsa_privkey;
@@ -857,7 +870,6 @@ struct ssl_ctx_st {
 
 struct ssl_st {
   struct ssl_ctx_st *ctx;
-
   struct tls_security *nxt;
 
 #if KRYPTON_DTLS
@@ -3294,6 +3306,18 @@ void SSL_CTX_free(SSL_CTX *ctx) {
     free(ctx);
   }
 }
+
+#ifdef KRYPTON_DTLS
+void SSL_CTX_set_cookie_generate_cb(SSL_CTX *ctx, krypton_gen_cookie_cb_t cb)
+{
+  ctx->gen_cookie = cb;
+}
+
+void SSL_CTX_set_cookie_verify_cb(SSL_CTX *ctx, krypton_vrfy_cookie_cb_t cb)
+{
+  ctx->vrfy_cookie = cb;
+}
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved

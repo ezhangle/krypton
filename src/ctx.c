@@ -234,3 +234,15 @@ void SSL_CTX_free(SSL_CTX *ctx) {
     free(ctx);
   }
 }
+
+#ifdef KRYPTON_DTLS
+void SSL_CTX_set_cookie_generate_cb(SSL_CTX *ctx, krypton_gen_cookie_cb_t cb)
+{
+  ctx->gen_cookie = cb;
+}
+
+void SSL_CTX_set_cookie_verify_cb(SSL_CTX *ctx, krypton_vrfy_cookie_cb_t cb)
+{
+  ctx->vrfy_cookie = cb;
+}
+#endif
