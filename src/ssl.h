@@ -43,6 +43,7 @@ struct ssl_st {
 
 #if KRYPTON_DTLS
   struct sockaddr *sa;
+  long options;
 #endif
 
 /* rcv buffer: can be 16bit lens? */
@@ -60,6 +61,10 @@ struct ssl_st {
 
   /* for handling appdata recvs */
   unsigned int copied;
+
+#if KRYPTON_DTLS
+  uint16_t link_mtu;
+#endif
 
   uint8_t state;
 

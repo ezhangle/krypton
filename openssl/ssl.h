@@ -73,8 +73,19 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type);
 
 void SSL_CTX_free(SSL_CTX *);
 
+#define SSL_OP_NO_QUERY_MTU 0x1000L
+#define SSL_OP_COOKIE_EXCHANGE 0x2000L
+
+#define SSL_CTRL_OPTIONS 32
 #define DTLS_CTRL_LISTEN 75
+#define DTLS_CTRL_SET_LINK_MTU 120
+#define DTLS_CTRL_GET_LINK_MIN_MTU 121
 #define DTLSv1_listen(ssl, sa) SSL_ctrl(ssl, DTLS_CTRL_LISTEN, 0, sa)
+#define DTLS_set_link_mtu(ssl, mtu) \
+  SSL_ctrl(ssl, DTLS_CTRL_SET_LINK_MTU, mtu, NULL)
+#define DTLS_get_link_min_mtu(ssl) \
+  SSL_ctrl(ssl, DTLS_CTRL_GET_LINK_MIN_MTU, 0, NULL)
+#define SSL_set_options(ssl, opt) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, opt, NULL)
 
 typedef int (*krypton_gen_cookie_cb_t)(SSL *ssl,
                                         unsigned char *cookie,

@@ -73,8 +73,19 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type);
 
 void SSL_CTX_free(SSL_CTX *);
 
+#define SSL_OP_NO_QUERY_MTU 0x1000L
+#define SSL_OP_COOKIE_EXCHANGE 0x2000L
+
+#define SSL_CTRL_OPTIONS 32
 #define DTLS_CTRL_LISTEN 75
+#define DTLS_CTRL_SET_LINK_MTU 120
+#define DTLS_CTRL_GET_LINK_MIN_MTU 121
 #define DTLSv1_listen(ssl, sa) SSL_ctrl(ssl, DTLS_CTRL_LISTEN, 0, sa)
+#define DTLS_set_link_mtu(ssl, mtu) \
+  SSL_ctrl(ssl, DTLS_CTRL_SET_LINK_MTU, mtu, NULL)
+#define DTLS_get_link_min_mtu(ssl) \
+  SSL_ctrl(ssl, DTLS_CTRL_GET_LINK_MIN_MTU, 0, NULL)
+#define SSL_set_options(ssl, opt) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, opt, NULL)
 
 typedef int (*krypton_gen_cookie_cb_t)(SSL *ssl,
                                         unsigned char *cookie,
@@ -865,6 +876,7 @@ struct ssl_st {
 
 #if KRYPTON_DTLS
   struct sockaddr *sa;
+  long options;
 #endif
 
 /* rcv buffer: can be 16bit lens? */
@@ -882,6 +894,10 @@ struct ssl_st {
 
   /* for handling appdata recvs */
   unsigned int copied;
+
+#if KRYPTON_DTLS
+  uint16_t link_mtu;
+#endif
 
   uint8_t state;
 
@@ -5378,6 +5394,8 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
 #define MSG_NOSIGNAL 0
 #endif
 
+#define MIN_LIKELY_MTU    256
+
 int SSL_library_init(void) {
   return 1;
 }
@@ -5416,6 +5434,16 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
     //SSL_set_options(s, SSL_OP_COOKIE_EXCHANGE);
     ssl->sa = parg;
     return 1;
+  case SSL_CTRL_OPTIONS:
+    ssl->options |= larg;
+    return (ssl->options);
+  case DTLS_CTRL_SET_LINK_MTU:
+    if ( larg < MIN_LIKELY_MTU )
+      return 0;
+    ssl->link_mtu = larg;
+    return ssl->link_mtu;
+  case DTLS_CTRL_GET_LINK_MIN_MTU:
+    return MIN_LIKELY_MTU;
 #endif
   default:
     return 0;

@@ -9,6 +9,8 @@
 #define MSG_NOSIGNAL 0
 #endif
 
+#define MIN_LIKELY_MTU    256
+
 int SSL_library_init(void) {
   return 1;
 }
@@ -47,6 +49,16 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
     //SSL_set_options(s, SSL_OP_COOKIE_EXCHANGE);
     ssl->sa = parg;
     return 1;
+  case SSL_CTRL_OPTIONS:
+    ssl->options |= larg;
+    return (ssl->options);
+  case DTLS_CTRL_SET_LINK_MTU:
+    if ( larg < MIN_LIKELY_MTU )
+      return 0;
+    ssl->link_mtu = larg;
+    return ssl->link_mtu;
+  case DTLS_CTRL_GET_LINK_MIN_MTU:
+    return MIN_LIKELY_MTU;
 #endif
   default:
     return 0;

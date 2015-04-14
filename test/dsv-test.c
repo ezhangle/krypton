@@ -231,6 +231,7 @@ static int do_test(const char *cert_file, const char *key_file) {
   }
 
   ns_set_non_blocking_mode(fd);
+  SSL_set_options(ssl, SSL_OP_NO_QUERY_MTU);
 
 #if USE_KRYPTON
   if (!SSL_set_fd(ssl, fd))
@@ -241,7 +242,6 @@ static int do_test(const char *cert_file, const char *key_file) {
     sbio = BIO_new_dgram(fd, BIO_NOCLOSE);
     SSL_set_bio(ssl, sbio, sbio);
     SSL_set_accept_state(ssl);
-    SSL_set_options(ssl, SSL_OP_NO_QUERY_MTU);
     if (!DTLS_set_link_mtu(ssl, 1500)) {
       goto out_close;
     }

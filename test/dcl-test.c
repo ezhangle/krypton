@@ -207,6 +207,7 @@ static int do_test(const char *cert_chain) {
     }
   }
 
+  SSL_set_options(ssl, SSL_OP_NO_QUERY_MTU);
 #if USE_KRYPTON
   if (!SSL_set_fd(ssl, fd))
     goto out_close;
@@ -216,7 +217,6 @@ static int do_test(const char *cert_chain) {
     sbio = BIO_new_dgram(fd, BIO_NOCLOSE);
     SSL_set_bio(ssl, sbio, sbio);
     SSL_set_connect_state(ssl);
-    SSL_set_options(ssl, SSL_OP_NO_QUERY_MTU);
     if (!DTLS_set_link_mtu(ssl, 1500)) {
       goto out_close;
     }
