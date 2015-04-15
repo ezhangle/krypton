@@ -99,41 +99,51 @@ int SSL_get_fd(SSL *ssl) {
 
 #if KRYPTON_DTLS
 static int dgram_send(SSL *ssl) {
-  const uint8_t *buf;
-  size_t len;
+  const uint8_t *buf, *end;
+  const struct dtls_hdr *hdr;
   ssize_t ret;
 
-  buf = ssl->tx_buf;
-  len = ssl->tx_len;
+  end = ssl->tx_buf + ssl->tx_len;
 
-  /* FIXME: transmit individual records */
+  for(buf = ssl->tx_buf; buf + sizeof(*hdr) < end; ) {
+    size_t len;
 
-  if (ssl->is_server) {
-    struct sockaddr *sa;
-    socklen_t salen;
+    hdr = (struct dtls_hdr *)buf;
+    len = sizeof(*hdr) + be16toh(hdr->len);
+    printf("tx %zu\n", len);
 
-    sa = (struct sockaddr *)&ssl->st;
-    salen = dtls_socklen(ssl);
+    if (ssl->is_server) {
+      struct sockaddr *sa;
+      socklen_t salen;
 
-    ret = sendto(ssl->fd, buf, len, MSG_NOSIGNAL, sa, salen);
-  }else{
-    ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
-  }
+      sa = (struct sockaddr *)&ssl->st;
+      salen = dtls_socklen(ssl);
 
-  if (ret <= 0) {
-    if (SOCKET_ERRNO == EWOULDBLOCK) {
-      ssl_err(ssl, SSL_ERROR_WANT_WRITE);
+      ret = sendto(ssl->fd, buf, len, MSG_NOSIGNAL, sa, salen);
+    }else{
+      ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+    }
+
+    if (ret <= 0) {
+      if (SOCKET_ERRNO == EWOULDBLOCK) {
+        ssl_err(ssl, SSL_ERROR_WANT_WRITE);
+        return 0;
+      }
+      dprintf(("send: %s\n", strerror(SOCKET_ERRNO)));
+      ssl_err(ssl, SSL_ERROR_SYSCALL);
+      ssl->tx_len = 0;
+      ssl->write_pending = 0;
       return 0;
     }
-    dprintf(("send: %s\n", strerror(SOCKET_ERRNO)));
-    ssl_err(ssl, SSL_ERROR_SYSCALL);
-    ssl->tx_len = 0;
-    ssl->write_pending = 0;
-    return 0;
-  }
 
-  if ( (size_t)ret < len )
-    return 0;
+    if ( (size_t)ret < len ) {
+      printf("short datagram write, shouldn't happen?\n");
+      ssl_err(ssl, SSL_ERROR_SYSCALL);
+      return 0;
+    }
+
+    buf += len;
+  }
 
   /* If not in handshake, clear buffer,
    * since we won't need to re-transmit
