@@ -331,7 +331,7 @@ int SSL_accept(SSL *ssl) {
   if (ssl->mode_defined && !ssl->is_server) {
     dprintf(("bad mode in accept\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
-    return 0;
+    return -1;
   }
 
   while (ssl->tx_len) {
@@ -356,7 +356,8 @@ int SSL_accept(SSL *ssl) {
     /* fall through */
     case STATE_CL_HELLO_RCVD:
       if (!tls_sv_hello(ssl)) {
-        return 0;
+        ssl_err(ssl, SSL_ERROR_SYSCALL);
+        return -1;
       }
 
       ssl->state = STATE_SV_HELLO_SENT;
@@ -374,7 +375,8 @@ int SSL_accept(SSL *ssl) {
     /* fall through */
     case STATE_CLIENT_FINISHED:
       if (!tls_sv_finish(ssl)) {
-        return 0;
+        ssl_err(ssl, SSL_ERROR_SYSCALL);
+        return -1;
       }
 
       ssl->state = STATE_ESTABLISHED;
