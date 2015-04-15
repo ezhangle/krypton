@@ -213,6 +213,26 @@ int tls_record_data(SSL *ssl, tls_record_state *st,
   return tls_tx_push(ssl, buf, len);
 }
 
+int tls_record_opaque8(SSL *ssl, tls_record_state *st,
+                                const void *buf, size_t len)
+{
+  uint8_t l = len;
+  assert(len <= 0xff);
+  if ( !tls_record_data(ssl, st, &l, sizeof(l)) )
+    return 0;
+  return tls_record_data(ssl, st, buf, len);
+}
+
+int tls_record_opaque16(SSL *ssl, tls_record_state *st,
+                                const void *buf, size_t len)
+{
+  uint16_t l = htobe16(len);
+  assert(len <= 0xffff);
+  if ( !tls_record_data(ssl, st, &l, sizeof(l)) )
+    return 0;
+  return tls_record_data(ssl, st, buf, len);
+}
+
 int tls_record_finish(SSL *ssl, const tls_record_state *st)
 {
   struct tls_hdr *hdr;

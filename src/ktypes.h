@@ -86,6 +86,9 @@ typedef long ssize_t;
 #endif
 #endif
 
+#define be16_const(x) \
+     ((unsigned short) ((((x) >> 8) & 0xff) | (((x) & 0xff) << 8)))
+
 /* #define KRYPTON_DEBUG 1 */
 #if defined(KRYPTON_DEBUG)
 #define dprintf(x) printf x

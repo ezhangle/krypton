@@ -42,6 +42,10 @@ NS_INTERNAL int tls_record_begin(SSL *ssl, uint8_t type,
                                  uint8_t subtype, tls_record_state *st);
 NS_INTERNAL int tls_record_data(SSL *ssl, tls_record_state *st,
                                 const void *buf, size_t len);
+NS_INTERNAL int tls_record_opaque8(SSL *ssl, tls_record_state *st,
+                                const void *buf, size_t len);
+NS_INTERNAL int tls_record_opaque16(SSL *ssl, tls_record_state *st,
+                                const void *buf, size_t len);
 NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 
 /* dtls */

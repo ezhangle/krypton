@@ -101,9 +101,10 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_NO_RENEGOTIATION);
     return 1;
   }
-  if (buf + 2 > end)
-    goto err;
 
+  /* hello protocol version */
+  if (buf + sizeof(proto) > end)
+    goto err;
   proto = be16toh(*(uint16_t *)buf);
   buf += 2;
 
@@ -116,7 +117,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   rand = buf;
   buf += sizeof(struct tls_random);
 
-  /* skip over session id len + session id */
+  /* session ID */
   if (buf + 1 > end)
     goto err;
   sess_id_len = buf[0];
@@ -143,6 +144,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     cookie_len = 0;
   }
 
+  /* cipher suites */
   if (ssl->is_server) {
     uint16_t cipher_suites_len;
 
@@ -162,6 +164,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     buf += sizeof(*cipher_suites);
   }
 
+  /* compressors */
   if (ssl->is_server) {
     if (buf + 1 > end)
       goto err;
@@ -179,6 +182,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     buf += num_compressions;
   }
 
+  /* extensions */
   if (buf + 2 > end)
     goto err;
   ext_len = htobe16(*(uint16_t *)buf);
@@ -229,6 +233,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     buf += ext_len;
   }
 
+  /* start recording security parameters */
   if (ssl->is_server) {
     tls_sec_t sec;
 
@@ -340,7 +345,7 @@ static int handle_certificate(SSL *ssl,
     cert->next = chain;
     chain = cert;
 
-    /* XXX: early steal the reference to the key */
+    /* XXX: take a reference to the key */
     if (depth == 0) {
       if (cert->enc_alg != X509_ENC_ALG_RSA) {
         dprintf(("unsupported cert\n"));

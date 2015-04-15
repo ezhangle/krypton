@@ -10,10 +10,40 @@
 
 #include <time.h>
 
-NS_INTERNAL int tls_cl_hello(SSL *ssl) {
+static const uint16_t tls_ciphers[] = {
+#if ALLOW_NULL_CIPHERS
+  be16_const(CIPHER_TLS_NULL_MD5),
+#endif
+#if WITH_AEAD_CIPHERS
+  be16_const(CIPHER_TLS_AES128_GCM),
+#endif
+#if ALLOW_RC4_CIPHERS
+  be16_const(CIPHER_TLS_RC4_SHA1),
+  be16_const(CIPHER_TLS_RC4_SHA1),
+#endif
+  /* signalling cipher suite values -- must be last */
+  be16_const(CIPHER_EMPTY_RENEG_EXT),
+};
+
+static const uint16_t dtls_ciphers[] = {
+#if ALLOW_NULL_CIPHERS
+  be16_const(CIPHER_TLS_NULL_MD5),
+#endif
+#if WITH_AEAD_CIPHERS
+  be16_const(CIPHER_TLS_AES128_GCM),
+#endif
+  /* signalling cipher suite values -- must be last */
+  be16_const(CIPHER_EMPTY_RENEG_EXT),
+};
+
+static const uint8_t compressors[] = {
+  COMPRESSOR_NULL,
+};
+
+int tls_cl_hello(SSL *ssl) {
   tls_record_state st;
   struct tls_cl_hello hello;
-  unsigned int i = 0;
+  struct tls_EXT_reneg reneg;
 
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_HELLO, &st))
@@ -24,38 +54,39 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
   }
-  hello.sess_id_len = 0;
-  hello.cipher_suites_len =
-      htobe16((NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1) * 2);
-
-  /* ciphers listed in preference order */
-#if ALLOW_NULL_CIPHERS
-  /* if we allow them, it's for testing reasons, so NULL comes first */
-  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_NULL_MD5);
-#endif
-#if WITH_AEAD_CIPHERS
-  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_AES128_GCM);
-#endif
-#if ALLOW_RC4_CIPHERS
-  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_RC4_SHA1);
-  hello.cipher_suite[i++] = htobe16(CIPHER_TLS_RC4_MD5);
-#endif
-
-  /* apart from this one which is a signalling-value for the renegotiation
-   * extension and must come after legit cipher suites
-  */
-  hello.cipher_suite[i++] = htobe16(CIPHER_EMPTY_RENEG_EXT);
-
-  hello.num_compressors = 1;
-  hello.compressor[0] = 0;
-  hello.ext_len = htobe16(sizeof(hello.ext_reneg));
-
-  hello.ext_reneg.type = htobe16(EXT_RENEG_INFO);
-  hello.ext_reneg.len = htobe16(1);
-  hello.ext_reneg.ri_len = 0;
-
   if (!tls_record_data(ssl, &st, &hello, sizeof(hello)))
     return 0;
+
+  /* session id [8] */
+  if (!tls_record_opaque8(ssl, &st, NULL, 0))
+    return 0;
+
+  /* dtls cookie [8] */
+  if (ssl->ctx->meth.dtls) {
+    if (!tls_record_opaque8(ssl, &st, NULL, 0))
+      return 0;
+  }
+
+  /* cipher suites [16] */
+  if (ssl->ctx->meth.dtls) {
+    if (!tls_record_opaque16(ssl, &st, dtls_ciphers, sizeof(dtls_ciphers)))
+      return 0;
+  }else{
+    if (!tls_record_opaque16(ssl, &st, tls_ciphers, sizeof(tls_ciphers)))
+      return 0;
+  }
+
+  /* compressors [8] */
+  if (!tls_record_opaque8(ssl, &st, compressors, sizeof(compressors)))
+    return 0;
+
+  /* extensions [16] */
+  reneg.type = htobe16(EXT_RENEG_INFO);
+  reneg.len = htobe16(1);
+  reneg.ri_len = 0;
+  if (!tls_record_opaque16(ssl, &st, &reneg, sizeof(reneg)))
+    return 0;
+
   if (!tls_record_finish(ssl, &st))
     return 0;
 
@@ -65,7 +96,7 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   return 1;
 }
 
-NS_INTERNAL int tls_cl_finish(SSL *ssl) {
+int tls_cl_finish(SSL *ssl) {
   tls_record_state st;
   struct tls_key_exch exch;
   struct tls_change_cipher_spec cipher;

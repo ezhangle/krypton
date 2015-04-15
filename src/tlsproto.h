@@ -93,14 +93,11 @@ struct tls_svr_hello {
 struct tls_cl_hello {
   uint16_t version;
   struct tls_random random;
-  uint8_t sess_id_len;
-  uint16_t cipher_suites_len;
-  uint16_t cipher_suite[NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1];
-  uint8_t num_compressors;
-  uint8_t compressor[NUM_COMPRESSORS];
-  uint16_t ext_len;
-
-  struct tls_EXT_reneg ext_reneg;
+  /* session id [8] */
+  /* dtls cookie [8] */
+  /* cipher suites [16] */
+  /* compressors [8] */
+  /* extensions [16] */
 } __packed;
 
 struct tls_key_exch {
