@@ -48,7 +48,11 @@ int tls_cl_hello(SSL *ssl) {
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_HELLO, &st))
     return 0;
-  hello.version = htobe16(TLSv1_2);
+  if (ssl->ctx->meth.dtls) {
+    hello.version = htobe16(DTLSv1_2);
+  }else{
+    hello.version = htobe16(TLSv1_2);
+  }
   hello.random.time = htobe32(time(NULL));
   if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
@@ -114,7 +118,11 @@ int tls_cl_finish(SSL *ssl) {
   if (!tls_record_data(ssl, &st, &exch, sizeof(exch)))
     return 0;
 
-  in.version = htobe16(TLSv1_2);
+  if (ssl->ctx->meth.dtls) {
+    in.version = htobe16(DTLSv1_2);
+  }else{
+    in.version = htobe16(TLSv1_2);
+  }
   if (!get_random(in.opaque, sizeof(in.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;

@@ -210,10 +210,20 @@ int tls_record_begin(SSL *ssl, uint8_t type,
   }
 
   if ( type == TLS_HANDSHAKE ) {
-    struct tls_handshake hs_hdr;
-    hs_hdr.type = subtype;
-    if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
-      return 0;
+    if (ssl->ctx->meth.dtls) {
+      struct dtls_handshake hs_hdr;
+      hs_hdr.type = subtype;
+      hs_hdr.msg_seq = 0;
+      hs_hdr.frag_off_hi = 0;
+      hs_hdr.frag_off = 0;
+      if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
+        return 0;
+    }else{
+      struct tls_handshake hs_hdr;
+      hs_hdr.type = subtype;
+      if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
+        return 0;
+    }
   }else{
     assert(!subtype);
   }
@@ -302,16 +312,31 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
    * add the contents to the running hash of all handshake messages
   */
   if (hdr->type == TLS_HANDSHAKE) {
-    struct tls_handshake *hs;
-    size_t hs_len;
+    if (ssl->ctx->meth.dtls) {
+      struct dtls_handshake *hs;
+      size_t hs_len;
 
-    hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
-                                  hdr_len + exp_len);
-    assert(plen >= sizeof(*hs));
-    hs_len = plen - sizeof(*hs);
+      hs = (struct dtls_handshake *)(ssl->tx_buf + st->ofs +
+                                    hdr_len + exp_len);
+      assert(plen >= sizeof(*hs));
+      hs_len = plen - sizeof(*hs);
 
-    hs->len_hi = (hs_len >> 16);
-    hs->len = htobe16(hs_len & 0xffff);
+      hs->len_hi = (hs_len >> 16);
+      hs->len = htobe16(hs_len & 0xffff);
+      hs->frag_len_hi = (hs_len >> 16);
+      hs->frag_len = htobe16(hs_len & 0xffff);
+    }else{
+      struct tls_handshake *hs;
+      size_t hs_len;
+
+      hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
+                                    hdr_len + exp_len);
+      assert(plen >= sizeof(*hs));
+      hs_len = plen - sizeof(*hs);
+
+      hs->len_hi = (hs_len >> 16);
+      hs->len = htobe16(hs_len & 0xffff);
+    }
 
     SHA256_Update(&ssl->nxt->handshakes_hash, payload, plen);
   }

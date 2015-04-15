@@ -6274,10 +6274,20 @@ int tls_record_begin(SSL *ssl, uint8_t type,
   }
 
   if ( type == TLS_HANDSHAKE ) {
-    struct tls_handshake hs_hdr;
-    hs_hdr.type = subtype;
-    if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
-      return 0;
+    if (ssl->ctx->meth.dtls) {
+      struct dtls_handshake hs_hdr;
+      hs_hdr.type = subtype;
+      hs_hdr.msg_seq = 0;
+      hs_hdr.frag_off_hi = 0;
+      hs_hdr.frag_off = 0;
+      if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
+        return 0;
+    }else{
+      struct tls_handshake hs_hdr;
+      hs_hdr.type = subtype;
+      if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
+        return 0;
+    }
   }else{
     assert(!subtype);
   }
@@ -6366,16 +6376,31 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
    * add the contents to the running hash of all handshake messages
   */
   if (hdr->type == TLS_HANDSHAKE) {
-    struct tls_handshake *hs;
-    size_t hs_len;
+    if (ssl->ctx->meth.dtls) {
+      struct dtls_handshake *hs;
+      size_t hs_len;
 
-    hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
-                                  hdr_len + exp_len);
-    assert(plen >= sizeof(*hs));
-    hs_len = plen - sizeof(*hs);
+      hs = (struct dtls_handshake *)(ssl->tx_buf + st->ofs +
+                                    hdr_len + exp_len);
+      assert(plen >= sizeof(*hs));
+      hs_len = plen - sizeof(*hs);
 
-    hs->len_hi = (hs_len >> 16);
-    hs->len = htobe16(hs_len & 0xffff);
+      hs->len_hi = (hs_len >> 16);
+      hs->len = htobe16(hs_len & 0xffff);
+      hs->frag_len_hi = (hs_len >> 16);
+      hs->frag_len = htobe16(hs_len & 0xffff);
+    }else{
+      struct tls_handshake *hs;
+      size_t hs_len;
+
+      hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
+                                    hdr_len + exp_len);
+      assert(plen >= sizeof(*hs));
+      hs_len = plen - sizeof(*hs);
+
+      hs->len_hi = (hs_len >> 16);
+      hs->len = htobe16(hs_len & 0xffff);
+    }
 
     SHA256_Update(&ssl->nxt->handshakes_hash, payload, plen);
   }
@@ -6479,7 +6504,11 @@ int tls_cl_hello(SSL *ssl) {
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_HELLO, &st))
     return 0;
-  hello.version = htobe16(TLSv1_2);
+  if (ssl->ctx->meth.dtls) {
+    hello.version = htobe16(DTLSv1_2);
+  }else{
+    hello.version = htobe16(TLSv1_2);
+  }
   hello.random.time = htobe32(time(NULL));
   if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
@@ -6545,7 +6574,11 @@ int tls_cl_finish(SSL *ssl) {
   if (!tls_record_data(ssl, &st, &exch, sizeof(exch)))
     return 0;
 
-  in.version = htobe16(TLSv1_2);
+  if (ssl->ctx->meth.dtls) {
+    in.version = htobe16(DTLSv1_2);
+  }else{
+    in.version = htobe16(TLSv1_2);
+  }
   if (!get_random(in.opaque, sizeof(in.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
