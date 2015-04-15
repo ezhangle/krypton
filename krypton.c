@@ -86,6 +86,7 @@ void SSL_CTX_free(SSL_CTX *);
 #define DTLS_get_link_min_mtu(ssl) \
   SSL_ctrl(ssl, DTLS_CTRL_GET_LINK_MIN_MTU, 0, NULL)
 #define SSL_set_options(ssl, opt) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, opt, NULL)
+#define SSL_get_options(ssl) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, 0, NULL)
 
 typedef int (*krypton_gen_cookie_cb_t)(SSL *ssl,
                                         unsigned char *cookie,
@@ -148,6 +149,7 @@ typedef long ssize_t;
 #pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
 #else
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <stdint.h>
 #define __packed __attribute__((packed))
 #define SOCKET_ERRNO errno
@@ -475,6 +477,7 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
 
 #define TLSv1_2 0x0303
 #define DTLSv1_2 0xfefd
+#define DTLSv1_0 0xfeff
 
 /* set to number of null cipher suites */
 #define ALLOW_NULL_CIPHERS  0
@@ -549,6 +552,11 @@ struct dtls_handshake {
   uint16_t frag_off;
   uint8_t frag_len_hi;
   uint16_t frag_len;
+} __packed;
+
+struct dtls_verify_request {
+  uint16_t proto_vers; /* must be DTLSv1.0 */
+  /* cookie [8] */
 } __packed;
 
 struct tls_svr_hello {
@@ -900,13 +908,13 @@ struct ssl_ctx_st {
 #define STATE_CLOSING 10
 
 struct ssl_st {
-  struct ssl_ctx_st *ctx;
-  struct tls_security *nxt;
-
 #if KRYPTON_DTLS
-  struct sockaddr *sa;
+  struct sockaddr_storage st;
   long options;
 #endif
+
+  struct ssl_ctx_st *ctx;
+  struct tls_security *nxt;
 
 /* rcv buffer: can be 16bit lens? */
 #define RX_INITIAL_BUF 1024
@@ -956,6 +964,7 @@ struct ssl_st {
 
 #define TLSv1_2 0x0303
 #define DTLSv1_2 0xfefd
+#define DTLSv1_0 0xfeff
 
 /* set to number of null cipher suites */
 #define ALLOW_NULL_CIPHERS  0
@@ -1030,6 +1039,11 @@ struct dtls_handshake {
   uint16_t frag_off;
   uint8_t frag_len_hi;
   uint16_t frag_len;
+} __packed;
+
+struct dtls_verify_request {
+  uint16_t proto_vers; /* must be DTLSv1.0 */
+  /* cookie [8] */
 } __packed;
 
 struct tls_svr_hello {
@@ -1181,7 +1195,7 @@ typedef struct tls_security {
 NS_INTERNAL tls_sec_t tls_new_security(void);
 NS_INTERNAL void tls_free_security(tls_sec_t sec);
 
-typedef struct { size_t ofs; uint16_t suite; } tls_record_state;
+typedef struct { uint32_t ofs; uint16_t suite; } tls_record_state;
 NS_INTERNAL int tls_record_begin(SSL *ssl, uint8_t type,
                                  uint8_t subtype, tls_record_state *st);
 NS_INTERNAL int tls_record_data(SSL *ssl, tls_record_state *st,
@@ -1193,8 +1207,10 @@ NS_INTERNAL int tls_record_opaque16(SSL *ssl, tls_record_state *st,
 NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 
 /* dtls */
-#ifdef KRYPTON_DTLS
+#if KRYPTON_DTLS
 NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
+NS_INTERNAL int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len);
+NS_INTERNAL int dtls_hello_verify_request(SSL *ssl);
 #endif
 
 /* generic */
@@ -5489,6 +5505,20 @@ out:
   return ssl;
 }
 
+#if KRYPTON_DTLS
+static socklen_t dtls_socklen(SSL *ssl)
+{
+  switch(ssl->st.ss_family) {
+  case AF_INET:
+    return sizeof(struct sockaddr_in);
+  case AF_INET6:
+    return sizeof(struct sockaddr_in6);
+  default:
+    abort();
+  }
+}
+#endif
+
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
 {
 #ifdef KRYPTON_DTLS
@@ -5501,9 +5531,10 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
     if ( !ssl->ctx->meth.dtls )
       return 0;
     SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
-    ssl->sa = parg;
     ret = SSL_accept(ssl);
-    ssl->sa = NULL;
+    if ( ret > 0 ) {
+      memcpy(parg, &ssl->st, dtls_socklen(ssl));
+    }
     return ret;
   case SSL_CTRL_OPTIONS:
     ssl->options |= larg;
@@ -5541,7 +5572,19 @@ static int dgram_send(SSL *ssl) {
   len = ssl->tx_len;
 
   /* FIXME: transmit individual records */
-  ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+
+  if (ssl->is_server) {
+    struct sockaddr *sa;
+    socklen_t salen;
+
+    sa = (struct sockaddr *)&ssl->st;
+    salen = dtls_socklen(ssl);
+
+    ret = sendto(ssl->fd, buf, len, MSG_NOSIGNAL, sa, salen);
+  }else{
+    ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+  }
+
   if (ret <= 0) {
     if (SOCKET_ERRNO == EWOULDBLOCK) {
       ssl_err(ssl, SSL_ERROR_WANT_WRITE);
@@ -5557,9 +5600,18 @@ static int dgram_send(SSL *ssl) {
   if ( (size_t)ret < len )
     return 0;
 
-  /* TODO: If not in handshake, clear buffer,
+  /* If not in handshake, clear buffer,
    * since we won't need to re-transmit
   */
+  switch(ssl->state) {
+  case STATE_INITIAL:
+  case STATE_ESTABLISHED:
+  case STATE_CLOSING:
+    break;
+  default:
+    ssl->tx_len = 0;
+    break;
+  }
 
   return 1;
 }
@@ -5635,8 +5687,7 @@ static int do_send(SSL *ssl) {
 
 #if KRYPTON_DTLS
 static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
-  struct sockaddr_storage st;
-  socklen_t salen = sizeof(st);
+  socklen_t salen;
   struct sockaddr *sa;
   ssize_t ret;
 
@@ -5650,10 +5701,8 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     ssl->rx_len = 0;
   }
 
-  if (ssl->sa)
-    sa = ssl->sa;
-  else
-    sa = (struct sockaddr *)&st;
+  sa = (struct sockaddr *)&ssl->st;
+  salen = sizeof(ssl->st);
 
   ret = recvfrom(ssl->fd, ssl->rx_buf, ssl->rx_max_len, 0, sa, &salen);
   if (ret < 0) {
@@ -5670,13 +5719,26 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 
   /* TODO:
    * - Update PMTU estimates
-   * - clear tx retransmit flights
   */
+
+  /* clear re-transmit buffer now that we have a reply */
+  switch(ssl->state) {
+  case STATE_INITIAL:
+  case STATE_ESTABLISHED:
+  case STATE_CLOSING:
+    break;
+  default:
+    ssl->tx_len = 0;
+    break;
+  }
 
   if (!dtls_handle_recv(ssl, out, out_len)) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
+
+  if (!do_send(ssl))
+    return 0;
 
   return 1;
 }
@@ -5783,9 +5845,13 @@ int SSL_accept(SSL *ssl) {
     return -1;
   }
 
-  while (ssl->tx_len) {
-    if (!do_send(ssl))
-      return -1;
+  if (ssl->ctx->meth.dtls) {
+    /* TODO: re-transmit logic */
+  }else{
+    while (ssl->tx_len) {
+      if (!do_send(ssl))
+        return -1;
+    }
   }
 
   switch (ssl->state) {
@@ -5861,9 +5927,13 @@ int SSL_connect(SSL *ssl) {
     return 0;
   }
 
-  while (ssl->tx_len) {
-    if (!do_send(ssl))
-      return -1;
+  if (ssl->ctx->meth.dtls) {
+    /* TODO: re-transmit logic */
+  }else{
+    while (ssl->tx_len) {
+      if (!do_send(ssl))
+        return -1;
+    }
   }
 
   switch (ssl->state) {
@@ -6403,8 +6473,9 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
       hs->len_hi = (hs_len >> 16);
       hs->len = htobe16(hs_len & 0xffff);
     }
-
-    SHA256_Update(&ssl->nxt->handshakes_hash, payload, plen);
+    if ( ssl->nxt ) {
+      SHA256_Update(&ssl->nxt->handshakes_hash, payload, plen);
+    }
   }
 
   /* do the crypto */
@@ -6713,8 +6784,10 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   const uint16_t *cipher_suites;
   const uint8_t *compressions;
   const uint8_t *rand;
-  const uint8_t *cookie;
+#if KRYPTON_DTLS
+  uint8_t *cookie;
   uint8_t cookie_len;
+#endif
   unsigned int i;
   size_t ext_len;
   uint8_t sess_id_len;
@@ -6750,22 +6823,25 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     goto err;
 
   /* extract DTLS cookie if present */
+#if KRYPTON_DTLS
   if (ssl->is_server && ssl->ctx->meth.dtls) {
     if (buf + sizeof(cookie_len) > end)
       goto err;
-    cookie_len = be16toh(*(uint16_t *)buf);
+    cookie_len = buf[0];
     buf += sizeof(cookie_len);
 
     if (cookie_len) {
       if (buf + cookie_len > end)
         goto err;
-      cookie = buf;
+      /* ugh, fuck you openssl */
+      cookie = (uint8_t *)buf;
       buf += cookie_len;
       hex_dump(cookie, cookie_len, 0);
     }
   }else{
     cookie_len = 0;
   }
+#endif
 
   /* cipher suites */
   if (ssl->is_server) {
@@ -6856,6 +6932,26 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     buf += ext_len;
   }
 
+#if KRYPTON_DTLS
+  if (ssl->is_server && ssl->ctx->meth.dtls &&
+        (SSL_get_options(ssl) & SSL_OP_COOKIE_EXCHANGE)) {
+    if ( cookie_len ) {
+      if ( !dtls_verify_cookie(ssl, cookie, cookie_len) ) {
+        /* ignore spurious cookies */
+        return 1;
+      }
+
+      /* now fall through to the regular path where we may allocate
+       * some state and affect the state machine.
+      */
+    }else{
+      /* return 1 because spurious packets are no problem */
+      dtls_hello_verify_request(ssl);
+      return 1;
+    }
+  }
+#endif
+
   /* start recording security parameters */
   if (ssl->is_server) {
     tls_sec_t sec;
@@ -6899,7 +6995,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   }
 
   if (!ssl->nxt->cipher_negotiated || !ssl->nxt->compressor_negotiated) {
-    dprintf(("Faled to negotiate cipher\n"));
+    dprintf(("Failed to negotiate cipher\n"));
     goto bad_param;
   }
   if (ssl->is_server) {
@@ -7475,7 +7571,43 @@ int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 
 #include <time.h>
 
-NS_INTERNAL int tls_sv_hello(SSL *ssl) {
+#if KRYPTON_DTLS
+int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len)
+{
+  return (*ssl->ctx->vrfy_cookie)(ssl, cookie, len);
+}
+
+int dtls_hello_verify_request(SSL *ssl)
+{
+  tls_record_state st;
+  uint8_t cookie[0xff];
+  unsigned int cookie_len = sizeof(cookie);
+  struct dtls_verify_request vreq;
+
+  if ( !(*ssl->ctx->gen_cookie)(ssl, cookie, &cookie_len) ) {
+    dprintf(("Cookie generaton callback failed!\n"));
+    return 0;
+  }
+
+  dprintf(("Got %u byte cookie\n", cookie_len));
+  hex_dump(cookie, cookie_len, 0);
+
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE,
+                        HANDSHAKE_HELLO_VERIFY_REQUEST, &st))
+    return 0;
+
+  vreq.proto_vers = htobe16(DTLSv1_0);
+  if (!tls_record_data(ssl, &st, &vreq, sizeof(vreq)))
+    return 0;
+  if (!tls_record_opaque8(ssl, &st, cookie, cookie_len))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
+  return 1;
+}
+#endif
+
+int tls_sv_hello(SSL *ssl) {
   tls_record_state st;
   struct tls_svr_hello hello;
   struct tls_cert cert;
@@ -7539,7 +7671,7 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   return 1;
 }
 
-NS_INTERNAL int tls_sv_finish(SSL *ssl) {
+int tls_sv_finish(SSL *ssl) {
   tls_record_state st;
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;

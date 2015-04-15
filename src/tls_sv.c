@@ -11,7 +11,43 @@
 
 #include <time.h>
 
-NS_INTERNAL int tls_sv_hello(SSL *ssl) {
+#if KRYPTON_DTLS
+int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len)
+{
+  return (*ssl->ctx->vrfy_cookie)(ssl, cookie, len);
+}
+
+int dtls_hello_verify_request(SSL *ssl)
+{
+  tls_record_state st;
+  uint8_t cookie[0xff];
+  unsigned int cookie_len = sizeof(cookie);
+  struct dtls_verify_request vreq;
+
+  if ( !(*ssl->ctx->gen_cookie)(ssl, cookie, &cookie_len) ) {
+    dprintf(("Cookie generaton callback failed!\n"));
+    return 0;
+  }
+
+  dprintf(("Got %u byte cookie\n", cookie_len));
+  hex_dump(cookie, cookie_len, 0);
+
+  if (!tls_record_begin(ssl, TLS_HANDSHAKE,
+                        HANDSHAKE_HELLO_VERIFY_REQUEST, &st))
+    return 0;
+
+  vreq.proto_vers = htobe16(DTLSv1_0);
+  if (!tls_record_data(ssl, &st, &vreq, sizeof(vreq)))
+    return 0;
+  if (!tls_record_opaque8(ssl, &st, cookie, cookie_len))
+    return 0;
+  if (!tls_record_finish(ssl, &st))
+    return 0;
+  return 1;
+}
+#endif
+
+int tls_sv_hello(SSL *ssl) {
   tls_record_state st;
   struct tls_svr_hello hello;
   struct tls_cert cert;
@@ -75,7 +111,7 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   return 1;
 }
 
-NS_INTERNAL int tls_sv_finish(SSL *ssl) {
+int tls_sv_finish(SSL *ssl) {
   tls_record_state st;
   struct tls_change_cipher_spec cipher;
   struct tls_finished finished;

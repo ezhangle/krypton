@@ -49,6 +49,7 @@ typedef long ssize_t;
 #pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
 #else
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <stdint.h>
 #define __packed __attribute__((packed))
 #define SOCKET_ERRNO errno

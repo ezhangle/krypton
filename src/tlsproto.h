@@ -8,6 +8,7 @@
 
 #define TLSv1_2 0x0303
 #define DTLSv1_2 0xfefd
+#define DTLSv1_0 0xfeff
 
 /* set to number of null cipher suites */
 #define ALLOW_NULL_CIPHERS  0
@@ -82,6 +83,11 @@ struct dtls_handshake {
   uint16_t frag_off;
   uint8_t frag_len_hi;
   uint16_t frag_len;
+} __packed;
+
+struct dtls_verify_request {
+  uint16_t proto_vers; /* must be DTLSv1.0 */
+  /* cookie [8] */
 } __packed;
 
 struct tls_svr_hello {

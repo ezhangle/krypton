@@ -337,8 +337,9 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
       hs->len_hi = (hs_len >> 16);
       hs->len = htobe16(hs_len & 0xffff);
     }
-
-    SHA256_Update(&ssl->nxt->handshakes_hash, payload, plen);
+    if ( ssl->nxt ) {
+      SHA256_Update(&ssl->nxt->handshakes_hash, payload, plen);
+    }
   }
 
   /* do the crypto */

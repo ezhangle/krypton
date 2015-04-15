@@ -38,13 +38,13 @@ struct ssl_ctx_st {
 #define STATE_CLOSING 10
 
 struct ssl_st {
-  struct ssl_ctx_st *ctx;
-  struct tls_security *nxt;
-
 #if KRYPTON_DTLS
-  struct sockaddr *sa;
+  struct sockaddr_storage st;
   long options;
 #endif
+
+  struct ssl_ctx_st *ctx;
+  struct tls_security *nxt;
 
 /* rcv buffer: can be 16bit lens? */
 #define RX_INITIAL_BUF 1024

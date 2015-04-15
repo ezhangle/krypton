@@ -28,7 +28,7 @@ int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len)
   printf("cookie len %u\n", *cookie_len);
 
   *cookie_len = 16;
-  memcpy(cookie, "01234567789abcef", 0);
+  memcpy(cookie, "01234567789abcef", 16);
   return 1;
 }
 

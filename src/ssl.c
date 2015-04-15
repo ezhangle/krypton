@@ -40,6 +40,20 @@ out:
   return ssl;
 }
 
+#if KRYPTON_DTLS
+static socklen_t dtls_socklen(SSL *ssl)
+{
+  switch(ssl->st.ss_family) {
+  case AF_INET:
+    return sizeof(struct sockaddr_in);
+  case AF_INET6:
+    return sizeof(struct sockaddr_in6);
+  default:
+    abort();
+  }
+}
+#endif
+
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
 {
 #ifdef KRYPTON_DTLS
@@ -52,9 +66,10 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
     if ( !ssl->ctx->meth.dtls )
       return 0;
     SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
-    ssl->sa = parg;
     ret = SSL_accept(ssl);
-    ssl->sa = NULL;
+    if ( ret > 0 ) {
+      memcpy(parg, &ssl->st, dtls_socklen(ssl));
+    }
     return ret;
   case SSL_CTRL_OPTIONS:
     ssl->options |= larg;
@@ -92,7 +107,19 @@ static int dgram_send(SSL *ssl) {
   len = ssl->tx_len;
 
   /* FIXME: transmit individual records */
-  ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+
+  if (ssl->is_server) {
+    struct sockaddr *sa;
+    socklen_t salen;
+
+    sa = (struct sockaddr *)&ssl->st;
+    salen = dtls_socklen(ssl);
+
+    ret = sendto(ssl->fd, buf, len, MSG_NOSIGNAL, sa, salen);
+  }else{
+    ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+  }
+
   if (ret <= 0) {
     if (SOCKET_ERRNO == EWOULDBLOCK) {
       ssl_err(ssl, SSL_ERROR_WANT_WRITE);
@@ -108,9 +135,18 @@ static int dgram_send(SSL *ssl) {
   if ( (size_t)ret < len )
     return 0;
 
-  /* TODO: If not in handshake, clear buffer,
+  /* If not in handshake, clear buffer,
    * since we won't need to re-transmit
   */
+  switch(ssl->state) {
+  case STATE_INITIAL:
+  case STATE_ESTABLISHED:
+  case STATE_CLOSING:
+    break;
+  default:
+    ssl->tx_len = 0;
+    break;
+  }
 
   return 1;
 }
@@ -186,8 +222,7 @@ static int do_send(SSL *ssl) {
 
 #if KRYPTON_DTLS
 static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
-  struct sockaddr_storage st;
-  socklen_t salen = sizeof(st);
+  socklen_t salen;
   struct sockaddr *sa;
   ssize_t ret;
 
@@ -201,10 +236,8 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     ssl->rx_len = 0;
   }
 
-  if (ssl->sa)
-    sa = ssl->sa;
-  else
-    sa = (struct sockaddr *)&st;
+  sa = (struct sockaddr *)&ssl->st;
+  salen = sizeof(ssl->st);
 
   ret = recvfrom(ssl->fd, ssl->rx_buf, ssl->rx_max_len, 0, sa, &salen);
   if (ret < 0) {
@@ -221,13 +254,26 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 
   /* TODO:
    * - Update PMTU estimates
-   * - clear tx retransmit flights
   */
+
+  /* clear re-transmit buffer now that we have a reply */
+  switch(ssl->state) {
+  case STATE_INITIAL:
+  case STATE_ESTABLISHED:
+  case STATE_CLOSING:
+    break;
+  default:
+    ssl->tx_len = 0;
+    break;
+  }
 
   if (!dtls_handle_recv(ssl, out, out_len)) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return 0;
   }
+
+  if (!do_send(ssl))
+    return 0;
 
   return 1;
 }
@@ -334,9 +380,13 @@ int SSL_accept(SSL *ssl) {
     return -1;
   }
 
-  while (ssl->tx_len) {
-    if (!do_send(ssl))
-      return -1;
+  if (ssl->ctx->meth.dtls) {
+    /* TODO: re-transmit logic */
+  }else{
+    while (ssl->tx_len) {
+      if (!do_send(ssl))
+        return -1;
+    }
   }
 
   switch (ssl->state) {
@@ -412,9 +462,13 @@ int SSL_connect(SSL *ssl) {
     return 0;
   }
 
-  while (ssl->tx_len) {
-    if (!do_send(ssl))
-      return -1;
+  if (ssl->ctx->meth.dtls) {
+    /* TODO: re-transmit logic */
+  }else{
+    while (ssl->tx_len) {
+      if (!do_send(ssl))
+        return -1;
+    }
   }
 
   switch (ssl->state) {

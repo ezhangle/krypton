@@ -37,7 +37,7 @@ typedef struct tls_security {
 NS_INTERNAL tls_sec_t tls_new_security(void);
 NS_INTERNAL void tls_free_security(tls_sec_t sec);
 
-typedef struct { size_t ofs; uint16_t suite; } tls_record_state;
+typedef struct { uint32_t ofs; uint16_t suite; } tls_record_state;
 NS_INTERNAL int tls_record_begin(SSL *ssl, uint8_t type,
                                  uint8_t subtype, tls_record_state *st);
 NS_INTERNAL int tls_record_data(SSL *ssl, tls_record_state *st,
@@ -49,8 +49,10 @@ NS_INTERNAL int tls_record_opaque16(SSL *ssl, tls_record_state *st,
 NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 
 /* dtls */
-#ifdef KRYPTON_DTLS
+#if KRYPTON_DTLS
 NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
+NS_INTERNAL int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len);
+NS_INTERNAL int dtls_hello_verify_request(SSL *ssl);
 #endif
 
 /* generic */

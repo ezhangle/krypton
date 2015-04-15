@@ -90,8 +90,10 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   const uint16_t *cipher_suites;
   const uint8_t *compressions;
   const uint8_t *rand;
-  const uint8_t *cookie;
+#if KRYPTON_DTLS
+  uint8_t *cookie;
   uint8_t cookie_len;
+#endif
   unsigned int i;
   size_t ext_len;
   uint8_t sess_id_len;
@@ -127,22 +129,25 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     goto err;
 
   /* extract DTLS cookie if present */
+#if KRYPTON_DTLS
   if (ssl->is_server && ssl->ctx->meth.dtls) {
     if (buf + sizeof(cookie_len) > end)
       goto err;
-    cookie_len = be16toh(*(uint16_t *)buf);
+    cookie_len = buf[0];
     buf += sizeof(cookie_len);
 
     if (cookie_len) {
       if (buf + cookie_len > end)
         goto err;
-      cookie = buf;
+      /* ugh, fuck you openssl */
+      cookie = (uint8_t *)buf;
       buf += cookie_len;
       hex_dump(cookie, cookie_len, 0);
     }
   }else{
     cookie_len = 0;
   }
+#endif
 
   /* cipher suites */
   if (ssl->is_server) {
@@ -233,6 +238,26 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     buf += ext_len;
   }
 
+#if KRYPTON_DTLS
+  if (ssl->is_server && ssl->ctx->meth.dtls &&
+        (SSL_get_options(ssl) & SSL_OP_COOKIE_EXCHANGE)) {
+    if ( cookie_len ) {
+      if ( !dtls_verify_cookie(ssl, cookie, cookie_len) ) {
+        /* ignore spurious cookies */
+        return 1;
+      }
+
+      /* now fall through to the regular path where we may allocate
+       * some state and affect the state machine.
+      */
+    }else{
+      /* return 1 because spurious packets are no problem */
+      dtls_hello_verify_request(ssl);
+      return 1;
+    }
+  }
+#endif
+
   /* start recording security parameters */
   if (ssl->is_server) {
     tls_sec_t sec;
@@ -276,7 +301,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
   }
 
   if (!ssl->nxt->cipher_negotiated || !ssl->nxt->compressor_negotiated) {
-    dprintf(("Faled to negotiate cipher\n"));
+    dprintf(("Failed to negotiate cipher\n"));
     goto bad_param;
   }
   if (ssl->is_server) {
