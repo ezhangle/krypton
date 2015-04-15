@@ -41,6 +41,11 @@ struct tls_hmac_hdr {
   uint16_t len;
 } __packed;
 
+struct tls_common_hdr {
+  uint8_t type;
+  uint16_t vers;
+} __packed;
+
 struct tls_hdr {
   uint8_t type;
   uint16_t vers;

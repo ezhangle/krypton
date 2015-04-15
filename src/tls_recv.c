@@ -690,8 +690,8 @@ static int handle_alert(SSL *ssl, struct vec *v) {
   return 1;
 }
 
-static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
-                            const uint8_t *end, struct vec *out) {
+static int decrypt_and_vrfy(SSL *ssl, const struct tls_common_hdr *hdr,
+                            uint8_t *buf, const uint8_t *end, struct vec *out) {
   size_t mac_len;
   size_t len = end - buf;
 
@@ -779,7 +779,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       /* incomplete data */
       goto out;
     }
-    if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
+    if (!decrypt_and_vrfy(ssl, (struct tls_common_hdr *)hdr,
+                          buf2, msg_end, &v)) {
       goto out;
     }
 
@@ -835,8 +836,8 @@ int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
   if ( v.len > len )
     v.len = len;
 
-  dprintf(("DTLS: type=0x%.4x\n", hdr->type));
-  dprintf(("DTLS: vers=%u\n", be16toh(hdr->vers)));
+  dprintf(("DTLS: type=%u\n", hdr->type));
+  dprintf(("DTLS: vers=0x%.4x\n", be16toh(hdr->vers)));
   dprintf(("DTLS: epoch=%u\n", be16toh(hdr->epoch)));
   dprintf(("DTLS: seq=%lu\n", seq));
   dprintf(("DTLS: len=%u\n", len));

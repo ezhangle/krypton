@@ -172,20 +172,34 @@ int tls_tx_push(SSL *ssl, const void *data, size_t len) {
   return 1;
 }
 
+static int push_header(SSL *ssl, uint8_t type)
+{
+  if (ssl->ctx->meth.dtls) {
+    struct dtls_hdr hdr;
+    hdr.type = type;
+    hdr.vers = htobe16(DTLSv1_2);
+    hdr.epoch = 0;
+    hdr.seq_hi = 0;
+    hdr.seq = 0;
+    hdr.len = ~0;
+    return tls_tx_push(ssl, &hdr, sizeof(hdr));
+  }else{
+    struct tls_hdr hdr;
+    hdr.type = type;
+    hdr.vers = htobe16(TLSv1_2);
+    hdr.len = ~0;
+    return tls_tx_push(ssl, &hdr, sizeof(hdr));
+  }
+}
+
 int tls_record_begin(SSL *ssl, uint8_t type,
                      uint8_t subtype, tls_record_state *st)
 {
-  struct tls_hdr hdr;
-
   /* record where we started */
   st->ofs = ssl->tx_len;
   st->suite = ssl->tx_ctx.cipher_suite;
 
-  hdr.type = type;
-  hdr.vers = htobe16(TLSv1_2);
-  hdr.len = ~0;
-
-  if ( !tls_tx_push(ssl, &hdr, sizeof(hdr)) )
+  if (!push_header(ssl, type))
     return 0;
 
   if (ssl->tx_enc) {
@@ -235,10 +249,10 @@ int tls_record_opaque16(SSL *ssl, tls_record_state *st,
 
 int tls_record_finish(SSL *ssl, const tls_record_state *st)
 {
-  struct tls_hdr *hdr;
+  struct tls_common_hdr *hdr;
   uint8_t *payload;
   size_t plen, tot_len;
-  size_t mac_len, exp_len;
+  size_t mac_len, exp_len, hdr_len;
 
   /* cipher suite can't change half-way through record */
   assert(st->suite == ssl->tx_ctx.cipher_suite);
@@ -255,15 +269,25 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   /* figure out the length */
   assert(ssl->tx_len > st->ofs);
   tot_len = ssl->tx_len - st->ofs;
-  assert(tot_len >= sizeof(*hdr));
-  tot_len -= sizeof(*hdr);
+  assert(tot_len <= 0xffff);
 
   /* grab the header */
-  hdr = (struct tls_hdr *)(ssl->tx_buf + st->ofs);
+  hdr = (struct tls_common_hdr *)(ssl->tx_buf + st->ofs);
 
   /* patch in the length field */
-  assert(tot_len <= 0xffff);
-  hdr->len = htobe16(tot_len);
+  if (ssl->ctx->meth.dtls) {
+    struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
+    assert(tot_len >= sizeof(struct dtls_hdr));
+    tot_len -= sizeof(struct dtls_hdr);
+    thdr->len = htobe16(tot_len);
+    hdr_len = sizeof(struct dtls_hdr);
+  }else{
+    struct tls_hdr *thdr = (struct tls_hdr *)hdr;
+    assert(tot_len >= sizeof(struct tls_hdr));
+    tot_len -= sizeof(struct tls_hdr);
+    thdr->len = htobe16(tot_len);
+    hdr_len = sizeof(struct tls_hdr);
+  }
 
   /* locate and size the payload */
   if ( ssl->tx_enc ) {
@@ -271,7 +295,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   }else{
     exp_len = 0;
   }
-  payload = ssl->tx_buf + st->ofs + sizeof(*hdr) + exp_len;
+  payload = ssl->tx_buf + st->ofs + hdr_len + exp_len;
   plen = tot_len - (exp_len + mac_len);
 
   /* If it's a handshake, backpatch the handshake size and
@@ -282,7 +306,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
     size_t hs_len;
 
     hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
-                                  sizeof(*hdr) + exp_len);
+                                  hdr_len + exp_len);
     assert(plen >= sizeof(*hs));
     hs_len = plen - sizeof(*hs);
 
@@ -296,7 +320,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   if (ssl->tx_enc) {
     uint8_t *buf;
 
-    buf = ssl->tx_buf + st->ofs + sizeof(*hdr);
+    buf = ssl->tx_buf + st->ofs + hdr_len;
     suite_box(&ssl->tx_ctx, hdr, buf + exp_len, plen, buf);
 #if 0
     hex_dump(tmp, plen, 0);

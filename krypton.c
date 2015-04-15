@@ -508,6 +508,11 @@ struct tls_hmac_hdr {
   uint16_t len;
 } __packed;
 
+struct tls_common_hdr {
+  uint8_t type;
+  uint16_t vers;
+} __packed;
+
 struct tls_hdr {
   uint8_t type;
   uint16_t vers;
@@ -844,13 +849,13 @@ NS_INTERNAL void suite_init(struct cipher_ctx *ctx,
 
 /* crypto black-box encrypt+auth and copy to buffer */
 NS_INTERNAL void suite_box(struct cipher_ctx *ctx,
-                           const struct tls_hdr *hdr,
+                           const struct tls_common_hdr *hdr,
                            const uint8_t *plain, size_t plain_len,
                            uint8_t *out);
 
 /* crypto unbox in place and authenticate, return auth result, plaintext len */
 NS_INTERNAL int suite_unbox(struct cipher_ctx *ctx,
-                            const struct tls_hdr *hdr,
+                            const struct tls_common_hdr *hdr,
                             uint8_t *data, size_t data_len,
                             struct vec *plain);
 
@@ -982,6 +987,11 @@ struct tls_hmac_hdr {
   uint8_t type;
   uint16_t vers;
   uint16_t len;
+} __packed;
+
+struct tls_common_hdr {
+  uint8_t type;
+  uint16_t vers;
 } __packed;
 
 struct tls_hdr {
@@ -6226,20 +6236,34 @@ int tls_tx_push(SSL *ssl, const void *data, size_t len) {
   return 1;
 }
 
+static int push_header(SSL *ssl, uint8_t type)
+{
+  if (ssl->ctx->meth.dtls) {
+    struct dtls_hdr hdr;
+    hdr.type = type;
+    hdr.vers = htobe16(DTLSv1_2);
+    hdr.epoch = 0;
+    hdr.seq_hi = 0;
+    hdr.seq = 0;
+    hdr.len = ~0;
+    return tls_tx_push(ssl, &hdr, sizeof(hdr));
+  }else{
+    struct tls_hdr hdr;
+    hdr.type = type;
+    hdr.vers = htobe16(TLSv1_2);
+    hdr.len = ~0;
+    return tls_tx_push(ssl, &hdr, sizeof(hdr));
+  }
+}
+
 int tls_record_begin(SSL *ssl, uint8_t type,
                      uint8_t subtype, tls_record_state *st)
 {
-  struct tls_hdr hdr;
-
   /* record where we started */
   st->ofs = ssl->tx_len;
   st->suite = ssl->tx_ctx.cipher_suite;
 
-  hdr.type = type;
-  hdr.vers = htobe16(TLSv1_2);
-  hdr.len = ~0;
-
-  if ( !tls_tx_push(ssl, &hdr, sizeof(hdr)) )
+  if (!push_header(ssl, type))
     return 0;
 
   if (ssl->tx_enc) {
@@ -6289,10 +6313,10 @@ int tls_record_opaque16(SSL *ssl, tls_record_state *st,
 
 int tls_record_finish(SSL *ssl, const tls_record_state *st)
 {
-  struct tls_hdr *hdr;
+  struct tls_common_hdr *hdr;
   uint8_t *payload;
   size_t plen, tot_len;
-  size_t mac_len, exp_len;
+  size_t mac_len, exp_len, hdr_len;
 
   /* cipher suite can't change half-way through record */
   assert(st->suite == ssl->tx_ctx.cipher_suite);
@@ -6309,15 +6333,25 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   /* figure out the length */
   assert(ssl->tx_len > st->ofs);
   tot_len = ssl->tx_len - st->ofs;
-  assert(tot_len >= sizeof(*hdr));
-  tot_len -= sizeof(*hdr);
+  assert(tot_len <= 0xffff);
 
   /* grab the header */
-  hdr = (struct tls_hdr *)(ssl->tx_buf + st->ofs);
+  hdr = (struct tls_common_hdr *)(ssl->tx_buf + st->ofs);
 
   /* patch in the length field */
-  assert(tot_len <= 0xffff);
-  hdr->len = htobe16(tot_len);
+  if (ssl->ctx->meth.dtls) {
+    struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
+    assert(tot_len >= sizeof(struct dtls_hdr));
+    tot_len -= sizeof(struct dtls_hdr);
+    thdr->len = htobe16(tot_len);
+    hdr_len = sizeof(struct dtls_hdr);
+  }else{
+    struct tls_hdr *thdr = (struct tls_hdr *)hdr;
+    assert(tot_len >= sizeof(struct tls_hdr));
+    tot_len -= sizeof(struct tls_hdr);
+    thdr->len = htobe16(tot_len);
+    hdr_len = sizeof(struct tls_hdr);
+  }
 
   /* locate and size the payload */
   if ( ssl->tx_enc ) {
@@ -6325,7 +6359,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   }else{
     exp_len = 0;
   }
-  payload = ssl->tx_buf + st->ofs + sizeof(*hdr) + exp_len;
+  payload = ssl->tx_buf + st->ofs + hdr_len + exp_len;
   plen = tot_len - (exp_len + mac_len);
 
   /* If it's a handshake, backpatch the handshake size and
@@ -6336,7 +6370,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
     size_t hs_len;
 
     hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
-                                  sizeof(*hdr) + exp_len);
+                                  hdr_len + exp_len);
     assert(plen >= sizeof(*hs));
     hs_len = plen - sizeof(*hs);
 
@@ -6350,7 +6384,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   if (ssl->tx_enc) {
     uint8_t *buf;
 
-    buf = ssl->tx_buf + st->ofs + sizeof(*hdr);
+    buf = ssl->tx_buf + st->ofs + hdr_len;
     suite_box(&ssl->tx_ctx, hdr, buf + exp_len, plen, buf);
 #if 0
     hex_dump(tmp, plen, 0);
@@ -7244,8 +7278,8 @@ static int handle_alert(SSL *ssl, struct vec *v) {
   return 1;
 }
 
-static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
-                            const uint8_t *end, struct vec *out) {
+static int decrypt_and_vrfy(SSL *ssl, const struct tls_common_hdr *hdr,
+                            uint8_t *buf, const uint8_t *end, struct vec *out) {
   size_t mac_len;
   size_t len = end - buf;
 
@@ -7333,7 +7367,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       /* incomplete data */
       goto out;
     }
-    if (!decrypt_and_vrfy(ssl, hdr, buf2, msg_end, &v)) {
+    if (!decrypt_and_vrfy(ssl, (struct tls_common_hdr *)hdr,
+                          buf2, msg_end, &v)) {
       goto out;
     }
 
@@ -7389,8 +7424,8 @@ int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
   if ( v.len > len )
     v.len = len;
 
-  dprintf(("DTLS: type=0x%.4x\n", hdr->type));
-  dprintf(("DTLS: vers=%u\n", be16toh(hdr->vers)));
+  dprintf(("DTLS: type=%u\n", hdr->type));
+  dprintf(("DTLS: vers=0x%.4x\n", be16toh(hdr->vers)));
   dprintf(("DTLS: epoch=%u\n", be16toh(hdr->epoch)));
   dprintf(("DTLS: seq=%lu\n", seq));
   dprintf(("DTLS: len=%u\n", len));
@@ -8930,7 +8965,7 @@ void suite_init(struct cipher_ctx *ctx,
 
 #if ALLOW_RC4_CIPHERS
 static void box_stream_and_hmac(struct cipher_ctx *ctx,
-                                const struct tls_hdr *hdr,
+                                const struct tls_common_hdr *hdr,
                                 const uint8_t *plain, size_t plain_len,
                                 uint8_t *out)
 {
@@ -8986,7 +9021,7 @@ static void box_stream_and_hmac(struct cipher_ctx *ctx,
 
 #if WITH_AEAD_CIPHERS
 static void box_aead(struct cipher_ctx *ctx,
-                                const struct tls_hdr *hdr,
+                                const struct tls_common_hdr *hdr,
                                 const uint8_t *plain, size_t plain_len,
                                 uint8_t *out)
 {
@@ -9015,7 +9050,7 @@ static void box_aead(struct cipher_ctx *ctx,
 
 /* crypto black-box encrypt+auth and copy to buffer */
 void suite_box(struct cipher_ctx *ctx,
-               const struct tls_hdr *hdr,
+               const struct tls_common_hdr *hdr,
                const uint8_t *plain, size_t plain_len,
                uint8_t *out)
 {
@@ -9038,7 +9073,7 @@ void suite_box(struct cipher_ctx *ctx,
 
 #if ALLOW_RC4_CIPHERS
 static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
-                                 const struct tls_hdr *hdr,
+                                 const struct tls_common_hdr *hdr,
                                  uint8_t *data, size_t data_len,
                                  struct vec *plain)
 {
@@ -9104,7 +9139,7 @@ static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
 
 #if WITH_AEAD_CIPHERS
 static int unbox_aead(struct cipher_ctx *ctx,
-                                 const struct tls_hdr *hdr,
+                                 const struct tls_common_hdr *hdr,
                                  uint8_t *data, size_t data_len,
                                  struct vec *plain)
 {
@@ -9140,7 +9175,7 @@ static int unbox_aead(struct cipher_ctx *ctx,
 
 /* crypto unbox in place and authenticate, return auth result, plaintext len */
 int suite_unbox(struct cipher_ctx *ctx,
-                const struct tls_hdr *hdr,
+                const struct tls_common_hdr *hdr,
                 uint8_t *data, size_t data_len,
                 struct vec *plain)
 {
