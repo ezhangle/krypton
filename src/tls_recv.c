@@ -271,7 +271,7 @@ static int handle_hello(SSL *ssl, const uint8_t *buf,
     ssl->nxt = sec;
   }
 
-  ssl->nxt->peer_vers = be16toh(proto);
+  ssl->nxt->peer_vers = proto;
 
   for (i = 0; i < num_ciphers; i++) {
     uint16_t suite = be16toh(cipher_suites[i]);
