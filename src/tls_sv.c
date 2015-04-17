@@ -57,7 +57,11 @@ int tls_sv_hello(SSL *ssl) {
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_SERVER_HELLO, &st))
     return 0;
-  hello.version = htobe16(0x0303);
+  if (ssl->ctx->meth.dtls) {
+    hello.version = htobe16(DTLSv1_2);
+  }else{
+    hello.version = htobe16(TLSv1_2);
+  }
   hello.random.time = htobe32(time(NULL));
   if (!get_random(hello.random.opaque, sizeof(hello.random.opaque)))
     return 0;

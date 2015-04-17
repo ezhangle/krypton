@@ -242,7 +242,7 @@ static int do_test(const char *cert_file, const char *key_file) {
     sbio = BIO_new_dgram(fd, BIO_NOCLOSE);
     SSL_set_bio(ssl, sbio, sbio);
     SSL_set_accept_state(ssl);
-    if (!DTLS_set_link_mtu(ssl, 1500)) {
+    if (!DTLS_set_link_mtu(ssl, 0xffff)) {
       goto out_close;
     }
     SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);

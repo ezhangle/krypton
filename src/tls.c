@@ -178,9 +178,6 @@ static int push_header(SSL *ssl, uint8_t type)
     struct dtls_hdr hdr;
     hdr.type = type;
     hdr.vers = htobe16(DTLSv1_2);
-    hdr.epoch = 0;
-    hdr.seq_hi = 0;
-    hdr.seq = 0;
     hdr.len = ~0;
     return tls_tx_push(ssl, &hdr, sizeof(hdr));
   }else{
@@ -211,13 +208,17 @@ int tls_record_begin(SSL *ssl, uint8_t type,
 
   if ( type == TLS_HANDSHAKE ) {
     if (ssl->ctx->meth.dtls) {
+#if KRYPTON_DTLS
       struct dtls_handshake hs_hdr;
       hs_hdr.type = subtype;
-      hs_hdr.msg_seq = 0;
+      hs_hdr.msg_seq = htobe16(ssl->handshake_seq++);
       hs_hdr.frag_off_hi = 0;
       hs_hdr.frag_off = 0;
       if ( !tls_tx_push(ssl, &hs_hdr, sizeof(hs_hdr)) )
         return 0;
+#else
+      abort();
+#endif
     }else{
       struct tls_handshake hs_hdr;
       hs_hdr.type = subtype;

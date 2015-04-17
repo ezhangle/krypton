@@ -40,6 +40,8 @@ struct ssl_ctx_st {
 struct ssl_st {
 #if KRYPTON_DTLS
   struct sockaddr_storage st;
+  uint64_t epoch:16;
+  uint64_t tx_seq:48;
   long options;
 #endif
 
@@ -64,6 +66,7 @@ struct ssl_st {
 
 #if KRYPTON_DTLS
   uint16_t link_mtu;
+  uint16_t handshake_seq;
 #endif
 
   uint8_t state;

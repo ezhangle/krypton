@@ -68,7 +68,7 @@ NS_INTERNAL void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);
-NS_INTERNAL int tls_cl_hello(SSL *ssl);
+NS_INTERNAL int tls_cl_hello(SSL *ssl, const uint8_t *cookie, size_t len);
 NS_INTERNAL int tls_check_server_finished(tls_sec_t sec, const uint8_t *vrfy,
                                           size_t vrfy_len);
 NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,

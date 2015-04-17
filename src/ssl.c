@@ -100,7 +100,7 @@ int SSL_get_fd(SSL *ssl) {
 #if KRYPTON_DTLS
 static int dgram_send(SSL *ssl) {
   const uint8_t *buf, *end;
-  const struct dtls_hdr *hdr;
+  struct dtls_hdr *hdr;
   ssize_t ret;
 
   end = ssl->tx_buf + ssl->tx_len;
@@ -110,7 +110,11 @@ static int dgram_send(SSL *ssl) {
 
     hdr = (struct dtls_hdr *)buf;
     len = sizeof(*hdr) + be16toh(hdr->len);
-    printf("tx %zu\n", len);
+
+    hdr->epoch = ssl->epoch;
+    hdr->seq_hi = htobe16((ssl->tx_seq >> 32) & 0xffff);
+    hdr->seq = htobe32(ssl->tx_seq & 0xffffffff);
+    ssl->tx_seq++;
 
     if (ssl->is_server) {
       struct sockaddr *sa;
@@ -493,7 +497,7 @@ int SSL_connect(SSL *ssl) {
       }
       ssl->nxt = sec;
 
-      if (!tls_cl_hello(ssl)) {
+      if (!tls_cl_hello(ssl, NULL, 0)) {
         dprintf(("failed to construct hello\n"));
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;

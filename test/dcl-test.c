@@ -217,7 +217,7 @@ static int do_test(const char *cert_chain) {
     sbio = BIO_new_dgram(fd, BIO_NOCLOSE);
     SSL_set_bio(ssl, sbio, sbio);
     SSL_set_connect_state(ssl);
-    if (!DTLS_set_link_mtu(ssl, 1500)) {
+    if (!DTLS_set_link_mtu(ssl, 0xffff)) {
       goto out_close;
     }
     if (!BIO_ctrl_set_connected(sbio, 1, &sa) ) {

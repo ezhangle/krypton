@@ -40,7 +40,7 @@ static const uint8_t compressors[] = {
   COMPRESSOR_NULL,
 };
 
-int tls_cl_hello(SSL *ssl) {
+int tls_cl_hello(SSL *ssl, const uint8_t *cookie, size_t cookie_len) {
   tls_record_state st;
   struct tls_cl_hello hello;
   struct tls_EXT_reneg reneg;
@@ -67,7 +67,7 @@ int tls_cl_hello(SSL *ssl) {
 
   /* dtls cookie [8] */
   if (ssl->ctx->meth.dtls) {
-    if (!tls_record_opaque8(ssl, &st, NULL, 0))
+    if (!tls_record_opaque8(ssl, &st, cookie, cookie_len))
       return 0;
   }
 
