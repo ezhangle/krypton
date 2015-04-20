@@ -176,7 +176,6 @@ struct cipher_ctx {
       AES_GCM_CTX ctx;
     }aes_gcm;
   }u;
-  uint64_t seq;
   uint16_t cipher_suite;
 };
 
@@ -187,12 +186,14 @@ NS_INTERNAL void suite_init(struct cipher_ctx *ctx,
 /* crypto black-box encrypt+auth and copy to buffer */
 NS_INTERNAL void suite_box(struct cipher_ctx *ctx,
                            const struct tls_common_hdr *hdr,
+                           uint64_t seq,
                            const uint8_t *plain, size_t plain_len,
                            uint8_t *out);
 
 /* crypto unbox in place and authenticate, return auth result, plaintext len */
 NS_INTERNAL int suite_unbox(struct cipher_ctx *ctx,
                             const struct tls_common_hdr *hdr,
+                            uint64_t seq,
                             uint8_t *data, size_t data_len,
                             struct vec *plain);
 

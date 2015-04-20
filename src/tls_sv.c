@@ -128,7 +128,7 @@ int tls_sv_finish(SSL *ssl) {
     return 0;
   if (!tls_record_finish(ssl, &st))
     return 0;
-  tls_server_cipher_spec(ssl->nxt, &ssl->tx_ctx);
+  tls_server_cipher_spec(ssl, &ssl->tx_ctx);
   ssl->tx_enc = 1;
 
   /* finished */

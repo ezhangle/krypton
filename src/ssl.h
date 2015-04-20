@@ -40,10 +40,12 @@ struct ssl_ctx_st {
 struct ssl_st {
 #if KRYPTON_DTLS
   struct sockaddr_storage st;
-  uint64_t epoch:16;
-  uint64_t tx_seq:48;
+  struct timeval timer_expiry;
   long options;
 #endif
+
+  uint64_t tx_seq;
+  uint64_t rx_seq;
 
   struct ssl_ctx_st *ctx;
   struct tls_security *nxt;

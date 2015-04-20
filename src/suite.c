@@ -96,6 +96,7 @@ void suite_init(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
 static void box_stream_and_hmac(struct cipher_ctx *ctx,
                                 const struct tls_common_hdr *hdr,
+                                uint64_t seq,
                                 const uint8_t *plain, size_t plain_len,
                                 uint8_t *out)
 {
@@ -105,7 +106,7 @@ static void box_stream_and_hmac(struct cipher_ctx *ctx,
   if ( out != plain )
     memcpy(out, plain, plain_len);
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(plain_len);
@@ -143,24 +144,22 @@ static void box_stream_and_hmac(struct cipher_ctx *ctx,
     default:
       abort();
   }
-
-  /* Bump the sequence number for the HMAC */
-  ctx->seq++;
 }
 #endif
 
 #if WITH_AEAD_CIPHERS
 static void box_aead(struct cipher_ctx *ctx,
                                 const struct tls_common_hdr *hdr,
+                                uint64_t seq,
                                 const uint8_t *plain, size_t plain_len,
                                 uint8_t *out)
 {
   struct tls_hmac_hdr phdr;
   uint8_t nonce[12];
 
-  *(uint64_t *)out = htobe64(ctx->seq);
+  *(uint64_t *)out = htobe64(seq);
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(plain_len);
@@ -174,13 +173,13 @@ static void box_aead(struct cipher_ctx *ctx,
              (void *)&phdr, sizeof(phdr),
              out + 8,
              out + 8 + plain_len);
-  ctx->seq++;
 }
 #endif
 
 /* crypto black-box encrypt+auth and copy to buffer */
 void suite_box(struct cipher_ctx *ctx,
                const struct tls_common_hdr *hdr,
+               uint64_t seq,
                const uint8_t *plain, size_t plain_len,
                uint8_t *out)
 {
@@ -188,12 +187,12 @@ void suite_box(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
   case CIPHER_TLS_RC4_MD5:
   case CIPHER_TLS_RC4_SHA1:
-    box_stream_and_hmac(ctx, hdr, plain, plain_len, out);
+    box_stream_and_hmac(ctx, hdr, seq, plain, plain_len, out);
     break;
 #endif
 #if WITH_AEAD_CIPHERS
   case CIPHER_TLS_AES128_GCM:
-    box_aead(ctx, hdr, plain, plain_len, out);
+    box_aead(ctx, hdr, seq, plain, plain_len, out);
     break;
 #endif
   default:
@@ -204,6 +203,7 @@ void suite_box(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
 static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
                                  const struct tls_common_hdr *hdr,
+                                 uint64_t seq,
                                  uint8_t *data, size_t data_len,
                                  struct vec *plain)
 {
@@ -233,7 +233,7 @@ static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
       abort();
   }
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(out_len);
@@ -259,7 +259,6 @@ static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
   if ( memcmp(digest, mac, mac_len) )
     return 0;
 
-  ctx->seq++;
   plain->ptr = data;
   plain->len = out_len;
 
@@ -270,6 +269,7 @@ static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
 #if WITH_AEAD_CIPHERS
 static int unbox_aead(struct cipher_ctx *ctx,
                                  const struct tls_common_hdr *hdr,
+                                 uint64_t seq,
                                  uint8_t *data, size_t data_len,
                                  struct vec *plain)
 {
@@ -279,7 +279,7 @@ static int unbox_aead(struct cipher_ctx *ctx,
 
   assert(data_len >= 8 + 16);
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(data_len - (8 + 16));
@@ -298,7 +298,6 @@ static int unbox_aead(struct cipher_ctx *ctx,
   plain->ptr = data + 8;
   plain->len = data_len - (8 + 16);
   memcpy(plain->ptr, buff, plain->len);
-  ctx->seq++;
   return 1;
 }
 #endif
@@ -306,6 +305,7 @@ static int unbox_aead(struct cipher_ctx *ctx,
 /* crypto unbox in place and authenticate, return auth result, plaintext len */
 int suite_unbox(struct cipher_ctx *ctx,
                 const struct tls_common_hdr *hdr,
+                uint64_t seq,
                 uint8_t *data, size_t data_len,
                 struct vec *plain)
 {
@@ -313,11 +313,11 @@ int suite_unbox(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
   case CIPHER_TLS_RC4_MD5:
   case CIPHER_TLS_RC4_SHA1:
-    return unbox_stream_and_hmac(ctx, hdr, data, data_len, plain);
+    return unbox_stream_and_hmac(ctx, hdr, seq, data, data_len, plain);
 #endif
 #if WITH_AEAD_CIPHERS
   case CIPHER_TLS_AES128_GCM:
-    return unbox_aead(ctx, hdr, data, data_len, plain);
+    return unbox_aead(ctx, hdr, seq, data, data_len, plain);
 #endif
   default:
     abort();

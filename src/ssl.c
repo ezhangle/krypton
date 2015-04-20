@@ -52,6 +52,18 @@ static socklen_t dtls_socklen(SSL *ssl)
     abort();
   }
 }
+
+static int dtls_handle_timeout(SSL *ssl)
+{
+  /* retransmit buffered messages if necessary */
+  return 1;
+}
+
+static int dtls_get_timeout(SSL *ssl, struct timeval *tv)
+{
+  /* look at current time, figure out time left to expiry */
+  return 1;
+}
 #endif
 
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
@@ -71,6 +83,10 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
       memcpy(parg, &ssl->st, dtls_socklen(ssl));
     }
     return ret;
+  case DTLS_CTRL_GET_TIMEOUT:
+    return dtls_get_timeout(ssl, parg);
+  case DTLS_CTRL_HANDLE_TIMEOUT:
+    return dtls_handle_timeout(ssl);
   case SSL_CTRL_OPTIONS:
     ssl->options |= larg;
     return (ssl->options);
@@ -108,13 +124,9 @@ static int dgram_send(SSL *ssl) {
   for(buf = ssl->tx_buf; buf + sizeof(*hdr) < end; ) {
     size_t len;
 
+    /* TODO: batch up multiple records as long as < mtu */
     hdr = (struct dtls_hdr *)buf;
     len = sizeof(*hdr) + be16toh(hdr->len);
-
-    hdr->epoch = ssl->epoch;
-    hdr->seq_hi = htobe16((ssl->tx_seq >> 32) & 0xffff);
-    hdr->seq = htobe32(ssl->tx_seq & 0xffffffff);
-    ssl->tx_seq++;
 
     if (ssl->is_server) {
       struct sockaddr *sa;
@@ -253,6 +265,7 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   sa = (struct sockaddr *)&ssl->st;
   salen = sizeof(ssl->st);
 
+again:
   ret = recvfrom(ssl->fd, ssl->rx_buf, ssl->rx_max_len, 0, sa, &salen);
   if (ret < 0) {
     if (SOCKET_ERRNO == EWOULDBLOCK) {
@@ -281,9 +294,11 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     break;
   }
 
+  /* ignore bad packets */
   if (!dtls_handle_recv(ssl, out, out_len)) {
-    ssl_err(ssl, SSL_ERROR_SSL);
-    return 0;
+    if (!do_send(ssl))
+      return 0;
+    goto again;
   }
 
   if (!do_send(ssl))

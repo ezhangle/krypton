@@ -77,9 +77,12 @@ void SSL_CTX_free(SSL_CTX *);
 #define SSL_OP_COOKIE_EXCHANGE 0x2000L
 
 #define SSL_CTRL_OPTIONS 32
+#define DTLS_CTRL_GET_TIMEOUT  73
+#define DTLS_CTRL_HANDLE_TIMEOUT 74
 #define DTLS_CTRL_LISTEN 75
 #define DTLS_CTRL_SET_LINK_MTU 120
 #define DTLS_CTRL_GET_LINK_MIN_MTU 121
+
 #define DTLSv1_listen(ssl, sa) SSL_ctrl(ssl, DTLS_CTRL_LISTEN, 0, sa)
 #define DTLS_set_link_mtu(ssl, mtu) \
   SSL_ctrl(ssl, DTLS_CTRL_SET_LINK_MTU, mtu, NULL)
@@ -87,6 +90,10 @@ void SSL_CTX_free(SSL_CTX *);
   SSL_ctrl(ssl, DTLS_CTRL_GET_LINK_MIN_MTU, 0, NULL)
 #define SSL_set_options(ssl, opt) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, opt, NULL)
 #define SSL_get_options(ssl) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, 0, NULL)
+#define DTLSv1_get_timeout(ssl, arg) \
+  SSL_ctrl(ssl, DTLS_CTRL_GET_TIMEOUT, 0, arg)
+#define DTLSv1_handle_timeout(ssl) \
+  SSL_ctrl(ssl, DTLS_CTRL_HANDLE_TIMEOUT, 0, NULL)
 
 typedef int (*krypton_gen_cookie_cb_t)(SSL *ssl,
                                         unsigned char *cookie,

@@ -459,9 +459,13 @@ static int handle_finished(SSL *ssl,
   int ret = 0;
 
   if (ssl->is_server) {
+    if ( ssl->state >= STATE_CLIENT_FINISHED )
+      return 1;
     ret = tls_check_client_finished(ssl->nxt, buf, end - buf);
     ssl->state = STATE_CLIENT_FINISHED;
   } else {
+    if ( ssl->state >= STATE_ESTABLISHED )
+      return 1;
     ret = tls_check_server_finished(ssl->nxt, buf, end - buf);
     ssl->state = STATE_ESTABLISHED;
     tls_free_security(ssl->nxt);
@@ -480,6 +484,9 @@ static int handle_verify_request(SSL *ssl, const uint8_t *buf,
   struct dtls_verify_request *vreq;
   uint8_t cookie_len;
 
+  if ( ssl->state != STATE_CL_HELLO_SENT )
+    return 1;
+
   vreq = (struct dtls_verify_request *)buf;
   if ( buf + sizeof(*vreq) > end )
     goto err;
@@ -494,6 +501,8 @@ static int handle_verify_request(SSL *ssl, const uint8_t *buf,
 
   if ( buf + cookie_len > end )
     goto err;
+
+  SHA256_Init(&ssl->nxt->handshakes_hash);
 
   dprintf(("re-send hello with cookie\n"));
   hex_dump(buf, cookie_len, 0);
@@ -665,17 +674,15 @@ static int handle_dtls_handshake(SSL *ssl, struct vec *v) {
   ibuf = buf + sizeof(*hdr);
   iend = ibuf + len;
 
-  hex_dump(ibuf, len, 0);
+  //hex_dump(ibuf, len, 0);
 
   if (ssl->is_server)
     ret = handle_sv_handshake(ssl, hdr->type, ibuf, iend);
   else
     ret = handle_cl_handshake(ssl, hdr->type, ibuf, iend);
 
-  if (ssl->nxt) {
-    /* FIXME: For DTLS, do not include cookieless hello,
-     * or HelloVerifyRequest
-    */
+  /* do not include cookieless hello, or HelloVerifyRequest */
+  if (ssl->nxt && hdr->type != HANDSHAKE_HELLO_VERIFY_REQUEST) {
     SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
   }
 
@@ -687,9 +694,9 @@ static int handle_change_cipher(SSL *ssl, struct vec *v) {
 
   if (ssl->is_server) {
     tls_generate_keys(ssl->nxt);
-    tls_client_cipher_spec(ssl->nxt, &ssl->rx_ctx);
+    tls_client_cipher_spec(ssl, &ssl->rx_ctx);
   }else{
-    tls_server_cipher_spec(ssl->nxt, &ssl->rx_ctx);
+    tls_server_cipher_spec(ssl, &ssl->rx_ctx);
   }
 
   ssl->rx_enc = 1;
@@ -776,12 +783,14 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_common_hdr *hdr,
     return 0;
   }
 
-  if ( !suite_unbox(&ssl->rx_ctx, hdr, buf, len, out) ) {
+  if ( !suite_unbox(&ssl->rx_ctx, hdr, ssl->rx_seq, buf, len, out) ) {
     dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
   }
 
+  if ( !ssl->ctx->meth.dtls )
+    ssl->rx_seq++;
   return 1;
 }
 
@@ -883,7 +892,6 @@ int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
   uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
   struct dtls_hdr *hdr;
   struct vec v;
-  uint64_t seq;
   uint16_t len;
 
 again:
@@ -899,7 +907,6 @@ again:
   hdr = (struct dtls_hdr *)buf;
   buf += sizeof(*hdr);
 
-  seq = ((uint64_t)be16toh(hdr->seq_hi) << 32) | be32toh(hdr->seq);
   len = be16toh(hdr->len);
 
   v.ptr = buf;
@@ -907,17 +914,25 @@ again:
 
   if ( v.len > len )
     v.len = len;
+  buf = v.ptr + v.len;
 
+#if 0
   dprintf(("DTLS: dgram_len=%u\n", ssl->rx_len));
   dprintf(("DTLS: type=%u\n", hdr->type));
   dprintf(("DTLS: vers=0x%.4x\n", be16toh(hdr->vers)));
-  dprintf(("DTLS: epoch=%u\n", be16toh(hdr->epoch)));
-  dprintf(("DTLS: seq=%lu\n", seq));
+  dprintf(("DTLS: seq=%lu\n", be64toh(hdr->seq)));
   dprintf(("DTLS: len=%u\n", len));
+#endif
+  ssl->rx_seq = be64toh(hdr->seq);
+
+  if (!decrypt_and_vrfy(ssl, (struct tls_common_hdr *)hdr,
+                        v.ptr, v.ptr + v.len, &v)) {
+    return 0;
+  }
 
   if ( !dispatch(ssl, hdr->type, &v, out, out_len) )
     return 0;
+  dprintf(("\n"));
 
-  buf = v.ptr + v.len;
   goto again;
 }

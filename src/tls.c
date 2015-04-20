@@ -126,22 +126,37 @@ void tls_generate_keys(tls_sec_t sec) {
   sec->client_write_pending = 1;
 }
 
-void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+static uint64_t initial_seq(SSL *ssl, uint64_t cur_seq)
 {
-  assert(sec->client_write_pending);
-  ctx->cipher_suite = sec->cipher_suite;
-  ctx->seq = 0;
-  suite_init(ctx, sec->keys, 1);
-  sec->client_write_pending = 0;
+  if ( ssl->ctx->meth.dtls ) {
+    return (((cur_seq >> 48) + 1) << 48);
+  }else{
+    return 0;
+  }
 }
 
-void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+void tls_client_cipher_spec(SSL *ssl, struct cipher_ctx *ctx)
 {
-  assert(sec->server_write_pending);
-  ctx->cipher_suite = sec->cipher_suite;
-  ctx->seq = 0;
-  suite_init(ctx, sec->keys, 0);
-  sec->server_write_pending = 0;
+  assert(ssl->nxt->client_write_pending);
+  ctx->cipher_suite = ssl->nxt->cipher_suite;
+  suite_init(ctx, ssl->nxt->keys, 1);
+  ssl->nxt->client_write_pending = 0;
+  if ( ctx == &ssl->tx_ctx )
+    ssl->tx_seq = initial_seq(ssl, ssl->tx_seq);
+  else
+    ssl->rx_seq = initial_seq(ssl, ssl->rx_seq);
+}
+
+void tls_server_cipher_spec(SSL *ssl, struct cipher_ctx *ctx)
+{
+  assert(ssl->nxt->server_write_pending);
+  ctx->cipher_suite = ssl->nxt->cipher_suite;
+  suite_init(ctx, ssl->nxt->keys, 0);
+  ssl->nxt->server_write_pending = 0;
+  if ( ctx == &ssl->tx_ctx )
+    ssl->tx_seq = initial_seq(ssl, ssl->tx_seq);
+  else
+    ssl->rx_seq = initial_seq(ssl, ssl->rx_seq);
 }
 
 int tls_tx_push(SSL *ssl, const void *data, size_t len) {
@@ -287,11 +302,16 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
 
   /* patch in the length field */
   if (ssl->ctx->meth.dtls) {
+#if KRYPTON_DTLS
     struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
     assert(tot_len >= sizeof(struct dtls_hdr));
     tot_len -= sizeof(struct dtls_hdr);
     thdr->len = htobe16(tot_len);
+    thdr->seq = htobe64(ssl->tx_seq);
     hdr_len = sizeof(struct dtls_hdr);
+#else
+    abort();
+#endif
   }else{
     struct tls_hdr *thdr = (struct tls_hdr *)hdr;
     assert(tot_len >= sizeof(struct tls_hdr));
@@ -348,13 +368,10 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
     uint8_t *buf;
 
     buf = ssl->tx_buf + st->ofs + hdr_len;
-    suite_box(&ssl->tx_ctx, hdr, buf + exp_len, plen, buf);
-#if 0
-    hex_dump(tmp, plen, 0);
-    hex_dump(buf + exp_len, plen, 0);
-    hex_dump(buf, exp_len + plen + mac_len, 0);
-    hex_dump(ssl->tx_buf + st->ofs, ssl->tx_len - st->ofs, 0);
-#endif
+    suite_box(&ssl->tx_ctx, hdr, ssl->tx_seq, buf + exp_len, plen, buf);
+    ssl->tx_seq++;
+  }else if (ssl->ctx->meth.dtls) {
+    ssl->tx_seq++;
   }
 
   return 1;
@@ -390,6 +407,7 @@ int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
     return 0;
   if (!tls_record_finish(ssl, &st))
     return 0;
+
   return 1;
 }
 

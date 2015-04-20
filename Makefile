@@ -7,8 +7,7 @@ SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c src/hmac.c \
 					src/tls_recv.c src/tls_sv.c src/x509.c src/x509_verify.c src/aes.c \
 					src/aes-gcm.c src/suite.c
 HEADERS = src/ktypes.h src/bigint_impl.h src/bigint.h src/tlsproto.h \
-					src/crypto.h src/ssl.h src/tlsproto.h src/tls.h src/ber.h \
-					src/pem.h src/x509.h
+					src/crypto.h src/ssl.h src/tls.h src/ber.h src/pem.h src/x509.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c
 CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA) -g -fno-inline
 

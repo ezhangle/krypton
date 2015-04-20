@@ -56,9 +56,7 @@ struct tls_hdr {
 struct dtls_hdr {
   uint8_t type;
   uint16_t vers;
-  uint16_t epoch;
-  uint16_t seq_hi;
-  uint32_t seq;
+  uint64_t seq;
   uint16_t len;
 } __packed;
 

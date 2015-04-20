@@ -63,8 +63,8 @@ NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
 
-NS_INTERNAL void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
-NS_INTERNAL void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
+NS_INTERNAL void tls_client_cipher_spec(SSL *, struct cipher_ctx *ctx);
+NS_INTERNAL void tls_server_cipher_spec(SSL *, struct cipher_ctx *ctx);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);

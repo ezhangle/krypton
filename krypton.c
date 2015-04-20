@@ -77,9 +77,12 @@ void SSL_CTX_free(SSL_CTX *);
 #define SSL_OP_COOKIE_EXCHANGE 0x2000L
 
 #define SSL_CTRL_OPTIONS 32
+#define DTLS_CTRL_GET_TIMEOUT  73
+#define DTLS_CTRL_HANDLE_TIMEOUT 74
 #define DTLS_CTRL_LISTEN 75
 #define DTLS_CTRL_SET_LINK_MTU 120
 #define DTLS_CTRL_GET_LINK_MIN_MTU 121
+
 #define DTLSv1_listen(ssl, sa) SSL_ctrl(ssl, DTLS_CTRL_LISTEN, 0, sa)
 #define DTLS_set_link_mtu(ssl, mtu) \
   SSL_ctrl(ssl, DTLS_CTRL_SET_LINK_MTU, mtu, NULL)
@@ -87,6 +90,10 @@ void SSL_CTX_free(SSL_CTX *);
   SSL_ctrl(ssl, DTLS_CTRL_GET_LINK_MIN_MTU, 0, NULL)
 #define SSL_set_options(ssl, opt) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, opt, NULL)
 #define SSL_get_options(ssl) SSL_ctrl(ssl, SSL_CTRL_OPTIONS, 0, NULL)
+#define DTLSv1_get_timeout(ssl, arg) \
+  SSL_ctrl(ssl, DTLS_CTRL_GET_TIMEOUT, 0, arg)
+#define DTLSv1_handle_timeout(ssl) \
+  SSL_ctrl(ssl, DTLS_CTRL_HANDLE_TIMEOUT, 0, NULL)
 
 typedef int (*krypton_gen_cookie_cb_t)(SSL *ssl,
                                         unsigned char *cookie,
@@ -525,9 +532,7 @@ struct tls_hdr {
 struct dtls_hdr {
   uint8_t type;
   uint16_t vers;
-  uint16_t epoch;
-  uint16_t seq_hi;
-  uint32_t seq;
+  uint64_t seq;
   uint16_t len;
 } __packed;
 
@@ -847,7 +852,6 @@ struct cipher_ctx {
       AES_GCM_CTX ctx;
     }aes_gcm;
   }u;
-  uint64_t seq;
   uint16_t cipher_suite;
 };
 
@@ -858,12 +862,14 @@ NS_INTERNAL void suite_init(struct cipher_ctx *ctx,
 /* crypto black-box encrypt+auth and copy to buffer */
 NS_INTERNAL void suite_box(struct cipher_ctx *ctx,
                            const struct tls_common_hdr *hdr,
+                           uint64_t seq,
                            const uint8_t *plain, size_t plain_len,
                            uint8_t *out);
 
 /* crypto unbox in place and authenticate, return auth result, plaintext len */
 NS_INTERNAL int suite_unbox(struct cipher_ctx *ctx,
                             const struct tls_common_hdr *hdr,
+                            uint64_t seq,
                             uint8_t *data, size_t data_len,
                             struct vec *plain);
 
@@ -910,10 +916,12 @@ struct ssl_ctx_st {
 struct ssl_st {
 #if KRYPTON_DTLS
   struct sockaddr_storage st;
-  uint64_t epoch:16;
-  uint64_t tx_seq:48;
+  struct timeval timer_expiry;
   long options;
 #endif
+
+  uint64_t tx_seq;
+  uint64_t rx_seq;
 
   struct ssl_ctx_st *ctx;
   struct tls_security *nxt;
@@ -957,208 +965,6 @@ struct ssl_st {
 };
 
 #endif /* _SSL_H */
-/*
- * Copyright (c) 2015 Cesanta Software Limited
- * All rights reserved
- */
-
-#ifndef _TLSPROTO_H
-#define _TLSPROTO_H
-
-#define TLSv1_2 0x0303
-#define DTLSv1_2 0xfefd
-#define DTLSv1_0 0xfeff
-
-/* set to number of null cipher suites */
-#define ALLOW_NULL_CIPHERS  0
-
-/* set to number of RC4 cipher suites */
-#define ALLOW_RC4_CIPHERS   2
-
-/* set to number of AEAD cipher suites */
-#define WITH_AEAD_CIPHERS   1
-
-/* just count non-NULL ciphers */
-#define NUM_CIPHER_SUITES (ALLOW_RC4_CIPHERS + WITH_AEAD_CIPHERS)
-
-#define NUM_COMPRESSORS 1
-
-#pragma pack(1)
-struct tls_random {
-  uint32_t time;
-  uint8_t opaque[28];
-} __packed;
-
-struct tls_premaster_secret {
-  uint16_t version;
-  uint8_t opaque[46];
-} __packed;
-
-struct tls_hmac_hdr {
-  uint64_t seq;
-  uint8_t type;
-  uint16_t vers;
-  uint16_t len;
-} __packed;
-
-struct tls_common_hdr {
-  uint8_t type;
-  uint16_t vers;
-} __packed;
-
-struct tls_hdr {
-  uint8_t type;
-  uint16_t vers;
-  uint16_t len;
-} __packed;
-
-struct dtls_hdr {
-  uint8_t type;
-  uint16_t vers;
-  uint16_t epoch;
-  uint16_t seq_hi;
-  uint32_t seq;
-  uint16_t len;
-} __packed;
-
-struct tls_EXT_reneg {
-  uint16_t type;
-  uint16_t len;
-  uint8_t ri_len;
-} __packed;
-
-struct tls_handshake {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
-} __packed;
-
-struct dtls_handshake {
-  uint8_t type;
-  uint8_t len_hi;
-  uint16_t len;
-  uint16_t msg_seq;
-  uint8_t frag_off_hi;
-  uint16_t frag_off;
-  uint8_t frag_len_hi;
-  uint16_t frag_len;
-} __packed;
-
-struct dtls_verify_request {
-  uint16_t proto_vers; /* must be DTLSv1.0 */
-  /* cookie [8] */
-} __packed;
-
-struct tls_svr_hello {
-  uint16_t version;
-  struct tls_random random;
-  uint8_t sess_id_len;
-  uint16_t cipher_suite;
-  uint8_t compressor;
-  uint16_t ext_len;
-
-  struct tls_EXT_reneg ext_reneg;
-} __packed;
-
-struct tls_cl_hello {
-  uint16_t version;
-  struct tls_random random;
-  /* session id [8] */
-  /* dtls cookie [8] */
-  /* cipher suites [16] */
-  /* compressors [8] */
-  /* extensions [16] */
-} __packed;
-
-struct tls_key_exch {
-  uint16_t key_len;
-} __packed;
-
-struct tls_cert {
-  uint8_t certs_len_hi;
-  uint16_t certs_len;
-} __packed;
-
-struct tls_cert_hdr {
-  /* for chains */
-  uint8_t cert_len_hi;
-  uint16_t cert_len;
-} __packed;
-
-struct tls_change_cipher_spec {
-  uint8_t one;
-} __packed;
-
-struct tls_finished {
-  uint8_t vrfy[12];
-} __packed;
-
-struct tls_alert {
-  uint8_t level;
-  uint8_t desc;
-} __packed;
-#pragma pack()
-
-#define TLS_CHANGE_CIPHER_SPEC 20
-#define TLS_ALERT 21
-#define TLS_HANDSHAKE 22
-#define TLS_APP_DATA 23
-#define TLS_HEARTBEAT 24
-
-#define HANDSHAKE_HELLO_REQ 0
-#define HANDSHAKE_CLIENT_HELLO 1
-#define HANDSHAKE_SERVER_HELLO 2
-#define HANDSHAKE_HELLO_VERIFY_REQUEST 3
-#define HANDSHAKE_NEW_SESSION_TICKET 4
-#define HANDSHAKE_CERTIFICATE 11
-#define HANDSHAKE_SERVER_KEY_EXCH 12
-#define HANDSHAKE_CERTIFICATE_REQ 13
-#define HANDSHAKE_SERVER_HELLO_DONE 14
-#define HANDSHAKE_CERTIFICATE_VRFY 15
-#define HANDSHAKE_CLIENT_KEY_EXCH 16
-#define HANDSHAKE_FINISHED 20
-
-#define EXT_SERVER_NAME 0x0000
-#define EXT_SESSION_TICKET 0x0023
-#define EXT_HEARTBEAT 0x000f
-#define EXT_SIG_ALGOS 0x000d
-#define EXT_NPN 0x3374
-#define EXT_RENEG_INFO 0xff01
-
-#define ALERT_LEVEL_WARNING 1
-#define ALERT_LEVEL_FATAL 2
-
-#define ALERT_CLOSE_NOTIFY 0
-#define ALERT_UNEXPECTED_MESSAGE 10
-#define ALERT_BAD_RECORD_MAC 20
-#define ALERT_RECORD_OVERFLOW 22
-#define ALERT_HANDSHAKE_FAILURE 40
-#define ALERT_BAD_CERT 42
-#define ALERT_UNSUPPORTED_CERT 43
-#define ALERT_CERT_REVOKED 44
-#define ALERT_CERT_EXPIRED 43
-#define ALERT_CERT_UNKNOWN 46
-#define ALERT_ILLEGAL_PARAMETER 47
-#define ALERT_UNKNOWN_CA 48
-#define ALERT_ACCESS_DENIED 49
-#define ALERT_DECODE_ERROR 50
-#define ALERT_DECRYPT_ERROR 51
-#define ALERT_PROTOCOL_VERSION 70
-#define ALERT_INSUFFICIENT_SECURITY 71
-#define ALERT_INTERNAL_ERROR 80
-#define ALERT_USER_CANCELLED 90
-#define ALERT_NO_RENEGOTIATION 100
-#define ALERT_UNSUPPORTED_EXT 110
-
-#define CIPHER_TLS_NULL_MD5 0x0001
-#define CIPHER_TLS_RC4_MD5 0x0004
-#define CIPHER_TLS_RC4_SHA1 0x0005
-#define CIPHER_TLS_AES128_GCM 0x009c
-#define CIPHER_EMPTY_RENEG_EXT 0x00ff
-
-#define COMPRESSOR_NULL 0x00
-
-#endif /* _TLSPROTO_H */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -1224,8 +1030,8 @@ NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
 
-NS_INTERNAL void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
-NS_INTERNAL void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx);
+NS_INTERNAL void tls_client_cipher_spec(SSL *, struct cipher_ctx *ctx);
+NS_INTERNAL void tls_server_cipher_spec(SSL *, struct cipher_ctx *ctx);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);
@@ -5520,6 +5326,18 @@ static socklen_t dtls_socklen(SSL *ssl)
     abort();
   }
 }
+
+static int dtls_handle_timeout(SSL *ssl)
+{
+  /* retransmit buffered messages if necessary */
+  return 1;
+}
+
+static int dtls_get_timeout(SSL *ssl, struct timeval *tv)
+{
+  /* look at current time, figure out time left to expiry */
+  return 1;
+}
 #endif
 
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
@@ -5539,6 +5357,10 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
       memcpy(parg, &ssl->st, dtls_socklen(ssl));
     }
     return ret;
+  case DTLS_CTRL_GET_TIMEOUT:
+    return dtls_get_timeout(ssl, parg);
+  case DTLS_CTRL_HANDLE_TIMEOUT:
+    return dtls_handle_timeout(ssl);
   case SSL_CTRL_OPTIONS:
     ssl->options |= larg;
     return (ssl->options);
@@ -5576,13 +5398,9 @@ static int dgram_send(SSL *ssl) {
   for(buf = ssl->tx_buf; buf + sizeof(*hdr) < end; ) {
     size_t len;
 
+    /* TODO: batch up multiple records as long as < mtu */
     hdr = (struct dtls_hdr *)buf;
     len = sizeof(*hdr) + be16toh(hdr->len);
-
-    hdr->epoch = ssl->epoch;
-    hdr->seq_hi = htobe16((ssl->tx_seq >> 32) & 0xffff);
-    hdr->seq = htobe32(ssl->tx_seq & 0xffffffff);
-    ssl->tx_seq++;
 
     if (ssl->is_server) {
       struct sockaddr *sa;
@@ -5721,6 +5539,7 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   sa = (struct sockaddr *)&ssl->st;
   salen = sizeof(ssl->st);
 
+again:
   ret = recvfrom(ssl->fd, ssl->rx_buf, ssl->rx_max_len, 0, sa, &salen);
   if (ret < 0) {
     if (SOCKET_ERRNO == EWOULDBLOCK) {
@@ -5749,9 +5568,11 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     break;
   }
 
+  /* ignore bad packets */
   if (!dtls_handle_recv(ssl, out, out_len)) {
-    ssl_err(ssl, SSL_ERROR_SSL);
-    return 0;
+    if (!do_send(ssl))
+      return 0;
+    goto again;
   }
 
   if (!do_send(ssl))
@@ -6279,22 +6100,37 @@ void tls_generate_keys(tls_sec_t sec) {
   sec->client_write_pending = 1;
 }
 
-void tls_client_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+static uint64_t initial_seq(SSL *ssl, uint64_t cur_seq)
 {
-  assert(sec->client_write_pending);
-  ctx->cipher_suite = sec->cipher_suite;
-  ctx->seq = 0;
-  suite_init(ctx, sec->keys, 1);
-  sec->client_write_pending = 0;
+  if ( ssl->ctx->meth.dtls ) {
+    return (((cur_seq >> 48) + 1) << 48);
+  }else{
+    return 0;
+  }
 }
 
-void tls_server_cipher_spec(tls_sec_t sec, struct cipher_ctx *ctx)
+void tls_client_cipher_spec(SSL *ssl, struct cipher_ctx *ctx)
 {
-  assert(sec->server_write_pending);
-  ctx->cipher_suite = sec->cipher_suite;
-  ctx->seq = 0;
-  suite_init(ctx, sec->keys, 0);
-  sec->server_write_pending = 0;
+  assert(ssl->nxt->client_write_pending);
+  ctx->cipher_suite = ssl->nxt->cipher_suite;
+  suite_init(ctx, ssl->nxt->keys, 1);
+  ssl->nxt->client_write_pending = 0;
+  if ( ctx == &ssl->tx_ctx )
+    ssl->tx_seq = initial_seq(ssl, ssl->tx_seq);
+  else
+    ssl->rx_seq = initial_seq(ssl, ssl->rx_seq);
+}
+
+void tls_server_cipher_spec(SSL *ssl, struct cipher_ctx *ctx)
+{
+  assert(ssl->nxt->server_write_pending);
+  ctx->cipher_suite = ssl->nxt->cipher_suite;
+  suite_init(ctx, ssl->nxt->keys, 0);
+  ssl->nxt->server_write_pending = 0;
+  if ( ctx == &ssl->tx_ctx )
+    ssl->tx_seq = initial_seq(ssl, ssl->tx_seq);
+  else
+    ssl->rx_seq = initial_seq(ssl, ssl->rx_seq);
 }
 
 int tls_tx_push(SSL *ssl, const void *data, size_t len) {
@@ -6440,11 +6276,16 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
 
   /* patch in the length field */
   if (ssl->ctx->meth.dtls) {
+#if KRYPTON_DTLS
     struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
     assert(tot_len >= sizeof(struct dtls_hdr));
     tot_len -= sizeof(struct dtls_hdr);
     thdr->len = htobe16(tot_len);
+    thdr->seq = htobe64(ssl->tx_seq);
     hdr_len = sizeof(struct dtls_hdr);
+#else
+    abort();
+#endif
   }else{
     struct tls_hdr *thdr = (struct tls_hdr *)hdr;
     assert(tot_len >= sizeof(struct tls_hdr));
@@ -6501,13 +6342,10 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
     uint8_t *buf;
 
     buf = ssl->tx_buf + st->ofs + hdr_len;
-    suite_box(&ssl->tx_ctx, hdr, buf + exp_len, plen, buf);
-#if 0
-    hex_dump(tmp, plen, 0);
-    hex_dump(buf + exp_len, plen, 0);
-    hex_dump(buf, exp_len + plen + mac_len, 0);
-    hex_dump(ssl->tx_buf + st->ofs, ssl->tx_len - st->ofs, 0);
-#endif
+    suite_box(&ssl->tx_ctx, hdr, ssl->tx_seq, buf + exp_len, plen, buf);
+    ssl->tx_seq++;
+  }else if (ssl->ctx->meth.dtls) {
+    ssl->tx_seq++;
   }
 
   return 1;
@@ -6543,6 +6381,7 @@ int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
     return 0;
   if (!tls_record_finish(ssl, &st))
     return 0;
+
   return 1;
 }
 
@@ -6697,7 +6536,7 @@ int tls_cl_finish(SSL *ssl) {
     return 0;
   if (!tls_record_finish(ssl, &st))
     return 0;
-  tls_client_cipher_spec(ssl->nxt, &ssl->tx_ctx);
+  tls_client_cipher_spec(ssl, &ssl->tx_ctx);
   ssl->tx_enc = 1;
 
   /* finished */
@@ -7171,9 +7010,13 @@ static int handle_finished(SSL *ssl,
   int ret = 0;
 
   if (ssl->is_server) {
+    if ( ssl->state >= STATE_CLIENT_FINISHED )
+      return 1;
     ret = tls_check_client_finished(ssl->nxt, buf, end - buf);
     ssl->state = STATE_CLIENT_FINISHED;
   } else {
+    if ( ssl->state >= STATE_ESTABLISHED )
+      return 1;
     ret = tls_check_server_finished(ssl->nxt, buf, end - buf);
     ssl->state = STATE_ESTABLISHED;
     tls_free_security(ssl->nxt);
@@ -7192,6 +7035,9 @@ static int handle_verify_request(SSL *ssl, const uint8_t *buf,
   struct dtls_verify_request *vreq;
   uint8_t cookie_len;
 
+  if ( ssl->state != STATE_CL_HELLO_SENT )
+    return 1;
+
   vreq = (struct dtls_verify_request *)buf;
   if ( buf + sizeof(*vreq) > end )
     goto err;
@@ -7206,6 +7052,8 @@ static int handle_verify_request(SSL *ssl, const uint8_t *buf,
 
   if ( buf + cookie_len > end )
     goto err;
+
+  SHA256_Init(&ssl->nxt->handshakes_hash);
 
   dprintf(("re-send hello with cookie\n"));
   hex_dump(buf, cookie_len, 0);
@@ -7377,17 +7225,15 @@ static int handle_dtls_handshake(SSL *ssl, struct vec *v) {
   ibuf = buf + sizeof(*hdr);
   iend = ibuf + len;
 
-  hex_dump(ibuf, len, 0);
+  //hex_dump(ibuf, len, 0);
 
   if (ssl->is_server)
     ret = handle_sv_handshake(ssl, hdr->type, ibuf, iend);
   else
     ret = handle_cl_handshake(ssl, hdr->type, ibuf, iend);
 
-  if (ssl->nxt) {
-    /* FIXME: For DTLS, do not include cookieless hello,
-     * or HelloVerifyRequest
-    */
+  /* do not include cookieless hello, or HelloVerifyRequest */
+  if (ssl->nxt && hdr->type != HANDSHAKE_HELLO_VERIFY_REQUEST) {
     SHA256_Update(&ssl->nxt->handshakes_hash, buf, end - buf);
   }
 
@@ -7399,9 +7245,9 @@ static int handle_change_cipher(SSL *ssl, struct vec *v) {
 
   if (ssl->is_server) {
     tls_generate_keys(ssl->nxt);
-    tls_client_cipher_spec(ssl->nxt, &ssl->rx_ctx);
+    tls_client_cipher_spec(ssl, &ssl->rx_ctx);
   }else{
-    tls_server_cipher_spec(ssl->nxt, &ssl->rx_ctx);
+    tls_server_cipher_spec(ssl, &ssl->rx_ctx);
   }
 
   ssl->rx_enc = 1;
@@ -7488,12 +7334,14 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_common_hdr *hdr,
     return 0;
   }
 
-  if ( !suite_unbox(&ssl->rx_ctx, hdr, buf, len, out) ) {
+  if ( !suite_unbox(&ssl->rx_ctx, hdr, ssl->rx_seq, buf, len, out) ) {
     dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
   }
 
+  if ( !ssl->ctx->meth.dtls )
+    ssl->rx_seq++;
   return 1;
 }
 
@@ -7595,7 +7443,6 @@ int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
   uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
   struct dtls_hdr *hdr;
   struct vec v;
-  uint64_t seq;
   uint16_t len;
 
 again:
@@ -7611,7 +7458,6 @@ again:
   hdr = (struct dtls_hdr *)buf;
   buf += sizeof(*hdr);
 
-  seq = ((uint64_t)be16toh(hdr->seq_hi) << 32) | be32toh(hdr->seq);
   len = be16toh(hdr->len);
 
   v.ptr = buf;
@@ -7619,18 +7465,26 @@ again:
 
   if ( v.len > len )
     v.len = len;
+  buf = v.ptr + v.len;
 
+#if 0
   dprintf(("DTLS: dgram_len=%u\n", ssl->rx_len));
   dprintf(("DTLS: type=%u\n", hdr->type));
   dprintf(("DTLS: vers=0x%.4x\n", be16toh(hdr->vers)));
-  dprintf(("DTLS: epoch=%u\n", be16toh(hdr->epoch)));
-  dprintf(("DTLS: seq=%lu\n", seq));
+  dprintf(("DTLS: seq=%lu\n", be64toh(hdr->seq)));
   dprintf(("DTLS: len=%u\n", len));
+#endif
+  ssl->rx_seq = be64toh(hdr->seq);
+
+  if (!decrypt_and_vrfy(ssl, (struct tls_common_hdr *)hdr,
+                        v.ptr, v.ptr + v.len, &v)) {
+    return 0;
+  }
 
   if ( !dispatch(ssl, hdr->type, &v, out, out_len) )
     return 0;
+  dprintf(("\n"));
 
-  buf = v.ptr + v.len;
   goto again;
 }
 /*
@@ -7758,7 +7612,7 @@ int tls_sv_finish(SSL *ssl) {
     return 0;
   if (!tls_record_finish(ssl, &st))
     return 0;
-  tls_server_cipher_spec(ssl->nxt, &ssl->tx_ctx);
+  tls_server_cipher_spec(ssl, &ssl->tx_ctx);
   ssl->tx_enc = 1;
 
   /* finished */
@@ -9207,6 +9061,7 @@ void suite_init(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
 static void box_stream_and_hmac(struct cipher_ctx *ctx,
                                 const struct tls_common_hdr *hdr,
+                                uint64_t seq,
                                 const uint8_t *plain, size_t plain_len,
                                 uint8_t *out)
 {
@@ -9216,7 +9071,7 @@ static void box_stream_and_hmac(struct cipher_ctx *ctx,
   if ( out != plain )
     memcpy(out, plain, plain_len);
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(plain_len);
@@ -9254,24 +9109,22 @@ static void box_stream_and_hmac(struct cipher_ctx *ctx,
     default:
       abort();
   }
-
-  /* Bump the sequence number for the HMAC */
-  ctx->seq++;
 }
 #endif
 
 #if WITH_AEAD_CIPHERS
 static void box_aead(struct cipher_ctx *ctx,
                                 const struct tls_common_hdr *hdr,
+                                uint64_t seq,
                                 const uint8_t *plain, size_t plain_len,
                                 uint8_t *out)
 {
   struct tls_hmac_hdr phdr;
   uint8_t nonce[12];
 
-  *(uint64_t *)out = htobe64(ctx->seq);
+  *(uint64_t *)out = htobe64(seq);
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(plain_len);
@@ -9285,13 +9138,13 @@ static void box_aead(struct cipher_ctx *ctx,
              (void *)&phdr, sizeof(phdr),
              out + 8,
              out + 8 + plain_len);
-  ctx->seq++;
 }
 #endif
 
 /* crypto black-box encrypt+auth and copy to buffer */
 void suite_box(struct cipher_ctx *ctx,
                const struct tls_common_hdr *hdr,
+               uint64_t seq,
                const uint8_t *plain, size_t plain_len,
                uint8_t *out)
 {
@@ -9299,12 +9152,12 @@ void suite_box(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
   case CIPHER_TLS_RC4_MD5:
   case CIPHER_TLS_RC4_SHA1:
-    box_stream_and_hmac(ctx, hdr, plain, plain_len, out);
+    box_stream_and_hmac(ctx, hdr, seq, plain, plain_len, out);
     break;
 #endif
 #if WITH_AEAD_CIPHERS
   case CIPHER_TLS_AES128_GCM:
-    box_aead(ctx, hdr, plain, plain_len, out);
+    box_aead(ctx, hdr, seq, plain, plain_len, out);
     break;
 #endif
   default:
@@ -9315,6 +9168,7 @@ void suite_box(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
 static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
                                  const struct tls_common_hdr *hdr,
+                                 uint64_t seq,
                                  uint8_t *data, size_t data_len,
                                  struct vec *plain)
 {
@@ -9344,7 +9198,7 @@ static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
       abort();
   }
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(out_len);
@@ -9370,7 +9224,6 @@ static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
   if ( memcmp(digest, mac, mac_len) )
     return 0;
 
-  ctx->seq++;
   plain->ptr = data;
   plain->len = out_len;
 
@@ -9381,6 +9234,7 @@ static int unbox_stream_and_hmac(struct cipher_ctx *ctx,
 #if WITH_AEAD_CIPHERS
 static int unbox_aead(struct cipher_ctx *ctx,
                                  const struct tls_common_hdr *hdr,
+                                 uint64_t seq,
                                  uint8_t *data, size_t data_len,
                                  struct vec *plain)
 {
@@ -9390,7 +9244,7 @@ static int unbox_aead(struct cipher_ctx *ctx,
 
   assert(data_len >= 8 + 16);
 
-  phdr.seq = htobe64(ctx->seq);
+  phdr.seq = htobe64(seq);
   phdr.type = hdr->type;
   phdr.vers = hdr->vers;
   phdr.len = htobe16(data_len - (8 + 16));
@@ -9409,7 +9263,6 @@ static int unbox_aead(struct cipher_ctx *ctx,
   plain->ptr = data + 8;
   plain->len = data_len - (8 + 16);
   memcpy(plain->ptr, buff, plain->len);
-  ctx->seq++;
   return 1;
 }
 #endif
@@ -9417,6 +9270,7 @@ static int unbox_aead(struct cipher_ctx *ctx,
 /* crypto unbox in place and authenticate, return auth result, plaintext len */
 int suite_unbox(struct cipher_ctx *ctx,
                 const struct tls_common_hdr *hdr,
+                uint64_t seq,
                 uint8_t *data, size_t data_len,
                 struct vec *plain)
 {
@@ -9424,11 +9278,11 @@ int suite_unbox(struct cipher_ctx *ctx,
 #if ALLOW_RC4_CIPHERS
   case CIPHER_TLS_RC4_MD5:
   case CIPHER_TLS_RC4_SHA1:
-    return unbox_stream_and_hmac(ctx, hdr, data, data_len, plain);
+    return unbox_stream_and_hmac(ctx, hdr, seq, data, data_len, plain);
 #endif
 #if WITH_AEAD_CIPHERS
   case CIPHER_TLS_AES128_GCM:
-    return unbox_aead(ctx, hdr, data, data_len, plain);
+    return unbox_aead(ctx, hdr, seq, data, data_len, plain);
 #endif
   default:
     abort();
