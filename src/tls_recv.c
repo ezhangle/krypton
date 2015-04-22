@@ -896,7 +896,8 @@ int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
   uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
   struct dtls_hdr *hdr;
   struct vec v;
-  uint16_t len;
+  uint64_t seq;
+  uint16_t len, epoch;
 
 again:
   if ( buf >= end )
@@ -927,7 +928,15 @@ again:
   dprintf(("DTLS: seq=%lu\n", be64toh(hdr->seq)));
   dprintf(("DTLS: len=%u\n", len));
 #endif
-  ssl->rx_seq = be64toh(hdr->seq);
+  seq = be64toh(hdr->seq);
+  epoch = seq >> 48;
+  if ( epoch != (ssl->rx_seq >> 48) ) {
+    printf("Bad epoch %u != %u (expected)\n",
+          epoch, (uint16_t)(ssl->rx_seq >> 48));
+    return 1;
+  }
+
+  ssl->rx_seq = seq;
 
   if (!decrypt_and_vrfy(ssl, (struct tls_common_hdr *)hdr,
                         v.ptr, v.ptr + v.len, &v)) {

@@ -179,7 +179,7 @@ static int dgram_send(SSL *ssl) {
   case STATE_ESTABLISHED:
   case STATE_CLOSING:
     /* Ugh, transition to established state is b0rk */
-    ssl->tx_len = 0;
+    //ssl->tx_len = 0;
     break;
   default:
     ssl->tx_len = 0;
