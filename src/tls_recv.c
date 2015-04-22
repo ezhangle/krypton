@@ -658,16 +658,20 @@ static int handle_dtls_handshake(SSL *ssl, struct vec *v) {
   frag_off = ((uint32_t)hdr->frag_off_hi << 16) | be16toh(hdr->frag_off);
   frag_len = ((uint32_t)hdr->frag_len_hi << 16) | be16toh(hdr->frag_len);
 
-  dprintf(("DTLS: Handshake: len: %u\n", len));
-  dprintf(("DTLS: Handshake: msg_seq: %u\n", be16toh(hdr->msg_seq)));
-  dprintf(("DTLS: Handshake: frag_off: %u\n", frag_off));
-  dprintf(("DTLS: Handshake: frag_len: %u\n", frag_len));
-
-  /* FIXME: handle defragmentation */
   if ( end < buf + sizeof(*hdr) + len ) {
     dprintf(("Handshake too short for message\n"));
     hex_dump(v->ptr, v->len, 0);
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECODE_ERROR);
+    return 0;
+  }
+
+  /* TODO: handle defragmentation */
+  if ( frag_off != 0 || frag_len != len ) {
+    printf("Unhandled fragmentation\n");
+    printf("DTLS: Handshake: len: %u\n", len);
+    printf("DTLS: Handshake: msg_seq: %u\n", be16toh(hdr->msg_seq));
+    printf("DTLS: Handshake: frag_off: %u\n", frag_off);
+    printf("DTLS: Handshake: frag_len: %u\n", frag_len);
     return 0;
   }
 
@@ -901,7 +905,7 @@ again:
   if ( buf + sizeof(*hdr) > end ) {
     dprintf(("Datagram too small\n"));
     hex_dump(buf, end - buf, 0);
-    return 0;
+    return 1;
   }
 
   hdr = (struct dtls_hdr *)buf;
@@ -927,11 +931,11 @@ again:
 
   if (!decrypt_and_vrfy(ssl, (struct tls_common_hdr *)hdr,
                         v.ptr, v.ptr + v.len, &v)) {
-    return 0;
+    return 1;
   }
 
   if ( !dispatch(ssl, hdr->type, &v, out, out_len) )
-    return 0;
+    return 1;
   dprintf(("\n"));
 
   goto again;
