@@ -160,29 +160,29 @@ void tls_server_cipher_spec(SSL *ssl, struct cipher_ctx *ctx)
 }
 
 int tls_tx_push(SSL *ssl, const void *data, size_t len) {
-  if (ssl->tx_len + len > ssl->tx_max_len) {
+  if (ssl->tx.len + len > ssl->tx.max_len) {
     size_t new_len;
     void *new;
 
-    new_len = ssl->tx_max_len + (len < 512 ? 512 : len);
-    new = realloc(ssl->tx_buf, new_len);
+    new_len = ssl->tx.max_len + (len < 512 ? 512 : len);
+    new = realloc(ssl->tx.buf, new_len);
     if (NULL == new) {
       /* or block? */
       ssl_err(ssl, SSL_ERROR_SYSCALL);
       return 0;
     }
 
-    ssl->tx_buf = new;
-    ssl->tx_max_len = new_len;
+    ssl->tx.buf = new;
+    ssl->tx.max_len = new_len;
   }
 
   /* if data is NULL, then just 'assure' the buffer space so the caller
    * can copy in to it directly. Useful for encryption.
   */
   if ( data )
-    memcpy(ssl->tx_buf + ssl->tx_len, data, len);
+    memcpy(ssl->tx.buf + ssl->tx.len, data, len);
 
-  ssl->tx_len += len;
+  ssl->tx.len += len;
 
   return 1;
 }
@@ -208,7 +208,7 @@ int tls_record_begin(SSL *ssl, uint8_t type,
                      uint8_t subtype, tls_record_state *st)
 {
   /* record where we started */
-  st->ofs = ssl->tx_len;
+  st->ofs = ssl->tx.len;
   st->suite = ssl->tx_ctx.cipher_suite;
 
   if (!push_header(ssl, type))
@@ -293,12 +293,12 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   }
 
   /* figure out the length */
-  assert(ssl->tx_len > st->ofs);
-  tot_len = ssl->tx_len - st->ofs;
+  assert(ssl->tx.len > st->ofs);
+  tot_len = ssl->tx.len - st->ofs;
   assert(tot_len <= 0xffff);
 
   /* grab the header */
-  hdr = (struct tls_common_hdr *)(ssl->tx_buf + st->ofs);
+  hdr = (struct tls_common_hdr *)(ssl->tx.buf + st->ofs);
 
   /* patch in the length field */
   if (ssl->ctx->meth.dtls) {
@@ -326,7 +326,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   }else{
     exp_len = 0;
   }
-  payload = ssl->tx_buf + st->ofs + hdr_len + exp_len;
+  payload = ssl->tx.buf + st->ofs + hdr_len + exp_len;
   plen = tot_len - (exp_len + mac_len);
 
   /* If it's a handshake, backpatch the handshake size and
@@ -337,7 +337,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
       struct dtls_handshake *hs;
       size_t hs_len;
 
-      hs = (struct dtls_handshake *)(ssl->tx_buf + st->ofs +
+      hs = (struct dtls_handshake *)(ssl->tx.buf + st->ofs +
                                     hdr_len + exp_len);
       assert(plen >= sizeof(*hs));
       hs_len = plen - sizeof(*hs);
@@ -350,7 +350,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
       struct tls_handshake *hs;
       size_t hs_len;
 
-      hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
+      hs = (struct tls_handshake *)(ssl->tx.buf + st->ofs +
                                     hdr_len + exp_len);
       assert(plen >= sizeof(*hs));
       hs_len = plen - sizeof(*hs);
@@ -367,7 +367,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   if (ssl->tx_enc) {
     uint8_t *buf;
 
-    buf = ssl->tx_buf + st->ofs + hdr_len;
+    buf = ssl->tx.buf + st->ofs + hdr_len;
     suite_box(&ssl->tx_ctx, hdr, ssl->tx_seq, buf + exp_len, plen, buf);
     ssl->tx_seq++;
   }else if (ssl->ctx->meth.dtls) {

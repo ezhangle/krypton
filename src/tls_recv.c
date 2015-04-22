@@ -822,7 +822,7 @@ static int dispatch(SSL *ssl, uint8_t type, struct vec *v,
 
 int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   const struct tls_hdr *hdr;
-  uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
+  uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
   int ret = 1;
 
   while (buf + sizeof(*hdr) <= end) {
@@ -868,7 +868,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     iret = dispatch(ssl, hdr->type, &v, out, out_len);
 
     if (!iret) {
-      ssl->rx_len = 0;
+      ssl->rx.len = 0;
       return 0;
     }
     buf = msg_end;
@@ -877,15 +877,15 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   ret = 1;
 
 out:
-  if (buf == ssl->rx_buf)
+  if (buf == ssl->rx.buf)
     return ret;
 
   if (buf < end) {
     dprintf(("shuffle buffer down: %zu left\n", end - buf));
-    memmove(ssl->rx_buf, buf, end - buf);
-    ssl->rx_len = end - buf;
+    memmove(ssl->rx.buf, buf, end - buf);
+    ssl->rx.len = end - buf;
   } else {
-    ssl->rx_len = 0;
+    ssl->rx.len = 0;
   }
 
   return ret;
@@ -893,7 +893,7 @@ out:
 
 int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 {
-  uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
+  uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
   struct dtls_hdr *hdr;
   struct vec v;
   uint64_t seq;
@@ -922,7 +922,7 @@ again:
   buf = v.ptr + v.len;
 
 #if 0
-  dprintf(("DTLS: dgram_len=%u\n", ssl->rx_len));
+  dprintf(("DTLS: dgram_len=%u\n", ssl->rx.len));
   dprintf(("DTLS: type=%u\n", hdr->type));
   dprintf(("DTLS: vers=0x%.4x\n", be16toh(hdr->vers)));
   dprintf(("DTLS: seq=%lu\n", be64toh(hdr->seq)));

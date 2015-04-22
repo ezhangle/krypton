@@ -37,6 +37,12 @@ struct ssl_ctx_st {
 #define STATE_ESTABLISHED 9
 #define STATE_CLOSING 10
 
+struct buf {
+  uint8_t *buf;
+  uint32_t len;
+  uint32_t max_len;
+};
+
 struct ssl_st {
 #if KRYPTON_DTLS
   struct sockaddr_storage st;
@@ -52,13 +58,9 @@ struct ssl_st {
 
 /* rcv buffer: can be 16bit lens? */
 #define RX_INITIAL_BUF 1024
-  uint8_t *rx_buf;
-  uint32_t rx_len;
-  uint32_t rx_max_len;
-
-  uint8_t *tx_buf;
-  uint32_t tx_len;
-  uint32_t tx_max_len;
+#define RX_MAX_BUF (1 << 14)
+  struct buf tx;
+  struct buf rx;
 
   int fd;
   int err;

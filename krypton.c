@@ -913,6 +913,12 @@ struct ssl_ctx_st {
 #define STATE_ESTABLISHED 9
 #define STATE_CLOSING 10
 
+struct buf {
+  uint8_t *buf;
+  uint32_t len;
+  uint32_t max_len;
+};
+
 struct ssl_st {
 #if KRYPTON_DTLS
   struct sockaddr_storage st;
@@ -928,13 +934,9 @@ struct ssl_st {
 
 /* rcv buffer: can be 16bit lens? */
 #define RX_INITIAL_BUF 1024
-  uint8_t *rx_buf;
-  uint32_t rx_len;
-  uint32_t rx_max_len;
-
-  uint8_t *tx_buf;
-  uint32_t tx_len;
-  uint32_t tx_max_len;
+#define RX_MAX_BUF (1 << 14)
+  struct buf tx;
+  struct buf rx;
 
   int fd;
   int err;
@@ -5284,7 +5286,6 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
 #endif
 
 #define MIN_LIKELY_MTU    256
-#define MAX_BUF (1 << 14)
 
 int SSL_library_init(void) {
   return 1;
@@ -5329,7 +5330,7 @@ static socklen_t dtls_socklen(SSL *ssl)
 
 static int dtls_handle_timeout(SSL *ssl)
 {
-  /* retransmit buffered messages if necessary */
+  /* TODO: retransmit buffered messages if necessary */
   printf("TODO: handle timeout\n");
   return 1;
 }
@@ -5342,7 +5343,7 @@ static int dtls_get_timeout(SSL *ssl, struct timeval *tv)
   case STATE_ESTABLISHED:
     return 0;
   default:
-    /* look at current time, figure out time left to expiry */
+    /* TODO: look at current time, figure out time left to expiry */
     tv->tv_sec = 1;
     tv->tv_usec = 0;
     return 1;
@@ -5398,18 +5399,18 @@ int SSL_get_fd(SSL *ssl) {
 }
 
 #if KRYPTON_DTLS
-static int dgram_send(SSL *ssl) {
-  const uint8_t *buf, *end;
+static int dgram_send_buf(SSL *ssl, struct buf *buf) {
+  const uint8_t *ptr, *end;
   struct dtls_hdr *hdr;
   ssize_t ret;
 
-  end = ssl->tx_buf + ssl->tx_len;
+  end = buf->buf + buf->len;
 
-  for(buf = ssl->tx_buf; buf + sizeof(*hdr) < end; ) {
+  for(ptr = buf->buf; ptr + sizeof(*hdr) < end; ) {
     size_t len;
 
     /* TODO: batch up multiple records as long as < mtu */
-    hdr = (struct dtls_hdr *)buf;
+    hdr = (struct dtls_hdr *)ptr;
     len = sizeof(*hdr) + be16toh(hdr->len);
 
     if (ssl->is_server) {
@@ -5419,9 +5420,9 @@ static int dgram_send(SSL *ssl) {
       sa = (struct sockaddr *)&ssl->st;
       salen = dtls_socklen(ssl);
 
-      ret = sendto(ssl->fd, buf, len, MSG_NOSIGNAL, sa, salen);
+      ret = sendto(ssl->fd, ptr, len, MSG_NOSIGNAL, sa, salen);
     }else{
-      ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+      ret = send(ssl->fd, ptr, len, MSG_NOSIGNAL);
     }
 
     if (ret <= 0) {
@@ -5431,7 +5432,8 @@ static int dgram_send(SSL *ssl) {
       }
       dprintf(("send: %s\n", strerror(SOCKET_ERRNO)));
       ssl_err(ssl, SSL_ERROR_SYSCALL);
-      ssl->tx_len = 0;
+      /* FIXME */
+      buf->len = 0;
       ssl->write_pending = 0;
       return 0;
     }
@@ -5442,24 +5444,26 @@ static int dgram_send(SSL *ssl) {
       return 0;
     }
 
-    buf += len;
+    ptr += len;
   }
 
-  /* If not in handshake, clear buffer,
-   * since we won't need to re-transmit
-  */
+  return 1;
+}
+
+static int dgram_send(SSL *ssl) {
+  if (!dgram_send_buf(ssl, &ssl->tx))
+    return 0;
+
   switch(ssl->state) {
-  case STATE_INITIAL:
   case STATE_ESTABLISHED:
-  case STATE_CLOSING:
-    /* Ugh, transition to established state is b0rk */
-    //ssl->tx_len = 0;
+    ssl->tx.len = 0;
     break;
   default:
-    ssl->tx_len = 0;
+    /* TODO: move to retransmit buffer */
+    /* TODO: calc timeout */
+    ssl->tx.len = 0;
     break;
   }
-
   return 1;
 }
 #endif
@@ -5469,8 +5473,8 @@ static int stream_send(SSL *ssl) {
   size_t len;
   ssize_t ret;
 
-  buf = ssl->tx_buf;
-  len = ssl->tx_len;
+  buf = ssl->tx.buf;
+  len = ssl->tx.len;
 
   if (!len) {
     ssl->write_pending = 0;
@@ -5489,20 +5493,20 @@ again:
     }
     dprintf(("send: %s\n", strerror(SOCKET_ERRNO)));
     ssl_err(ssl, SSL_ERROR_SYSCALL);
-    ssl->tx_len = 0;
+    ssl->tx.len = 0;
     ssl->write_pending = 0;
     return 0;
   }
   if (ret == 0) {
     dprintf(("send: peer hung up\n"));
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
-    ssl->tx_len = 0;
+    ssl->tx.len = 0;
     ssl->write_pending = 0;
     return 0;
   }
 
   if ((size_t)ret >= len) {
-    ssl->tx_len = 0;
+    ssl->tx.len = 0;
     ssl->write_pending = 0;
     return 1;
   }
@@ -5518,8 +5522,8 @@ again:
 
   goto again;
 shuffle:
-  ssl->tx_len = len;
-  memmove(ssl->tx_buf, buf, ssl->tx_len);
+  ssl->tx.len = len;
+  memmove(ssl->tx.buf, buf, ssl->tx.len);
   ssl_err(ssl, SSL_ERROR_WANT_WRITE);
   return 0;
 }
@@ -5538,21 +5542,21 @@ static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   struct sockaddr *sa;
   ssize_t ret;
 
-  if (NULL == ssl->rx_buf) {
-    ssl->rx_buf = malloc(MAX_BUF);
-    if (NULL == ssl->rx_buf) {
+  if (NULL == ssl->rx.buf) {
+    ssl->rx.buf = malloc(RX_MAX_BUF);
+    if (NULL == ssl->rx.buf) {
       ssl_err(ssl, SSL_ERROR_SYSCALL);
       return 0;
     }
-    ssl->rx_max_len = MAX_BUF;
-    ssl->rx_len = 0;
+    ssl->rx.max_len = RX_MAX_BUF;
+    ssl->rx.len = 0;
   }
 
   sa = (struct sockaddr *)&ssl->st;
   salen = sizeof(ssl->st);
 
 again:
-  ret = recvfrom(ssl->fd, ssl->rx_buf, ssl->rx_max_len, 0, sa, &salen);
+  ret = recvfrom(ssl->fd, ssl->rx.buf, ssl->rx.max_len, 0, sa, &salen);
   if (ret < 0) {
     if (SOCKET_ERRNO == EWOULDBLOCK) {
       ssl_err(ssl, SSL_ERROR_WANT_READ);
@@ -5563,7 +5567,7 @@ again:
     return 0;
   }
 
-  ssl->rx_len = ret;
+  ssl->rx.len = ret;
 
   /* TODO:
    * - Update PMTU estimates
@@ -5576,7 +5580,7 @@ again:
   case STATE_CLOSING:
     break;
   default:
-    ssl->tx_len = 0;
+    ssl->tx.len = 0;
     break;
   }
 
@@ -5599,37 +5603,37 @@ static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   ssize_t ret;
   size_t len;
 
-  if (NULL == ssl->rx_buf) {
-    ssl->rx_buf = malloc(RX_INITIAL_BUF);
-    if (NULL == ssl->rx_buf) {
+  if (NULL == ssl->rx.buf) {
+    ssl->rx.buf = malloc(RX_INITIAL_BUF);
+    if (NULL == ssl->rx.buf) {
       ssl_err(ssl, SSL_ERROR_SYSCALL);
       return 0;
     }
 
-    ssl->rx_max_len = RX_INITIAL_BUF;
-    ssl->rx_len = 0;
+    ssl->rx.max_len = RX_INITIAL_BUF;
+    ssl->rx.len = 0;
   }
-  if (ssl->rx_len >= ssl->rx_max_len) {
+  if (ssl->rx.len >= ssl->rx.max_len) {
     uint8_t *new;
     size_t new_len;
 
     /* TODO: peek for size */
-    new_len = ssl->rx_max_len + RX_INITIAL_BUF;
-    new = realloc(ssl->rx_buf, new_len);
+    new_len = ssl->rx.max_len + RX_INITIAL_BUF;
+    new = realloc(ssl->rx.buf, new_len);
     if (NULL == new) {
       ssl_err(ssl, SSL_ERROR_SYSCALL);
       return 0;
     }
 
-    ssl->rx_buf = new;
-    ssl->rx_max_len = new_len;
+    ssl->rx.buf = new;
+    ssl->rx.max_len = new_len;
   }
 
-  ptr = ssl->rx_buf + ssl->rx_len;
+  ptr = ssl->rx.buf + ssl->rx.len;
 #if KRYPTON_DEBUG_NONBLOCKING
   len = 1;
 #else
-  len = ssl->rx_max_len - ssl->rx_len;
+  len = ssl->rx.max_len - ssl->rx.len;
 #endif
 
   ret = recv(ssl->fd, ptr, len, MSG_NOSIGNAL);
@@ -5650,7 +5654,7 @@ static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     return 0;
   }
 
-  ssl->rx_len += ret;
+  ssl->rx.len += ret;
 
   if (!tls_handle_recv(ssl, out, out_len)) {
     ssl_err(ssl, SSL_ERROR_SSL);
@@ -5662,7 +5666,7 @@ static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     return 0;
 
 #if KRYPTON_DEBUG_NONBLOCKING
-  if (ssl->rx_len) {
+  if (ssl->rx.len) {
     ssl_err(ssl, SSL_ERROR_WANT_READ);
     return 0;
   }
@@ -5698,7 +5702,7 @@ int SSL_accept(SSL *ssl) {
   if (ssl->ctx->meth.dtls) {
     /* TODO: re-transmit logic */
   }else{
-    while (ssl->tx_len) {
+    while (ssl->tx.len) {
       if (!do_send(ssl))
         return -1;
     }
@@ -5780,7 +5784,7 @@ int SSL_connect(SSL *ssl) {
   if (ssl->ctx->meth.dtls) {
     /* TODO: re-transmit logic */
   }else{
-    while (ssl->tx_len) {
+    while (ssl->tx.len) {
       if (!do_send(ssl))
         return -1;
     }
@@ -5956,8 +5960,8 @@ int SSL_shutdown(SSL *ssl) {
 void SSL_free(SSL *ssl) {
   if (ssl) {
     tls_free_security(ssl->nxt);
-    free(ssl->rx_buf);
-    free(ssl->tx_buf);
+    free(ssl->rx.buf);
+    free(ssl->tx.buf);
     free(ssl);
   }
 }
@@ -6146,29 +6150,29 @@ void tls_server_cipher_spec(SSL *ssl, struct cipher_ctx *ctx)
 }
 
 int tls_tx_push(SSL *ssl, const void *data, size_t len) {
-  if (ssl->tx_len + len > ssl->tx_max_len) {
+  if (ssl->tx.len + len > ssl->tx.max_len) {
     size_t new_len;
     void *new;
 
-    new_len = ssl->tx_max_len + (len < 512 ? 512 : len);
-    new = realloc(ssl->tx_buf, new_len);
+    new_len = ssl->tx.max_len + (len < 512 ? 512 : len);
+    new = realloc(ssl->tx.buf, new_len);
     if (NULL == new) {
       /* or block? */
       ssl_err(ssl, SSL_ERROR_SYSCALL);
       return 0;
     }
 
-    ssl->tx_buf = new;
-    ssl->tx_max_len = new_len;
+    ssl->tx.buf = new;
+    ssl->tx.max_len = new_len;
   }
 
   /* if data is NULL, then just 'assure' the buffer space so the caller
    * can copy in to it directly. Useful for encryption.
   */
   if ( data )
-    memcpy(ssl->tx_buf + ssl->tx_len, data, len);
+    memcpy(ssl->tx.buf + ssl->tx.len, data, len);
 
-  ssl->tx_len += len;
+  ssl->tx.len += len;
 
   return 1;
 }
@@ -6194,7 +6198,7 @@ int tls_record_begin(SSL *ssl, uint8_t type,
                      uint8_t subtype, tls_record_state *st)
 {
   /* record where we started */
-  st->ofs = ssl->tx_len;
+  st->ofs = ssl->tx.len;
   st->suite = ssl->tx_ctx.cipher_suite;
 
   if (!push_header(ssl, type))
@@ -6279,12 +6283,12 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   }
 
   /* figure out the length */
-  assert(ssl->tx_len > st->ofs);
-  tot_len = ssl->tx_len - st->ofs;
+  assert(ssl->tx.len > st->ofs);
+  tot_len = ssl->tx.len - st->ofs;
   assert(tot_len <= 0xffff);
 
   /* grab the header */
-  hdr = (struct tls_common_hdr *)(ssl->tx_buf + st->ofs);
+  hdr = (struct tls_common_hdr *)(ssl->tx.buf + st->ofs);
 
   /* patch in the length field */
   if (ssl->ctx->meth.dtls) {
@@ -6312,7 +6316,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   }else{
     exp_len = 0;
   }
-  payload = ssl->tx_buf + st->ofs + hdr_len + exp_len;
+  payload = ssl->tx.buf + st->ofs + hdr_len + exp_len;
   plen = tot_len - (exp_len + mac_len);
 
   /* If it's a handshake, backpatch the handshake size and
@@ -6323,7 +6327,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
       struct dtls_handshake *hs;
       size_t hs_len;
 
-      hs = (struct dtls_handshake *)(ssl->tx_buf + st->ofs +
+      hs = (struct dtls_handshake *)(ssl->tx.buf + st->ofs +
                                     hdr_len + exp_len);
       assert(plen >= sizeof(*hs));
       hs_len = plen - sizeof(*hs);
@@ -6336,7 +6340,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
       struct tls_handshake *hs;
       size_t hs_len;
 
-      hs = (struct tls_handshake *)(ssl->tx_buf + st->ofs +
+      hs = (struct tls_handshake *)(ssl->tx.buf + st->ofs +
                                     hdr_len + exp_len);
       assert(plen >= sizeof(*hs));
       hs_len = plen - sizeof(*hs);
@@ -6353,7 +6357,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   if (ssl->tx_enc) {
     uint8_t *buf;
 
-    buf = ssl->tx_buf + st->ofs + hdr_len;
+    buf = ssl->tx.buf + st->ofs + hdr_len;
     suite_box(&ssl->tx_ctx, hdr, ssl->tx_seq, buf + exp_len, plen, buf);
     ssl->tx_seq++;
   }else if (ssl->ctx->meth.dtls) {
@@ -7385,7 +7389,7 @@ static int dispatch(SSL *ssl, uint8_t type, struct vec *v,
 
 int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   const struct tls_hdr *hdr;
-  uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
+  uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
   int ret = 1;
 
   while (buf + sizeof(*hdr) <= end) {
@@ -7431,7 +7435,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     iret = dispatch(ssl, hdr->type, &v, out, out_len);
 
     if (!iret) {
-      ssl->rx_len = 0;
+      ssl->rx.len = 0;
       return 0;
     }
     buf = msg_end;
@@ -7440,15 +7444,15 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   ret = 1;
 
 out:
-  if (buf == ssl->rx_buf)
+  if (buf == ssl->rx.buf)
     return ret;
 
   if (buf < end) {
     dprintf(("shuffle buffer down: %zu left\n", end - buf));
-    memmove(ssl->rx_buf, buf, end - buf);
-    ssl->rx_len = end - buf;
+    memmove(ssl->rx.buf, buf, end - buf);
+    ssl->rx.len = end - buf;
   } else {
-    ssl->rx_len = 0;
+    ssl->rx.len = 0;
   }
 
   return ret;
@@ -7456,7 +7460,7 @@ out:
 
 int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 {
-  uint8_t *buf = ssl->rx_buf, *end = buf + ssl->rx_len;
+  uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
   struct dtls_hdr *hdr;
   struct vec v;
   uint64_t seq;
@@ -7485,7 +7489,7 @@ again:
   buf = v.ptr + v.len;
 
 #if 0
-  dprintf(("DTLS: dgram_len=%u\n", ssl->rx_len));
+  dprintf(("DTLS: dgram_len=%u\n", ssl->rx.len));
   dprintf(("DTLS: type=%u\n", hdr->type));
   dprintf(("DTLS: vers=0x%.4x\n", be16toh(hdr->vers)));
   dprintf(("DTLS: seq=%lu\n", be64toh(hdr->seq)));
