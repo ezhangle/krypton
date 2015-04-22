@@ -56,10 +56,10 @@ out:
 
 static int waitforit(SSL *ssl) {
   struct pollfd pfd;
-  int ret;
+  struct timeval tv;
+  int ret, tmo;
 
   pfd.fd = SSL_get_fd(ssl);
-  pfd.revents = 0;
 
   switch (SSL_get_error(ssl, -1)) {
     case SSL_ERROR_WANT_READ:
@@ -69,14 +69,28 @@ static int waitforit(SSL *ssl) {
       pfd.events = POLLOUT;
       break;
     default:
+      printf("error code: %u\n", SSL_get_error(ssl, -1));
       return 0;
   }
 
-  ret = poll(&pfd, 1, -1);
-  if (ret != 1 || !(pfd.revents & pfd.events))
-    return 0;
+  if ( DTLSv1_get_timeout(ssl, &tv) ) {
+    tmo = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+  }else{
+    tmo = -1;
+  }
 
-  return 1;
+  pfd.revents = 0;
+  ret = poll(&pfd, 1, tmo);
+  if (ret == 0) {
+    /* FIXME: how to handle errors here? */
+    DTLSv1_handle_timeout(ssl);
+    return 1;
+  }
+  if (ret == 1 || (pfd.revents & pfd.events)) {
+    return 1;
+  }
+
+  return 0;
 }
 
 static int do_connect(SSL *ssl) {
@@ -138,6 +152,8 @@ again:
     } else {
       return -1;
     }
+  }else if (ret == 0) {
+    goto again;
   }
 
   return ret;
@@ -246,6 +262,7 @@ shutdown:
   if (do_shutdown(ssl) > 0 && ret) {
     printf("SUCCESS\n");
   } else {
+    printf("shutdown failed\n");
     ret = 0;
   }
 out_close:

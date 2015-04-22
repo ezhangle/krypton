@@ -56,13 +56,23 @@ static socklen_t dtls_socklen(SSL *ssl)
 static int dtls_handle_timeout(SSL *ssl)
 {
   /* retransmit buffered messages if necessary */
+  printf("TODO: handle timeout\n");
   return 1;
 }
 
 static int dtls_get_timeout(SSL *ssl, struct timeval *tv)
 {
-  /* look at current time, figure out time left to expiry */
-  return 1;
+  switch(ssl->state) {
+  case STATE_INITIAL:
+  case STATE_CL_HELLO_WAIT:
+  case STATE_ESTABLISHED:
+    return 0;
+  default:
+    /* look at current time, figure out time left to expiry */
+    tv->tv_sec = 1;
+    tv->tv_usec = 0;
+    return 1;
+  }
 }
 #endif
 
@@ -168,6 +178,8 @@ static int dgram_send(SSL *ssl) {
   case STATE_INITIAL:
   case STATE_ESTABLISHED:
   case STATE_CLOSING:
+    /* Ugh, transition to established state is b0rk */
+    ssl->tx_len = 0;
     break;
   default:
     ssl->tx_len = 0;
