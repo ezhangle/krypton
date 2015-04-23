@@ -459,14 +459,16 @@ int SSL_accept(SSL *ssl) {
 
     /* fall through */
     case STATE_SV_HELLO_SENT:
-      while (ssl->state != STATE_CLIENT_FINISHED) {
+    case STATE_CL_KEY_EXCH_RCVD:
+    case STATE_CL_CIPHER_SPEC_RCVD:
+      while (ssl->state != STATE_CL_FINISHED_RCVD) {
         if (!do_recv(ssl, NULL, 0)) {
           return -1;
         }
       }
 
     /* fall through */
-    case STATE_CLIENT_FINISHED:
+    case STATE_CL_FINISHED_RCVD:
       if (!tls_sv_finish(ssl)) {
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;

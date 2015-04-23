@@ -34,8 +34,12 @@ struct ssl_ctx_st {
 #define STATE_SV_CERT_RCVD 6
 #define STATE_SV_DONE_RCVD 7
 #define STATE_CLIENT_FINISHED 8
-#define STATE_ESTABLISHED 9
-#define STATE_CLOSING 10
+#define STATE_CL_KEY_EXCH_RCVD 9
+#define STATE_CL_CIPHER_SPEC_RCVD 10
+#define STATE_CL_FINISHED_RCVD 11
+#define STATE_SV_CIPHER_SPEC_RCVD 12
+#define STATE_ESTABLISHED 13
+#define STATE_CLOSING 14
 
 struct buf {
   uint8_t *buf;

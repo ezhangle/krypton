@@ -910,8 +910,12 @@ struct ssl_ctx_st {
 #define STATE_SV_CERT_RCVD 6
 #define STATE_SV_DONE_RCVD 7
 #define STATE_CLIENT_FINISHED 8
-#define STATE_ESTABLISHED 9
-#define STATE_CLOSING 10
+#define STATE_CL_KEY_EXCH_RCVD 9
+#define STATE_CL_CIPHER_SPEC_RCVD 10
+#define STATE_CL_FINISHED_RCVD 11
+#define STATE_SV_CIPHER_SPEC_RCVD 12
+#define STATE_ESTABLISHED 13
+#define STATE_CLOSING 14
 
 struct buf {
   uint8_t *buf;
@@ -5735,14 +5739,16 @@ int SSL_accept(SSL *ssl) {
 
     /* fall through */
     case STATE_SV_HELLO_SENT:
-      while (ssl->state != STATE_CLIENT_FINISHED) {
+    case STATE_CL_KEY_EXCH_RCVD:
+    case STATE_CL_CIPHER_SPEC_RCVD:
+      while (ssl->state != STATE_CL_FINISHED_RCVD) {
         if (!do_recv(ssl, NULL, 0)) {
           return -1;
         }
       }
 
     /* fall through */
-    case STATE_CLIENT_FINISHED:
+    case STATE_CL_FINISHED_RCVD:
       if (!tls_sv_finish(ssl)) {
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;
@@ -6701,8 +6707,14 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
   uint8_t sess_id_len;
   uint16_t proto;
 
-  if (ssl->is_server && ssl->state != STATE_CL_HELLO_WAIT) {
-    return STATUS_RENEG;
+  if (ssl->is_server) {
+    if (ssl->state == STATE_ESTABLISHED)
+      return STATUS_RENEG;
+    if (ssl->state >= STATE_CL_HELLO_RCVD)
+      return STATUS_RESEND;
+  }else{
+    if (ssl->state >= STATE_SV_HELLO_RCVD)
+      return STATUS_RESEND;
   }
 
   /* hello protocol version */
@@ -6927,6 +6939,11 @@ static rx_status_t handle_certificate(SSL *ssl,
   X509 *final = NULL, *chain = NULL;
   rx_status_t err = STATUS_BAD_DECODE;
 
+  if (ssl->state < STATE_SV_HELLO_RCVD)
+    return STATUS_OUT_OF_ORDER;
+  if (ssl->state >= STATE_SV_CERT_RCVD)
+    return STATUS_RESEND;
+
   if (buf + 3 > end)
     goto err;
   clen = ((size_t)buf[0] << 16) | be16toh(*(uint16_t *)(buf + 1));
@@ -7002,9 +7019,15 @@ static rx_status_t handle_key_exch(SSL *ssl,
                                    const uint8_t *buf, const uint8_t *end) {
   uint16_t ilen;
   size_t out_size = RSA_block_size(ssl->ctx->rsa_privkey);
-  uint8_t *out = malloc(out_size);
+  uint8_t *out;
   int ret;
 
+  if ( ssl->state < STATE_SV_HELLO_SENT )
+    return STATUS_OUT_OF_ORDER;
+  if ( ssl->state >= STATE_CL_KEY_EXCH_RCVD )
+    return STATUS_RESEND;
+
+  out = malloc(out_size);
   if (out == NULL)
     goto err;
 
@@ -7033,6 +7056,7 @@ static rx_status_t handle_key_exch(SSL *ssl,
   free(out);
   dprintf((" + master secret computed\n"));
 
+  ssl->state = STATE_CL_KEY_EXCH_RCVD;
   return STATUS_OK;
 err:
   free(out);
@@ -7044,11 +7068,15 @@ static rx_status_t handle_finished(SSL *ssl,
   int ret = 0;
 
   if (ssl->is_server) {
-    if ( ssl->state >= STATE_CLIENT_FINISHED )
+    if ( ssl->state < STATE_CL_KEY_EXCH_RCVD )
+      return STATUS_OUT_OF_ORDER;
+    if ( ssl->state >= STATE_CL_FINISHED_RCVD )
       return STATUS_RESEND;
     ret = tls_check_client_finished(ssl->nxt, buf, end - buf);
-    ssl->state = STATE_CLIENT_FINISHED;
+    ssl->state = STATE_CL_FINISHED_RCVD;
   } else {
+    if ( ssl->state < STATE_SV_CIPHER_SPEC_RCVD )
+      return STATUS_OUT_OF_ORDER;
     if ( ssl->state >= STATE_ESTABLISHED )
       return STATUS_RESEND;
     ret = tls_check_server_finished(ssl->nxt, buf, end - buf);
@@ -7248,10 +7276,20 @@ static rx_status_t handle_change_cipher(SSL *ssl, struct vec *v) {
   dprintf(("change cipher spec\n"));
 
   if (ssl->is_server) {
+    if ( ssl->state < STATE_CL_KEY_EXCH_RCVD )
+      return STATUS_OUT_OF_ORDER;
+    if ( ssl->state >= STATE_CL_CIPHER_SPEC_RCVD)
+      return STATUS_RESEND;
     tls_generate_keys(ssl->nxt);
     tls_client_cipher_spec(ssl, &ssl->rx_ctx);
+    ssl->state = STATE_CL_CIPHER_SPEC_RCVD;
   }else{
+    if ( ssl->state < STATE_CLIENT_FINISHED)
+      return STATUS_OUT_OF_ORDER;
+    if ( ssl->state >= STATE_SV_CIPHER_SPEC_RCVD )
+      return STATUS_RESEND;
     tls_server_cipher_spec(ssl, &ssl->rx_ctx);
+    ssl->state = STATE_SV_CIPHER_SPEC_RCVD;
   }
 
   ssl->rx_enc = 1;
@@ -7262,6 +7300,9 @@ static rx_status_t handle_appdata(SSL *ssl, struct vec *vec,
                                   uint8_t *out, size_t len) {
   uint8_t *rptr;
   size_t rlen;
+
+  if ( ssl->state < STATE_ESTABLISHED )
+    return STATUS_OUT_OF_ORDER;
 
   if (NULL == out) {
     printf("%zu bytes of appdata ignored\n", vec->len);
@@ -7291,6 +7332,7 @@ static rx_status_t handle_appdata(SSL *ssl, struct vec *vec,
 static rx_status_t handle_alert(SSL *ssl, struct vec *v) {
   const uint8_t *buf = v->ptr;
   size_t len = v->len;
+
   if (len < 2)
     return STATUS_BAD_DECODE;
 
