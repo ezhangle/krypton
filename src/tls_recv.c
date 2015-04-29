@@ -966,6 +966,7 @@ out:
   return ret;
 }
 
+#if KRYPTON_DTLS
 int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 {
   uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
@@ -1017,12 +1018,13 @@ again:
   ret = dispatch(ssl,(struct tls_common_hdr *)hdr,&v,out,out_len);
   switch(ret.st) {
   case STATUS__OK:
+    dtls_rtx_buf_clear(ssl);
     break;
   case STATUS__RESEND:
-    printf("re-send: timeout and re-transmit\n");
+    dprintf(("got a resend\n"));
     break;
   case STATUS__OUT_OF_ORDER:
-    printf("out of order transmission\n");
+    dprintf(("out of order transmission\n"));
     break;
   default:
     send_alert(ssl, ret);
@@ -1032,3 +1034,4 @@ again:
 
   goto again;
 }
+#endif

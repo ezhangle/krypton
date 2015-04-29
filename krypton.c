@@ -941,6 +941,9 @@ struct ssl_st {
 #define RX_MAX_BUF (1 << 14)
   struct buf tx;
   struct buf rx;
+#if KRYPTON_DTLS
+  struct buf rtx;
+#endif
 
   int fd;
   int err;
@@ -1026,6 +1029,7 @@ NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len);
 NS_INTERNAL int dtls_hello_verify_request(SSL *ssl);
+NS_INTERNAL void dtls_rtx_buf_clear(SSL *ssl);
 #endif
 
 /* generic */
@@ -5319,6 +5323,16 @@ out:
   return ssl;
 }
 
+int SSL_set_fd(SSL *ssl, int fd) {
+  ssl->fd = fd;
+  ssl_err(ssl, SSL_ERROR_NONE);
+  return 1;
+}
+
+int SSL_get_fd(SSL *ssl) {
+  return ssl->fd;
+}
+
 #if KRYPTON_DTLS
 static socklen_t dtls_socklen(SSL *ssl)
 {
@@ -5332,77 +5346,15 @@ static socklen_t dtls_socklen(SSL *ssl)
   }
 }
 
-static int dtls_handle_timeout(SSL *ssl)
+void dtls_rtx_buf_clear(SSL *ssl)
 {
-  /* TODO: retransmit buffered messages if necessary */
-  printf("TODO: handle timeout\n");
-  return 1;
-}
-
-static int dtls_get_timeout(SSL *ssl, struct timeval *tv)
-{
-  switch(ssl->state) {
-  case STATE_INITIAL:
-  case STATE_CL_HELLO_WAIT:
-  case STATE_ESTABLISHED:
-    return 0;
-  default:
-    /* TODO: look at current time, figure out time left to expiry */
-    tv->tv_sec = 1;
-    tv->tv_usec = 0;
-    return 1;
-  }
-}
-#endif
-
-long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
-{
-#ifdef KRYPTON_DTLS
-  long ret;
-#endif
-
-  switch(cmd) {
-#ifdef KRYPTON_DTLS
-  case DTLS_CTRL_LISTEN:
-    if ( !ssl->ctx->meth.dtls )
-      return 0;
-    SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
-    ret = SSL_accept(ssl);
-    if ( ret > 0 ) {
-      memcpy(parg, &ssl->st, dtls_socklen(ssl));
-    }
-    return ret;
-  case DTLS_CTRL_GET_TIMEOUT:
-    return dtls_get_timeout(ssl, parg);
-  case DTLS_CTRL_HANDLE_TIMEOUT:
-    return dtls_handle_timeout(ssl);
-  case SSL_CTRL_OPTIONS:
-    ssl->options |= larg;
-    return (ssl->options);
-  case DTLS_CTRL_SET_LINK_MTU:
-    if ( larg < MIN_LIKELY_MTU )
-      return 0;
-    ssl->link_mtu = larg;
-    return ssl->link_mtu;
-  case DTLS_CTRL_GET_LINK_MIN_MTU:
-    return MIN_LIKELY_MTU;
-#endif
-  default:
-    return 0;
+  if (ssl->rtx.len) {
+    dprintf(("clear rtx buf\n"));
+    free(ssl->rtx.buf);
+    memset(&ssl->rtx, 0, sizeof(ssl->rtx));
   }
 }
 
-int SSL_set_fd(SSL *ssl, int fd) {
-  ssl->fd = fd;
-  ssl_err(ssl, SSL_ERROR_NONE);
-  return 1;
-}
-
-int SSL_get_fd(SSL *ssl) {
-  return ssl->fd;
-}
-
-#if KRYPTON_DTLS
 static int dgram_send_buf(SSL *ssl, struct buf *buf) {
   const uint8_t *ptr, *end;
   struct dtls_hdr *hdr;
@@ -5463,9 +5415,14 @@ static int dgram_send(SSL *ssl) {
     ssl->tx.len = 0;
     break;
   default:
-    /* TODO: move to retransmit buffer */
+    /* Either in handshake or we sent a close notify, so we
+     * are in STATE_CLOSING. */
+
     /* TODO: calc timeout */
-    ssl->tx.len = 0;
+    assert(!ssl->rtx.len);
+    dprintf(("set rtx buf\n"));
+    ssl->rtx = ssl->tx;
+    memset(&ssl->tx, 0, sizeof(ssl->tx));
     break;
   }
   return 1;
@@ -5576,17 +5533,6 @@ again:
   /* TODO:
    * - Update PMTU estimates
   */
-
-  /* clear re-transmit buffer now that we have a reply */
-  switch(ssl->state) {
-  case STATE_INITIAL:
-  case STATE_ESTABLISHED:
-  case STATE_CLOSING:
-    break;
-  default:
-    ssl->tx.len = 0;
-    break;
-  }
 
   /* ignore bad packets */
   if (!dtls_handle_recv(ssl, out, out_len)) {
@@ -5749,6 +5695,7 @@ int SSL_accept(SSL *ssl) {
 
     /* fall through */
     case STATE_CL_FINISHED_RCVD:
+      ssl->state = STATE_CL_HELLO_WAIT;
       if (!tls_sv_finish(ssl)) {
         ssl_err(ssl, SSL_ERROR_SYSCALL);
         return -1;
@@ -5994,6 +5941,71 @@ void ssl_err(SSL *ssl, int err) {
       abort();
   }
   ssl->err = err;
+}
+
+#if KRYPTON_DTLS
+static int dtls_handle_timeout(SSL *ssl)
+{
+  /* TODO: re-transmit buffered messages if necessary */
+  if (!ssl->rtx.len) {
+    printf("handle timeout: nothing to retransmit\n");
+    return 1;
+  }
+  dprintf(("handle timeout: do a re-transmit\n"));
+  return dgram_send_buf(ssl, &ssl->rtx);
+}
+
+static int dtls_get_timeout(SSL *ssl, struct timeval *tv)
+{
+  switch(ssl->state) {
+  case STATE_INITIAL:
+  case STATE_CL_HELLO_WAIT:
+  case STATE_ESTABLISHED:
+    return 0;
+  default:
+    /* TODO: look at current time, figure out time left to expiry */
+    tv->tv_sec = 1;
+    tv->tv_usec = 0;
+    return 1;
+  }
+}
+#endif
+
+long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
+{
+#ifdef KRYPTON_DTLS
+  long ret;
+#endif
+
+  switch(cmd) {
+#ifdef KRYPTON_DTLS
+  case DTLS_CTRL_LISTEN:
+    if ( !ssl->ctx->meth.dtls )
+      return 0;
+    SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
+    ret = SSL_accept(ssl);
+    if ( ret > 0 ) {
+      memcpy(parg, &ssl->st, dtls_socklen(ssl));
+    }
+    return ret;
+  case DTLS_CTRL_GET_TIMEOUT:
+    return dtls_get_timeout(ssl, parg);
+  case DTLS_CTRL_HANDLE_TIMEOUT:
+    return dtls_handle_timeout(ssl);
+  case SSL_CTRL_OPTIONS:
+    ssl->options |= larg;
+    return (ssl->options);
+  case DTLS_CTRL_SET_LINK_MTU:
+    if ( larg < MIN_LIKELY_MTU )
+      return 0;
+    ssl->link_mtu = larg;
+    return ssl->link_mtu;
+  case DTLS_CTRL_GET_LINK_MIN_MTU:
+    return MIN_LIKELY_MTU;
+#endif
+  default:
+    return 0;
+  }
 }
 /*
  * Copyright (c) 2015 Cesanta Software Limited
@@ -7539,6 +7551,7 @@ out:
   return ret;
 }
 
+#if KRYPTON_DTLS
 int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 {
   uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
@@ -7590,12 +7603,13 @@ again:
   ret = dispatch(ssl,(struct tls_common_hdr *)hdr,&v,out,out_len);
   switch(ret.st) {
   case STATUS__OK:
+    dtls_rtx_buf_clear(ssl);
     break;
   case STATUS__RESEND:
-    printf("re-send: timeout and re-transmit\n");
+    dprintf(("got a resend\n"));
     break;
   case STATUS__OUT_OF_ORDER:
-    printf("out of order transmission\n");
+    dprintf(("out of order transmission\n"));
     break;
   default:
     send_alert(ssl, ret);
@@ -7605,6 +7619,7 @@ again:
 
   goto again;
 }
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved

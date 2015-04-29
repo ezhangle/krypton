@@ -53,6 +53,7 @@ NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len);
 NS_INTERNAL int dtls_hello_verify_request(SSL *ssl);
+NS_INTERNAL void dtls_rtx_buf_clear(SSL *ssl);
 #endif
 
 /* generic */

@@ -65,6 +65,9 @@ struct ssl_st {
 #define RX_MAX_BUF (1 << 14)
   struct buf tx;
   struct buf rx;
+#if KRYPTON_DTLS
+  struct buf rtx;
+#endif
 
   int fd;
   int err;
