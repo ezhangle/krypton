@@ -23,18 +23,31 @@
 
 #define TEST_PORT 4343
 
+#if USE_KRYPTON
+static unsigned char secret[16];
+#endif
+
 int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len)
 {
-  printf("cookie len %u\n", *cookie_len);
-
+  printf("callback requests cookie len %u\n", *cookie_len);
+#if USE_KRYPTON
+  return krypton__generate_cookie(ssl, secret, sizeof(secret),
+                                  cookie, cookie_len);
+#else
   *cookie_len = 16;
   memcpy(cookie, "01234567789abcef", 16);
   return 1;
+#endif
 }
 
 int verify_cookie(SSL *ssl, unsigned char *cookie, unsigned int cookie_len)
 {
+#if USE_KRYPTON
+  return krypton__verify_cookie(ssl, secret, sizeof(secret),
+                                cookie, cookie_len);
+#else
   return 1;
+#endif
 }
 
 static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
@@ -298,6 +311,12 @@ out:
 
 int main(void) {
   SSL_library_init();
+#if USE_KRYPTON
+  if (!krypton__generate_secret(secret, sizeof(secret))) {
+    fprintf(stderr, "unable to generate cookie secret\n");
+    return EXIT_FAILURE;
+  }
+#endif
   if (!do_test("server.crt", "server.key"))
     return EXIT_FAILURE;
   return EXIT_SUCCESS;

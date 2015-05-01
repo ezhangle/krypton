@@ -104,6 +104,21 @@ typedef int (*krypton_vrfy_cookie_cb_t)(SSL *ssl,
 void SSL_CTX_set_cookie_generate_cb(SSL_CTX *ctx, krypton_gen_cookie_cb_t cb);
 void SSL_CTX_set_cookie_verify_cb(SSL_CTX *ctx, krypton_vrfy_cookie_cb_t cb);
 
+/* Krypton-specific DTLS cookie generation API */
+#ifdef KRYPTON_DTLS
+int krypton__generate_secret(unsigned char *secret, unsigned int secret_len);
+int krypton__generate_cookie(SSL *ssl,
+                             unsigned char *secret,
+                             unsigned int secret_len,
+                             unsigned char *cookie,
+                             unsigned int *len);
+int krypton__verify_cookie(SSL *ssl,
+                           const unsigned char *secret,
+                           unsigned int secret_len,
+                           const unsigned char *cookie,
+                           unsigned int len);
+#endif
+
 #endif /* _KRYPTON_H */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
@@ -894,6 +909,7 @@ struct ssl_method_st {
 
 #ifdef KRYPTON_DTLS
 #define is_dtls(s) ((s)->ctx->meth.dtls)
+NS_INTERNAL socklen_t dtls_socklen(SSL *ssl);
 #else
 #define is_dtls(s) 0
 #endif
@@ -1035,7 +1051,7 @@ NS_INTERNAL int tls_record_opaque16(SSL *ssl, tls_record_state *st,
 NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 
 /* dtls */
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len);
 NS_INTERNAL int dtls_hello_verify_request(SSL *ssl);
@@ -5344,7 +5360,7 @@ int SSL_get_fd(SSL *ssl) {
 }
 
 #ifdef KRYPTON_DTLS
-static socklen_t dtls_socklen(SSL *ssl)
+socklen_t dtls_socklen(SSL *ssl)
 {
   switch(ssl->st.ss_family) {
   case AF_INET:
@@ -9432,3 +9448,35 @@ int suite_unbox(struct cipher_ctx *ctx,
   }
   return 0;
 }
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+
+#ifdef KRYPTON_DTLS
+int krypton__generate_secret(unsigned char *secret, unsigned int secret_len)
+{
+  return 1;
+}
+
+int krypton__generate_cookie(SSL *ssl,
+                             unsigned char *secret,
+                             unsigned int secret_len,
+                             unsigned char *cookie,
+                             unsigned int *len)
+{
+  memcpy(cookie, "01234567789abcef", 16);
+  *len = 16;
+  return 1;
+}
+
+int krypton__verify_cookie(SSL *ssl,
+                           const unsigned char *secret,
+                           unsigned int secret_len,
+                           const unsigned char *cookie,
+                           unsigned int len)
+{
+  return 1;
+}
+#endif

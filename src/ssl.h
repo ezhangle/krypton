@@ -18,6 +18,7 @@ struct ssl_method_st {
 
 #ifdef KRYPTON_DTLS
 #define is_dtls(s) ((s)->ctx->meth.dtls)
+NS_INTERNAL socklen_t dtls_socklen(SSL *ssl);
 #else
 #define is_dtls(s) 0
 #endif
