@@ -5,7 +5,7 @@ SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c src/hmac.c \
 					src/md5.c src/meth.c src/pem.c src/prf.c src/random.c src/rc4.c \
 					src/rsa.c src/sha1.c src/sha256.c src/ssl.c src/tls.c src/tls_cl.c \
 					src/tls_recv.c src/tls_sv.c src/x509.c src/x509_verify.c src/aes.c \
-					src/aes-gcm.c src/suite.c
+					src/aes-gcm.c src/suite.c src/cookie.c
 HEADERS = src/ktypes.h src/bigint_impl.h src/bigint.h src/tlsproto.h \
 					src/crypto.h src/ssl.h src/tls.h src/ber.h src/pem.h src/x509.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c

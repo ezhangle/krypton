@@ -50,7 +50,7 @@ int SSL_get_fd(SSL *ssl) {
 }
 
 #ifdef KRYPTON_DTLS
-static socklen_t dtls_socklen(SSL *ssl)
+socklen_t dtls_socklen(SSL *ssl)
 {
   switch(ssl->st.ss_family) {
   case AF_INET:

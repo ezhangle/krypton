@@ -104,4 +104,19 @@ typedef int (*krypton_vrfy_cookie_cb_t)(SSL *ssl,
 void SSL_CTX_set_cookie_generate_cb(SSL_CTX *ctx, krypton_gen_cookie_cb_t cb);
 void SSL_CTX_set_cookie_verify_cb(SSL_CTX *ctx, krypton_vrfy_cookie_cb_t cb);
 
+/* Krypton-specific DTLS cookie generation API */
+#ifdef KRYPTON_DTLS
+int krypton__generate_secret(unsigned char *secret, unsigned int secret_len);
+int krypton__generate_cookie(SSL *ssl,
+                             unsigned char *secret,
+                             unsigned int secret_len,
+                             unsigned char *cookie,
+                             unsigned int *len);
+int krypton__verify_cookie(SSL *ssl,
+                           const unsigned char *secret,
+                           unsigned int secret_len,
+                           const unsigned char *cookie,
+                           unsigned int len);
+#endif
+
 #endif /* _KRYPTON_H */
