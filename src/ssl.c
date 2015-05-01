@@ -662,7 +662,7 @@ void ssl_err(SSL *ssl, int err) {
 #ifdef KRYPTON_DTLS
 static int dtls_handle_timeout(SSL *ssl)
 {
-  /* TODO: re-transmit buffered messages if necessary */
+  /* re-transmit buffered messages if necessary */
   if (!ssl->rtx.len) {
     printf("handle timeout: nothing to retransmit\n");
     return 1;
