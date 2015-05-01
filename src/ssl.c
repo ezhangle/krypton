@@ -49,7 +49,7 @@ int SSL_get_fd(SSL *ssl) {
   return ssl->fd;
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 static socklen_t dtls_socklen(SSL *ssl)
 {
   switch(ssl->st.ss_family) {
@@ -213,7 +213,7 @@ static int do_send(SSL *ssl) {
   return stream_send(ssl);
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   socklen_t salen;
   struct sockaddr *sa;
@@ -659,7 +659,7 @@ void ssl_err(SSL *ssl, int err) {
   ssl->err = err;
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 static int dtls_handle_timeout(SSL *ssl)
 {
   /* TODO: re-transmit buffered messages if necessary */

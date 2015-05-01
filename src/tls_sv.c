@@ -11,7 +11,7 @@
 
 #include <time.h>
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len)
 {
   return (*ssl->ctx->vrfy_cookie)(ssl, cookie, len);

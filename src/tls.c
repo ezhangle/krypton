@@ -223,7 +223,7 @@ int tls_record_begin(SSL *ssl, uint8_t type,
 
   if ( type == TLS_HANDSHAKE ) {
     if (is_dtls(ssl)) {
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
       struct dtls_handshake hs_hdr;
       hs_hdr.type = subtype;
       hs_hdr.msg_seq = htobe16(ssl->handshake_seq++);
@@ -302,7 +302,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
 
   /* patch in the length field */
   if (is_dtls(ssl)) {
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
     struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
     assert(tot_len >= sizeof(struct dtls_hdr));
     tot_len -= sizeof(struct dtls_hdr);

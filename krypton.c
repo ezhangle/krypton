@@ -934,7 +934,7 @@ struct buf {
 };
 
 struct ssl_st {
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   struct sockaddr_storage st;
   struct timeval timer_expiry;
   long options;
@@ -951,7 +951,7 @@ struct ssl_st {
 #define RX_MAX_BUF (1 << 14)
   struct buf tx;
   struct buf rx;
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   struct buf rtx;
 #endif
 
@@ -961,7 +961,7 @@ struct ssl_st {
   /* for handling appdata recvs */
   unsigned int copied;
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   uint16_t link_mtu;
   uint16_t handshake_seq;
 #endif
@@ -5343,7 +5343,7 @@ int SSL_get_fd(SSL *ssl) {
   return ssl->fd;
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 static socklen_t dtls_socklen(SSL *ssl)
 {
   switch(ssl->st.ss_family) {
@@ -5507,7 +5507,7 @@ static int do_send(SSL *ssl) {
   return stream_send(ssl);
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 static int dgram_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   socklen_t salen;
   struct sockaddr *sa;
@@ -5953,7 +5953,7 @@ void ssl_err(SSL *ssl, int err) {
   ssl->err = err;
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 static int dtls_handle_timeout(SSL *ssl)
 {
   /* TODO: re-transmit buffered messages if necessary */
@@ -6241,7 +6241,7 @@ int tls_record_begin(SSL *ssl, uint8_t type,
 
   if ( type == TLS_HANDSHAKE ) {
     if (is_dtls(ssl)) {
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
       struct dtls_handshake hs_hdr;
       hs_hdr.type = subtype;
       hs_hdr.msg_seq = htobe16(ssl->handshake_seq++);
@@ -6320,7 +6320,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
 
   /* patch in the length field */
   if (is_dtls(ssl)) {
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
     struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
     assert(tot_len >= sizeof(struct dtls_hdr));
     tot_len -= sizeof(struct dtls_hdr);
@@ -6720,7 +6720,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
   const uint16_t *cipher_suites;
   const uint8_t *compressions;
   const uint8_t *rand;
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   uint8_t *cookie;
   uint8_t cookie_len;
 #endif
@@ -6764,7 +6764,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
     return STATUS_BAD_DECODE;
 
   /* extract DTLS cookie if present */
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   if (ssl->is_server && is_dtls(ssl)) {
     if (buf + sizeof(cookie_len) > end)
       return STATUS_BAD_DECODE;
@@ -6873,7 +6873,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
     buf += ext_len;
   }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   if (ssl->is_server && is_dtls(ssl) &&
         (SSL_get_options(ssl) & SSL_OP_COOKIE_EXCHANGE)) {
     if ( cookie_len ) {
@@ -7561,7 +7561,7 @@ out:
   return ret;
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 {
   uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
@@ -7638,7 +7638,7 @@ again:
 
 #include <time.h>
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len)
 {
   return (*ssl->ctx->vrfy_cookie)(ssl, cookie, len);

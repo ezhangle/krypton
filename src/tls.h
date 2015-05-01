@@ -49,7 +49,7 @@ NS_INTERNAL int tls_record_opaque16(SSL *ssl, tls_record_state *st,
 NS_INTERNAL int tls_record_finish(SSL *ssl, const tls_record_state *st);
 
 /* dtls */
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 NS_INTERNAL int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
 NS_INTERNAL int dtls_verify_cookie(SSL *ssl, uint8_t *cookie, size_t len);
 NS_INTERNAL int dtls_hello_verify_request(SSL *ssl);

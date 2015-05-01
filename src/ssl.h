@@ -58,7 +58,7 @@ struct buf {
 };
 
 struct ssl_st {
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   struct sockaddr_storage st;
   struct timeval timer_expiry;
   long options;
@@ -75,7 +75,7 @@ struct ssl_st {
 #define RX_MAX_BUF (1 << 14)
   struct buf tx;
   struct buf rx;
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   struct buf rtx;
 #endif
 
@@ -85,7 +85,7 @@ struct ssl_st {
   /* for handling appdata recvs */
   unsigned int copied;
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   uint16_t link_mtu;
   uint16_t handshake_seq;
 #endif

@@ -125,7 +125,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
   const uint16_t *cipher_suites;
   const uint8_t *compressions;
   const uint8_t *rand;
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   uint8_t *cookie;
   uint8_t cookie_len;
 #endif
@@ -169,7 +169,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
     return STATUS_BAD_DECODE;
 
   /* extract DTLS cookie if present */
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   if (ssl->is_server && is_dtls(ssl)) {
     if (buf + sizeof(cookie_len) > end)
       return STATUS_BAD_DECODE;
@@ -278,7 +278,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
     buf += ext_len;
   }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
   if (ssl->is_server && is_dtls(ssl) &&
         (SSL_get_options(ssl) & SSL_OP_COOKIE_EXCHANGE)) {
     if ( cookie_len ) {
@@ -966,7 +966,7 @@ out:
   return ret;
 }
 
-#if KRYPTON_DTLS
+#ifdef KRYPTON_DTLS
 int dtls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len)
 {
   uint8_t *buf = ssl->rx.buf, *end = buf + ssl->rx.len;
