@@ -9,8 +9,18 @@
 struct ssl_method_st {
   uint8_t sv_undefined : 1;
   uint8_t cl_undefined : 1;
+#ifdef KRYPTON_DTLS
   uint8_t dtls : 1;
+#else
+  uint8_t dummy : 1;
+#endif
 };
+
+#ifdef KRYPTON_DTLS
+#define is_dtls(s) ((s)->ctx->meth.dtls)
+#else
+#define is_dtls(s) 0
+#endif
 
 struct ssl_ctx_st {
 #ifdef KRYPTON_DTLS

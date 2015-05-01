@@ -207,7 +207,7 @@ shuffle:
 
 static int do_send(SSL *ssl) {
 #ifdef KRYPTON_DTLS
-  if ( ssl->ctx->meth.dtls )
+  if (is_dtls(ssl))
     return dgram_send(ssl);
 #endif
   return stream_send(ssl);
@@ -343,7 +343,7 @@ static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 
 static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 #ifdef KRYPTON_DTLS
-  if ( ssl->ctx->meth.dtls )
+  if (is_dtls(ssl))
     return dgram_recv(ssl, out, out_len);
 #endif
   return stream_recv(ssl, out, out_len);
@@ -365,7 +365,7 @@ int SSL_accept(SSL *ssl) {
     return -1;
   }
 
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     /* TODO: re-transmit logic */
   }else{
     while (ssl->tx.len) {
@@ -450,7 +450,7 @@ int SSL_connect(SSL *ssl) {
     return 0;
   }
 
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     /* TODO: re-transmit logic */
   }else{
     while (ssl->tx.len) {
@@ -696,7 +696,7 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
   switch(cmd) {
 #ifdef KRYPTON_DTLS
   case DTLS_CTRL_LISTEN:
-    if ( !ssl->ctx->meth.dtls )
+    if (!is_dtls(ssl))
       return 0;
     SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
     ret = SSL_accept(ssl);

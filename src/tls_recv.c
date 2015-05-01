@@ -104,7 +104,7 @@ static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
 
 static int hello_vers_check(SSL *ssl, uint16_t proto)
 {
-  if ( ssl->ctx->meth.dtls ) {
+  if (is_dtls(ssl)) {
     return (
            proto == 0xfeff /* DTLS v1.0 */
         || proto == 0xfefd /* DTLS v1.2 */
@@ -170,7 +170,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
 
   /* extract DTLS cookie if present */
 #if KRYPTON_DTLS
-  if (ssl->is_server && ssl->ctx->meth.dtls) {
+  if (ssl->is_server && is_dtls(ssl)) {
     if (buf + sizeof(cookie_len) > end)
       return STATUS_BAD_DECODE;
     cookie_len = buf[0];
@@ -279,7 +279,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
   }
 
 #if KRYPTON_DTLS
-  if (ssl->is_server && ssl->ctx->meth.dtls &&
+  if (ssl->is_server && is_dtls(ssl) &&
         (SSL_get_options(ssl) & SSL_OP_COOKIE_EXCHANGE)) {
     if ( cookie_len ) {
       if ( !dtls_verify_cookie(ssl, cookie, cookie_len) ) {
@@ -587,7 +587,7 @@ static rx_status_t handle_cl_handshake(SSL *ssl, uint8_t type,
       dprintf(("server hello\n"));
       return handle_hello(ssl, buf, end);
     case HANDSHAKE_HELLO_VERIFY_REQUEST:
-      if (ssl->ctx->meth.dtls) {
+      if (is_dtls(ssl)) {
         /* FIXME: use state machine */
         return handle_verify_request(ssl, buf, end);
       }else{
@@ -813,7 +813,7 @@ static rx_status_t decrypt_and_vrfy(SSL *ssl, const struct tls_common_hdr *hdr,
     return STATUS_BAD_MAC;
   }
 
-  if ( !ssl->ctx->meth.dtls )
+  if ( !is_dtls(ssl) )
     ssl->rx_seq++;
   return STATUS_OK;
 }
@@ -829,7 +829,7 @@ static rx_status_t dispatch(SSL *ssl, struct tls_common_hdr *hdr,
 
   switch (hdr->type) {
     case TLS_HANDSHAKE:
-      if ( ssl->ctx->meth.dtls ) {
+      if (is_dtls(ssl)) {
         return handle_dtls_handshake(ssl, v);
       }else{
         return handle_handshake(ssl, v);
@@ -857,7 +857,7 @@ static int send_alert(SSL *ssl, rx_status_t ret)
       desc = ALERT_UNEXPECTED_MESSAGE;
       break;
     case STATUS__BAD_DECODE:
-      if (ssl->ctx->meth.dtls)
+      if (is_dtls(ssl))
         return 1;
       desc = ALERT_DECODE_ERROR;
       break;
@@ -865,7 +865,7 @@ static int send_alert(SSL *ssl, rx_status_t ret)
       desc = ALERT_NO_RENEGOTIATION;
       break;
     case STATUS__BAD_MAC:
-      if (ssl->ctx->meth.dtls)
+      if (is_dtls(ssl))
         return 1;
       desc = ALERT_BAD_RECORD_MAC;
       break;

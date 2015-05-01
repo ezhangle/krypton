@@ -885,8 +885,18 @@ NS_INTERNAL int suite_unbox(struct cipher_ctx *ctx,
 struct ssl_method_st {
   uint8_t sv_undefined : 1;
   uint8_t cl_undefined : 1;
+#ifdef KRYPTON_DTLS
   uint8_t dtls : 1;
+#else
+  uint8_t dummy : 1;
+#endif
 };
+
+#ifdef KRYPTON_DTLS
+#define is_dtls(s) ((s)->ctx->meth.dtls)
+#else
+#define is_dtls(s) 0
+#endif
 
 struct ssl_ctx_st {
 #ifdef KRYPTON_DTLS
@@ -3714,9 +3724,9 @@ static void Decode(uint32_t *output, const uint8_t *input, uint32_t len)
  */
 
 
-const SSL_METHOD meth = {0, 0, 0};
-const SSL_METHOD sv_meth = {0, 1, 0};
-const SSL_METHOD cl_meth = {1, 0, 0};
+static const SSL_METHOD meth = {0, 0, 0};
+static const SSL_METHOD sv_meth = {0, 1, 0};
+static const SSL_METHOD cl_meth = {1, 0, 0};
 
 const SSL_METHOD *TLSv1_2_method(void) {
   return &meth;
@@ -3738,9 +3748,9 @@ const SSL_METHOD *SSLv23_client_method(void) {
 }
 
 #ifdef KRYPTON_DTLS
-const SSL_METHOD dmeth = {0, 0, 1};
-const SSL_METHOD dsv_meth = {0, 1, 1};
-const SSL_METHOD dcl_meth = {1, 0, 1};
+static const SSL_METHOD dmeth = {0, 0, 1};
+static const SSL_METHOD dsv_meth = {0, 1, 1};
+static const SSL_METHOD dcl_meth = {1, 0, 1};
 
 const SSL_METHOD *DTLSv1_2_method(void) {
   return &dmeth;
@@ -5491,7 +5501,7 @@ shuffle:
 
 static int do_send(SSL *ssl) {
 #ifdef KRYPTON_DTLS
-  if ( ssl->ctx->meth.dtls )
+  if (is_dtls(ssl))
     return dgram_send(ssl);
 #endif
   return stream_send(ssl);
@@ -5627,7 +5637,7 @@ static int stream_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 
 static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
 #ifdef KRYPTON_DTLS
-  if ( ssl->ctx->meth.dtls )
+  if (is_dtls(ssl))
     return dgram_recv(ssl, out, out_len);
 #endif
   return stream_recv(ssl, out, out_len);
@@ -5649,7 +5659,7 @@ int SSL_accept(SSL *ssl) {
     return -1;
   }
 
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     /* TODO: re-transmit logic */
   }else{
     while (ssl->tx.len) {
@@ -5734,7 +5744,7 @@ int SSL_connect(SSL *ssl) {
     return 0;
   }
 
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     /* TODO: re-transmit logic */
   }else{
     while (ssl->tx.len) {
@@ -5980,7 +5990,7 @@ long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg)
   switch(cmd) {
 #ifdef KRYPTON_DTLS
   case DTLS_CTRL_LISTEN:
-    if ( !ssl->ctx->meth.dtls )
+    if (!is_dtls(ssl))
       return 0;
     SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
     ret = SSL_accept(ssl);
@@ -6136,7 +6146,7 @@ void tls_generate_keys(tls_sec_t sec) {
 
 static uint64_t initial_seq(SSL *ssl, uint64_t cur_seq)
 {
-  if ( ssl->ctx->meth.dtls ) {
+  if (is_dtls(ssl)) {
     return (((cur_seq >> 48) + 1) << 48);
   }else{
     return 0;
@@ -6197,7 +6207,7 @@ int tls_tx_push(SSL *ssl, const void *data, size_t len) {
 
 static int push_header(SSL *ssl, uint8_t type)
 {
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     struct dtls_hdr hdr;
     hdr.type = type;
     hdr.vers = htobe16(DTLSv1_2);
@@ -6230,7 +6240,7 @@ int tls_record_begin(SSL *ssl, uint8_t type,
   }
 
   if ( type == TLS_HANDSHAKE ) {
-    if (ssl->ctx->meth.dtls) {
+    if (is_dtls(ssl)) {
 #if KRYPTON_DTLS
       struct dtls_handshake hs_hdr;
       hs_hdr.type = subtype;
@@ -6309,7 +6319,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   hdr = (struct tls_common_hdr *)(ssl->tx.buf + st->ofs);
 
   /* patch in the length field */
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
 #if KRYPTON_DTLS
     struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
     assert(tot_len >= sizeof(struct dtls_hdr));
@@ -6341,7 +6351,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
    * add the contents to the running hash of all handshake messages
   */
   if (hdr->type == TLS_HANDSHAKE) {
-    if (ssl->ctx->meth.dtls) {
+    if (is_dtls(ssl)) {
       struct dtls_handshake *hs;
       size_t hs_len;
 
@@ -6378,7 +6388,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
     buf = ssl->tx.buf + st->ofs + hdr_len;
     suite_box(&ssl->tx_ctx, hdr, ssl->tx_seq, buf + exp_len, plen, buf);
     ssl->tx_seq++;
-  }else if (ssl->ctx->meth.dtls) {
+  }else if (is_dtls(ssl)) {
     ssl->tx_seq++;
   }
 
@@ -6468,7 +6478,7 @@ int tls_cl_hello(SSL *ssl, const uint8_t *cookie, size_t cookie_len) {
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_HELLO, &st))
     return 0;
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     hello.version = htobe16(DTLSv1_2);
   }else{
     hello.version = htobe16(TLSv1_2);
@@ -6486,13 +6496,13 @@ int tls_cl_hello(SSL *ssl, const uint8_t *cookie, size_t cookie_len) {
     return 0;
 
   /* dtls cookie [8] */
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     if (!tls_record_opaque8(ssl, &st, cookie, cookie_len))
       return 0;
   }
 
   /* cipher suites [16] */
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     if (!tls_record_opaque16(ssl, &st, dtls_ciphers, sizeof(dtls_ciphers)))
       return 0;
   }else{
@@ -6538,7 +6548,7 @@ int tls_cl_finish(SSL *ssl) {
   if (!tls_record_data(ssl, &st, &exch, sizeof(exch)))
     return 0;
 
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     in.version = htobe16(DTLSv1_2);
   }else{
     in.version = htobe16(TLSv1_2);
@@ -6689,7 +6699,7 @@ static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
 
 static int hello_vers_check(SSL *ssl, uint16_t proto)
 {
-  if ( ssl->ctx->meth.dtls ) {
+  if (is_dtls(ssl)) {
     return (
            proto == 0xfeff /* DTLS v1.0 */
         || proto == 0xfefd /* DTLS v1.2 */
@@ -6755,7 +6765,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
 
   /* extract DTLS cookie if present */
 #if KRYPTON_DTLS
-  if (ssl->is_server && ssl->ctx->meth.dtls) {
+  if (ssl->is_server && is_dtls(ssl)) {
     if (buf + sizeof(cookie_len) > end)
       return STATUS_BAD_DECODE;
     cookie_len = buf[0];
@@ -6864,7 +6874,7 @@ static rx_status_t handle_hello(SSL *ssl, const uint8_t *buf,
   }
 
 #if KRYPTON_DTLS
-  if (ssl->is_server && ssl->ctx->meth.dtls &&
+  if (ssl->is_server && is_dtls(ssl) &&
         (SSL_get_options(ssl) & SSL_OP_COOKIE_EXCHANGE)) {
     if ( cookie_len ) {
       if ( !dtls_verify_cookie(ssl, cookie, cookie_len) ) {
@@ -7172,7 +7182,7 @@ static rx_status_t handle_cl_handshake(SSL *ssl, uint8_t type,
       dprintf(("server hello\n"));
       return handle_hello(ssl, buf, end);
     case HANDSHAKE_HELLO_VERIFY_REQUEST:
-      if (ssl->ctx->meth.dtls) {
+      if (is_dtls(ssl)) {
         /* FIXME: use state machine */
         return handle_verify_request(ssl, buf, end);
       }else{
@@ -7398,7 +7408,7 @@ static rx_status_t decrypt_and_vrfy(SSL *ssl, const struct tls_common_hdr *hdr,
     return STATUS_BAD_MAC;
   }
 
-  if ( !ssl->ctx->meth.dtls )
+  if ( !is_dtls(ssl) )
     ssl->rx_seq++;
   return STATUS_OK;
 }
@@ -7414,7 +7424,7 @@ static rx_status_t dispatch(SSL *ssl, struct tls_common_hdr *hdr,
 
   switch (hdr->type) {
     case TLS_HANDSHAKE:
-      if ( ssl->ctx->meth.dtls ) {
+      if (is_dtls(ssl)) {
         return handle_dtls_handshake(ssl, v);
       }else{
         return handle_handshake(ssl, v);
@@ -7442,7 +7452,7 @@ static int send_alert(SSL *ssl, rx_status_t ret)
       desc = ALERT_UNEXPECTED_MESSAGE;
       break;
     case STATUS__BAD_DECODE:
-      if (ssl->ctx->meth.dtls)
+      if (is_dtls(ssl))
         return 1;
       desc = ALERT_DECODE_ERROR;
       break;
@@ -7450,7 +7460,7 @@ static int send_alert(SSL *ssl, rx_status_t ret)
       desc = ALERT_NO_RENEGOTIATION;
       break;
     case STATUS__BAD_MAC:
-      if (ssl->ctx->meth.dtls)
+      if (is_dtls(ssl))
         return 1;
       desc = ALERT_BAD_RECORD_MAC;
       break;
@@ -7674,7 +7684,7 @@ int tls_sv_hello(SSL *ssl) {
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_SERVER_HELLO, &st))
     return 0;
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     hello.version = htobe16(DTLSv1_2);
   }else{
     hello.version = htobe16(TLSv1_2);

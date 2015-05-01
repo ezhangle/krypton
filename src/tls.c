@@ -128,7 +128,7 @@ void tls_generate_keys(tls_sec_t sec) {
 
 static uint64_t initial_seq(SSL *ssl, uint64_t cur_seq)
 {
-  if ( ssl->ctx->meth.dtls ) {
+  if (is_dtls(ssl)) {
     return (((cur_seq >> 48) + 1) << 48);
   }else{
     return 0;
@@ -189,7 +189,7 @@ int tls_tx_push(SSL *ssl, const void *data, size_t len) {
 
 static int push_header(SSL *ssl, uint8_t type)
 {
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     struct dtls_hdr hdr;
     hdr.type = type;
     hdr.vers = htobe16(DTLSv1_2);
@@ -222,7 +222,7 @@ int tls_record_begin(SSL *ssl, uint8_t type,
   }
 
   if ( type == TLS_HANDSHAKE ) {
-    if (ssl->ctx->meth.dtls) {
+    if (is_dtls(ssl)) {
 #if KRYPTON_DTLS
       struct dtls_handshake hs_hdr;
       hs_hdr.type = subtype;
@@ -301,7 +301,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
   hdr = (struct tls_common_hdr *)(ssl->tx.buf + st->ofs);
 
   /* patch in the length field */
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
 #if KRYPTON_DTLS
     struct dtls_hdr *thdr = (struct dtls_hdr *)hdr;
     assert(tot_len >= sizeof(struct dtls_hdr));
@@ -333,7 +333,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
    * add the contents to the running hash of all handshake messages
   */
   if (hdr->type == TLS_HANDSHAKE) {
-    if (ssl->ctx->meth.dtls) {
+    if (is_dtls(ssl)) {
       struct dtls_handshake *hs;
       size_t hs_len;
 
@@ -370,7 +370,7 @@ int tls_record_finish(SSL *ssl, const tls_record_state *st)
     buf = ssl->tx.buf + st->ofs + hdr_len;
     suite_box(&ssl->tx_ctx, hdr, ssl->tx_seq, buf + exp_len, plen, buf);
     ssl->tx_seq++;
-  }else if (ssl->ctx->meth.dtls) {
+  }else if (is_dtls(ssl)) {
     ssl->tx_seq++;
   }
 

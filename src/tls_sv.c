@@ -57,7 +57,7 @@ int tls_sv_hello(SSL *ssl) {
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_SERVER_HELLO, &st))
     return 0;
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     hello.version = htobe16(DTLSv1_2);
   }else{
     hello.version = htobe16(TLSv1_2);

@@ -48,7 +48,7 @@ int tls_cl_hello(SSL *ssl, const uint8_t *cookie, size_t cookie_len) {
   /* hello */
   if (!tls_record_begin(ssl, TLS_HANDSHAKE, HANDSHAKE_CLIENT_HELLO, &st))
     return 0;
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     hello.version = htobe16(DTLSv1_2);
   }else{
     hello.version = htobe16(TLSv1_2);
@@ -66,13 +66,13 @@ int tls_cl_hello(SSL *ssl, const uint8_t *cookie, size_t cookie_len) {
     return 0;
 
   /* dtls cookie [8] */
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     if (!tls_record_opaque8(ssl, &st, cookie, cookie_len))
       return 0;
   }
 
   /* cipher suites [16] */
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     if (!tls_record_opaque16(ssl, &st, dtls_ciphers, sizeof(dtls_ciphers)))
       return 0;
   }else{
@@ -118,7 +118,7 @@ int tls_cl_finish(SSL *ssl) {
   if (!tls_record_data(ssl, &st, &exch, sizeof(exch)))
     return 0;
 
-  if (ssl->ctx->meth.dtls) {
+  if (is_dtls(ssl)) {
     in.version = htobe16(DTLSv1_2);
   }else{
     in.version = htobe16(TLSv1_2);
