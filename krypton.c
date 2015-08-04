@@ -6837,9 +6837,11 @@ static int parse_pubkey_info(X509 *cert, const uint8_t *ptr, size_t len) {
 }
 
 static int decode_extension(X509 *cert, const uint8_t *oid, size_t oid_len,
+                            const uint8_t critical,
                             const uint8_t *val, size_t val_len) {
   static const char *const oidBasicConstraints = "\x55\x1d\x13";
   struct gber_tag tag;
+  /* TODO: handle all critical extensions. */
 
   if (oid_len != 3 || memcmp(oid, oidBasicConstraints, oid_len))
     return 1;
@@ -6903,6 +6905,7 @@ ext:
   while (ptr < end) {
     const uint8_t *oid, *val, *ext_end;
     size_t oid_len, val_len;
+    uint8_t critical = 0;
 
     ptr = ber_decode_tag(&tag, ptr, end - ptr);
     if (NULL == ptr)
@@ -6924,10 +6927,19 @@ ext:
     ptr = ber_decode_tag(&tag, ptr, ext_end - ptr);
     if (NULL == ptr)
       return 0;
+
+    if (tag.ber_tag == 1) {
+      critical = (*ptr != 0);
+      ptr++;
+      ptr = ber_decode_tag(&tag, ptr, ext_end - ptr);
+      if (NULL == ptr)
+        return 0;
+    }
+
     val = ptr;
     val_len = tag.ber_len;
 
-    if (!decode_extension(cert, oid, oid_len, val, val_len))
+    if (!decode_extension(cert, oid, oid_len, critical, val, val_len))
       return 0;
 
     ptr = ext_end;
