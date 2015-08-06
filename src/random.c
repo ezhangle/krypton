@@ -25,13 +25,11 @@ int get_random(uint8_t *out, size_t len) {
 int get_random_nonzero(uint8_t *out, size_t len) {
   size_t i;
 
-  if (!get_random(out, len))
-    return 0;
+  if (!get_random(out, len)) return 0;
 
   for (i = 0; i < len; i++) {
     while (out[i] == 0) {
-      if (!get_random(out + i, 1))
-        return 0;
+      if (!get_random(out + i, 1)) return 0;
     }
   }
 

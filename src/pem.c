@@ -11,12 +11,10 @@
 static int check_end_marker(const char *str, int sig_type) {
   switch (sig_type) {
     case PEM_SIG_CERT:
-      if (!strcmp(str, "-----END CERTIFICATE-----"))
-        return 1;
+      if (!strcmp(str, "-----END CERTIFICATE-----")) return 1;
       break;
     case PEM_SIG_KEY:
-      if (!strcmp(str, "-----END RSA PRIVATE KEY-----"))
-        return 1;
+      if (!strcmp(str, "-----END RSA PRIVATE KEY-----")) return 1;
       break;
     default:
       assert(0);
@@ -74,8 +72,7 @@ static int add_object(PEM *p) {
     max = p->max_obj + OBJ_INCREMENT;
 
     new = realloc(p->obj, sizeof(*p->obj) * max);
-    if (NULL == new)
-      return 0;
+    if (NULL == new) return 0;
 
     p->obj = new;
     p->max_obj = max;
@@ -108,7 +105,7 @@ PEM *pem_load(const char *fn, int type_mask) {
 
     /* Trim trailing whitespaces*/
     lf = strchr(buf, '\n');
-    while (lf > buf && isspace(* (unsigned char *) lf)) {
+    while (lf > buf && isspace(*(unsigned char *) lf)) {
       *lf-- = '\0';
     }
     lf++;
@@ -117,8 +114,7 @@ PEM *pem_load(const char *fn, int type_mask) {
       case 0: /* begin marker */
         if (check_begin_marker(buf, &got)) {
           if (got & type_mask) {
-            if (!add_object(p))
-              goto out_close;
+            if (!add_object(p)) goto out_close;
             cur = p->num_obj++;
             p->obj[cur].der_type = got;
             p->obj[cur].der_len = 0;
@@ -136,7 +132,7 @@ PEM *pem_load(const char *fn, int type_mask) {
           break;
         }
 
-        if (!add_line(&p->obj[cur], &der_max_len, (uint8_t *)buf, lf - buf)) {
+        if (!add_line(&p->obj[cur], &der_max_len, (uint8_t *) buf, lf - buf)) {
           dprintf(("%s: Corrupted key or cert\n", fn));
           goto out_close;
         }

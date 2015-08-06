@@ -10,9 +10,16 @@ HEADERS = src/ktypes.h src/crypto.h src/bigint_impl.h src/bigint.h \
 TEST_SOURCES = test/sv-test.c test/cl-test.c
 CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA)
 
+CLANG_FORMAT := clang-format
+
+ifneq ("$(wildcard /usr/local/bin/clang-3.6)","")
+	CLANG:=/usr/local/bin/clang-3.6
+	CLANG_FORMAT:=/usr/local/bin/clang-format-3.6
+endif
+
 .PHONY: all clean tests openssl-tests krypton-tests
 
-all: tests
+all: tests format
 
 krypton.c: $(HEADERS) $(SOURCES) Makefile
 	cat openssl/ssl.h $(HEADERS) $(SOURCES) | sed -E "/#include .*(ssl.h|`echo $(HEADERS) | sed -e 's,src/,,g' -e 's, ,|,g'`)/d" > $@
@@ -40,9 +47,7 @@ vc6: krypton.c
 	wine cl -c $(SOURCES) -Isrc -DNOT_AMALGAMATED
 
 format:
-	clang-format -i \
-	-style '{BasedOnStyle: Google, AllowShortIfStatementsOnASingleLine: false, AllowShortLoopsOnASingleLine: false, AllowShortFunctionsOnASingleLine: None}' \
-		$$(grep -lrsi 'copyright.*cesanta' src test)
+	@find . -name "*.[ch]" | xargs $(CLANG_FORMAT) -i
 
 clean:
 	rm -rf *-openssl *-krypton *.o *.gc* *.dSYM *.exe *.obj *.pdb

@@ -43,9 +43,9 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
-    return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
+  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello))) return 0;
+  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *) &hello),
+                sizeof(hello));
 
   /* store the random we generated */
   memcpy(&ssl->nxt->cl_rnd, &hello.random, sizeof(ssl->nxt->cl_rnd));
@@ -76,7 +76,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   tls_generate_keys(ssl->nxt);
   dprintf((" + master secret computed\n"));
 
-  if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *)&in, sizeof(in), buf + 6, 0) <=
+  if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *) &in, sizeof(in), buf + 6, 0) <=
       1) {
     dprintf(("RSA encrypt failed\n"));
     ssl_err(ssl, SSL_ERROR_SSL);
@@ -87,14 +87,12 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   buf[1] = 0;
   set16(buf + 2, buf_len - 4);
   set16(buf + 4, buf_len - 6);
-  if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len))
-    return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, buf, buf_len)) return 0;
   SHA256_Update(&ssl->nxt->handshakes_hash, buf, buf_len);
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
-    return 0;
+  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher))) return 0;
 
   if (ssl->cur) {
     tls_free_security(ssl->cur);
@@ -110,10 +108,9 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   memset(finished.vrfy, 0, sizeof(finished.vrfy));
   tls_generate_client_finished(ssl->cur, finished.vrfy, sizeof(finished.vrfy));
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished)))
-    return 0;
+  if (!tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished))) return 0;
 
-  SHA256_Update(&ssl->cur->handshakes_hash, ((uint8_t *)&finished),
+  SHA256_Update(&ssl->cur->handshakes_hash, ((uint8_t *) &finished),
                 sizeof(finished));
 
   return 1;

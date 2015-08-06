@@ -38,8 +38,7 @@ static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
     goto err;
   }
 
-  if (tag.ber_len > MAX_DIGEST_SIZE)
-    goto err;
+  if (tag.ber_len > MAX_DIGEST_SIZE) goto err;
 
   memcpy(digest, ptr, tag.ber_len);
   *dlen = tag.ber_len;
@@ -66,7 +65,7 @@ again:
     return 0;
   }
 
-  if ((size_t)RSA_block_size(cur->pub_key) != nxt->sig.len) {
+  if ((size_t) RSA_block_size(cur->pub_key) != nxt->sig.len) {
     dprintf(("signature size doesn't match\n"));
     return 0;
   }
@@ -90,8 +89,7 @@ again:
           nxt->sig.len);
 #endif
 
-  if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len))
-    return 0;
+  if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len)) return 0;
 #if DEBUG_VERIFY
   dprintf(("%zu byte digest:\n", digest_len));
   hex_dump(digest, digest_len, 0);

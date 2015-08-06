@@ -45,10 +45,10 @@ NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i);
 
 /* the functions that actually do something interesting */
 NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib);
-NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia,
-        bigint *bib, int *is_negative);
-NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *bia,
-			bigint *bim, int is_mod);
+NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia, bigint *bib,
+                                int *is_negative);
+NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *bia, bigint *bim,
+                              int is_mod);
 NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib);
 NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp);
 #if 0
@@ -68,7 +68,7 @@ NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data);
  * @def bi_mod
  * Find the residue of B. bi_set_mod() must be called before hand.
  */
-#define bi_mod(A, B)      bi_divide(A, B, ctx->bi_mod[ctx->mod_offset], 1)
+#define bi_mod(A, B) bi_divide(A, B, ctx->bi_mod[ctx->mod_offset], 1)
 
 /**
  * bi_residue() is technically the same as bi_mod(), but it uses the
@@ -76,24 +76,22 @@ NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data);
  * reduction).
  */
 #if defined(CONFIG_BIGINT_MONTGOMERY)
-#define bi_residue(A, B)         bi_mont(A, B)
+#define bi_residue(A, B) bi_mont(A, B)
 NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy);
 #elif defined(CONFIG_BIGINT_BARRETT)
-#define bi_residue(A, B)         bi_barrett(A, B)
+#define bi_residue(A, B) bi_barrett(A, B)
 NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi);
 #else /* if defined(CONFIG_BIGINT_CLASSICAL) */
-#define bi_residue(A, B)         bi_mod(A, B)
+#define bi_residue(A, B) bi_mod(A, B)
 #endif
 
 #ifdef CONFIG_BIGINT_SQUARE
 NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bi);
 #else
-#define bi_square(A, B)     bi_multiply(A, bi_copy(B), B)
+#define bi_square(A, B) bi_multiply(A, bi_copy(B), B)
 #endif
 
-NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi,
-        bigint *dP, bigint *dQ,
-        bigint *p, bigint *q,
-        bigint *qInv);
+NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
+                           bigint *p, bigint *q, bigint *qInv);
 
 #endif

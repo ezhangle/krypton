@@ -34,8 +34,7 @@ static int decode_block1(const uint8_t *buf, uint8_t *out) {
   unsigned int i;
 
   for (i = 0; i < sizeof(tmp); i++) {
-    if (!decode(buf[i], &tmp[i]))
-      return 0;
+    if (!decode(buf[i], &tmp[i])) return 0;
   }
 
   /* [ 6 from 0 : 2 from 1 ] */
@@ -48,8 +47,7 @@ static int decode_block2(const uint8_t *buf, uint8_t *out) {
   unsigned int i;
 
   for (i = 0; i < sizeof(tmp); i++) {
-    if (!decode(buf[i], &tmp[i]))
-      return 0;
+    if (!decode(buf[i], &tmp[i])) return 0;
   }
 
   /* [ 6 from 0 : 2 from 1 ] */
@@ -64,8 +62,7 @@ static int decode_block3(const uint8_t *buf, uint8_t *out) {
   unsigned int i;
 
   for (i = 0; i < sizeof(tmp); i++) {
-    if (!decode(buf[i], &tmp[i]))
-      return 0;
+    if (!decode(buf[i], &tmp[i])) return 0;
   }
 
   /* [ 6 from 0 : 2 from 1 ] */
@@ -102,8 +99,7 @@ NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len, uint8_t *out,
       olen = 3;
     }
 
-    if (!ret)
-      return 0;
+    if (!ret) return 0;
 
     *obytes += olen;
     out += olen;
@@ -128,7 +124,7 @@ int main(int argc, char **argv) {
     lf = strchr(buf, '\n');
     *lf = '\0';
 
-    if (!b64_decode((uint8_t *)buf, lf - buf, out, &olen)) {
+    if (!b64_decode((uint8_t *) buf, lf - buf, out, &olen)) {
       printf("error\n");
     } else {
       hex_dump(out, olen, 0);

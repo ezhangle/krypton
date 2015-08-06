@@ -41,68 +41,61 @@
  * NOTE: does not handle keys larger than the block size.
  */
 void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
-        int key_len, uint8_t *digest)
-{
-    SHA256_CTX context;
-    uint8_t k_ipad[64];
-    uint8_t k_opad[64];
-    int i;
+                 int key_len, uint8_t *digest) {
+  SHA256_CTX context;
+  uint8_t k_ipad[64];
+  uint8_t k_opad[64];
+  int i;
 
-    memset(k_ipad, 0, sizeof k_ipad);
-    memset(k_opad, 0, sizeof k_opad);
-    memcpy(k_ipad, key, key_len);
-    memcpy(k_opad, key, key_len);
+  memset(k_ipad, 0, sizeof k_ipad);
+  memset(k_opad, 0, sizeof k_opad);
+  memcpy(k_ipad, key, key_len);
+  memcpy(k_opad, key, key_len);
 
-    for (i = 0; i < 64; i++)
-    {
-        k_ipad[i] ^= 0x36;
-        k_opad[i] ^= 0x5c;
-    }
+  for (i = 0; i < 64; i++) {
+    k_ipad[i] ^= 0x36;
+    k_opad[i] ^= 0x5c;
+  }
 
-    SHA256_Init(&context);
-    SHA256_Update(&context, k_ipad, 64);
-    SHA256_Update(&context, msg, length);
-    SHA256_Final(digest, &context);
-    SHA256_Init(&context);
-    SHA256_Update(&context, k_opad, 64);
-    SHA256_Update(&context, digest, SHA256_SIZE);
-    SHA256_Final(digest, &context);
+  SHA256_Init(&context);
+  SHA256_Update(&context, k_ipad, 64);
+  SHA256_Update(&context, msg, length);
+  SHA256_Final(digest, &context);
+  SHA256_Init(&context);
+  SHA256_Update(&context, k_opad, 64);
+  SHA256_Update(&context, digest, SHA256_SIZE);
+  SHA256_Final(digest, &context);
 }
 
 /**
  * Perform HMAC-MD5
  * NOTE: does not handle keys larger than the block size.
  */
-void hmac_md5(const uint8_t *key, size_t key_len,
-		const uint8_t *msg, size_t msg_len,
-		const uint8_t *msg2, size_t msg2_len,
-		uint8_t *digest)
-{
-    MD5_CTX context;
-    uint8_t k_ipad[64];
-    uint8_t k_opad[64];
-    int i;
+void hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
+              size_t msg_len, const uint8_t *msg2, size_t msg2_len,
+              uint8_t *digest) {
+  MD5_CTX context;
+  uint8_t k_ipad[64];
+  uint8_t k_opad[64];
+  int i;
 
-    memset(k_ipad, 0, sizeof k_ipad);
-    memset(k_opad, 0, sizeof k_opad);
-    memcpy(k_ipad, key, key_len);
-    memcpy(k_opad, key, key_len);
+  memset(k_ipad, 0, sizeof k_ipad);
+  memset(k_opad, 0, sizeof k_opad);
+  memcpy(k_ipad, key, key_len);
+  memcpy(k_opad, key, key_len);
 
-    for (i = 0; i < 64; i++)
-    {
-        k_ipad[i] ^= 0x36;
-        k_opad[i] ^= 0x5c;
-    }
+  for (i = 0; i < 64; i++) {
+    k_ipad[i] ^= 0x36;
+    k_opad[i] ^= 0x5c;
+  }
 
-    MD5_Init(&context);
-    MD5_Update(&context, k_ipad, 64);
-    if ( msg_len )
-	    MD5_Update(&context, msg, msg_len);
-    if ( msg2_len )
-	    MD5_Update(&context, msg2, msg2_len);
-    MD5_Final(digest, &context);
-    MD5_Init(&context);
-    MD5_Update(&context, k_opad, 64);
-    MD5_Update(&context, digest, MD5_SIZE);
-    MD5_Final(digest, &context);
+  MD5_Init(&context);
+  MD5_Update(&context, k_ipad, 64);
+  if (msg_len) MD5_Update(&context, msg, msg_len);
+  if (msg2_len) MD5_Update(&context, msg2, msg2_len);
+  MD5_Final(digest, &context);
+  MD5_Init(&context);
+  MD5_Update(&context, k_opad, 64);
+  MD5_Update(&context, digest, MD5_SIZE);
+  MD5_Final(digest, &context);
 }

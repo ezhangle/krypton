@@ -25,8 +25,7 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hello.len = htobe16(sizeof(hello) - 4);
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
-  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque)))
-    return 0;
+  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) return 0;
   hello.sess_id_len = 0;
   hello.cipher_suite = htobe16(ssl->nxt->cipher_suite);
   hello.compressor = ssl->nxt->compressor;
@@ -36,9 +35,9 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hello.ext_reneg.len = htobe16(1);
   hello.ext_reneg.ri_len = 0;
 
-  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello)))
-    return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&hello), sizeof(hello));
+  if (!tls_send(ssl, TLS_HANDSHAKE, &hello, sizeof(hello))) return 0;
+  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *) &hello),
+                sizeof(hello));
 
   /* certificate */
   hdr.type = TLS_HANDSHAKE;
@@ -46,8 +45,7 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hdr.len = htobe16(sizeof(cert) + sizeof(chdr) * ssl->ctx->pem_cert->num_obj +
                     ssl->ctx->pem_cert->tot_len);
 
-  if (!tls_tx_push(ssl, &hdr, sizeof(hdr)))
-    return 0;
+  if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
 
   cert.type = HANDSHAKE_CERTIFICATE;
   cert.len_hi = 0;
@@ -57,10 +55,9 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   cert.certs_len = htobe16(sizeof(chdr) * ssl->ctx->pem_cert->num_obj +
                            ssl->ctx->pem_cert->tot_len);
 
-  if (!tls_tx_push(ssl, &cert, sizeof(cert)))
-    return 0;
+  if (!tls_tx_push(ssl, &cert, sizeof(cert))) return 0;
 
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&cert), sizeof(cert));
+  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *) &cert), sizeof(cert));
 
   for (i = 0; i < ssl->ctx->pem_cert->num_obj; i++) {
     DER *d = &ssl->ctx->pem_cert->obj[i];
@@ -68,11 +65,10 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
     chdr.cert_len_hi = 0;
     chdr.cert_len = htobe16(d->der_len);
 
-    if (!tls_tx_push(ssl, &chdr, sizeof(chdr)))
-      return 0;
-    if (!tls_tx_push(ssl, d->der, d->der_len))
-      return 0;
-    SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&chdr), sizeof(chdr));
+    if (!tls_tx_push(ssl, &chdr, sizeof(chdr))) return 0;
+    if (!tls_tx_push(ssl, d->der, d->der_len)) return 0;
+    SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *) &chdr),
+                  sizeof(chdr));
     SHA256_Update(&ssl->nxt->handshakes_hash, d->der, d->der_len);
   }
 
@@ -80,9 +76,8 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   done.type = HANDSHAKE_SERVER_HELLO_DONE;
   done.len_hi = 0;
   done.len = 0;
-  if (!tls_send(ssl, TLS_HANDSHAKE, &done, sizeof(done)))
-    return 0;
-  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *)&done), sizeof(done));
+  if (!tls_send(ssl, TLS_HANDSHAKE, &done, sizeof(done))) return 0;
+  SHA256_Update(&ssl->nxt->handshakes_hash, ((uint8_t *) &done), sizeof(done));
 
   /* store the random we generated */
   memcpy(&ssl->nxt->sv_rnd, &hello.random, sizeof(ssl->nxt->sv_rnd));
@@ -96,8 +91,7 @@ NS_INTERNAL int tls_sv_finish(SSL *ssl) {
 
   /* change cipher spec */
   cipher.one = 1;
-  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher)))
-    return 0;
+  if (!tls_send(ssl, TLS_CHANGE_CIPHER_SPEC, &cipher, sizeof(cipher))) return 0;
 
   ssl->tx_enc = 1;
 

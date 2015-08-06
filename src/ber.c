@@ -94,9 +94,13 @@ NS_INTERNAL unsigned int ber_id_octet_constructed(uint8_t id) {
   return (id & 0x20) >> 5;
 }
 
-static uint8_t ber_len_form_short(uint8_t lb) { return !(lb & 0x80); }
+static uint8_t ber_len_form_short(uint8_t lb) {
+  return !(lb & 0x80);
+}
 
-static uint8_t ber_len_short(uint8_t lb) { return lb & ~0x80; }
+static uint8_t ber_len_short(uint8_t lb) {
+  return lb & ~0x80;
+}
 
 static const uint8_t *do_decode_tag(struct gber_tag *tag, const uint8_t *ptr,
                                     size_t len) {

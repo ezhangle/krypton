@@ -21,8 +21,7 @@ NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
       hmac_sha256(A1, A1_len, sec, sec_len, out);
       out += SHA256_SIZE;
       olen -= SHA256_SIZE;
-      if (olen)
-        hmac_sha256(A1, SHA256_SIZE, sec, sec_len, A1);
+      if (olen) hmac_sha256(A1, SHA256_SIZE, sec, sec_len, A1);
     } else {
       uint8_t tmp[SHA256_SIZE];
       hmac_sha256(A1, A1_len, sec, sec_len, tmp);
