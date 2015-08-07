@@ -22,7 +22,13 @@ endif
 all: tests format
 
 krypton.c: $(HEADERS) $(SOURCES) Makefile
-	cat openssl/ssl.h $(HEADERS) $(SOURCES) | sed -E "/#include .*(ssl.h|`echo $(HEADERS) | sed -e 's,src/,,g' -e 's, ,|,g'`)/d" > $@
+	@echo "AMALGAMATING\tkrypton.c"
+	@cp krypton.h $@; \
+	 for f in $(HEADERS) $(SOURCES); do \
+		 echo >> $@; \
+	   echo "/* === `basename $$f` === */" >> $@; \
+		 sed -E "/#include .*(ssl.h|`echo $(HEADERS) | sed -e 's,src/,,g' -e 's, ,|,g'`)/d" $$f >> $@; \
+	 done
 
 tests: openssl-tests krypton-tests
 
@@ -43,8 +49,13 @@ sv-test-krypton: test/sv-test.c krypton.c
 cl-test-krypton: test/cl-test.c krypton.c
 	$(CC) $(CFLAGS) -o cl-test-krypton test/cl-test.c krypton.c
 
-vc6: krypton.c
-	wine cl -c $(SOURCES) -Isrc -DNOT_AMALGAMATED
+win-test: krypton.c
+ifndef VC6_DIR
+	$(error Please set VC6_DIR)
+endif
+	Include=$(VC6_DIR)/include Lib=$(VC6_DIR)/lib \
+	wine $(VC6_DIR)/bin/cl \
+		krypton.c test/win-test.c
 
 format:
 	@find . -name "*.[ch]" | xargs $(CLANG_FORMAT) -i

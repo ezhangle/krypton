@@ -71,9 +71,9 @@ void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
  * Perform HMAC-MD5
  * NOTE: does not handle keys larger than the block size.
  */
-void hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
-              size_t msg_len, const uint8_t *msg2, size_t msg2_len,
-              uint8_t *digest) {
+void kr_hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
+                 size_t msg_len, const uint8_t *msg2, size_t msg2_len,
+                 uint8_t *digest) {
   MD5_CTX context;
   uint8_t k_ipad[64];
   uint8_t k_opad[64];

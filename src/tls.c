@@ -178,11 +178,11 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
     phdr.vers = hdr.vers;
     phdr.len = htobe16(len);
     if (ssl->is_server) {
-      hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-               sizeof(phdr), buf, len, digest);
+      kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
+                  sizeof(phdr), buf, len, digest);
     } else {
-      hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr), buf,
-               len, digest);
+      kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
+                  buf, len, digest);
     }
 
     if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;

@@ -47,9 +47,9 @@ typedef long ssize_t;
 #endif
 #define SOCKET_ERRNO WSAGetLastError()
 #pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
-#else
-#include <sys/socket.h>
+#else                               /* _MSC_VER */
 #include <stdint.h>
+#include <unistd.h>
 #define __packed __attribute__((packed))
 #define SOCKET_ERRNO errno
 #endif
@@ -58,7 +58,7 @@ typedef long ssize_t;
 #define LITTLE_ENDIAN 0x41424344UL
 #define BIG_ENDIAN 0x44434241UL
 #define PDP_ENDIAN 0x42414443UL
-#define BYTE_ORDER ('ABCD')
+#define BYTE_ORDER LITTLE_ENDIAN
 #endif
 
 #ifndef htobe16
@@ -95,6 +95,24 @@ typedef long ssize_t;
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
+
+#if defined(_POSIX_VERSION)
+#include <sys/socket.h>
+#define kr_send send
+#define kr_recv recv
+#elif defined(WIN32)
+#define kr_send send
+#define kr_recv recv
+#else /* External implementtaion must be provided */
+extern ssize_t kr_send(int fd, const void *buf, size_t len, int flags);
+extern ssize_t kr_recv(int fd, void *buf, size_t len, int flags);
+#endif
+
+#if defined(_POSIX_VERSION) || defined(WIN32)
+NS_INTERNAL int kr_get_random(uint8_t *out, size_t len);
+#else /* Expect external implementation */
+extern int kr_get_random(uint8_t *out, size_t len);
+#endif
 
 struct ro_vec {
   const uint8_t *ptr;
@@ -147,7 +165,7 @@ struct ssl_st {
   struct tls_security *nxt;
 
 /* rcv buffer: can be 16bit lens? */
-#define RX_INITIAL_BUF 1024
+#define RX_INITIAL_BUF 256
   uint8_t *rx_buf;
   uint32_t rx_len;
   uint32_t rx_max_len;
@@ -161,6 +179,7 @@ struct ssl_st {
 
   /* for handling appdata recvs */
   unsigned int copied;
+  struct vec extra_appdata;
 
   uint8_t state;
 

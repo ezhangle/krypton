@@ -25,7 +25,9 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hello.len = htobe16(sizeof(hello) - 4);
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
-  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) return 0;
+  if (!kr_get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
+    return 0;
+  }
   hello.sess_id_len = 0;
   hello.cipher_suite = htobe16(ssl->nxt->cipher_suite);
   hello.compressor = ssl->nxt->compressor;

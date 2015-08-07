@@ -53,6 +53,23 @@ static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
   ssl->nxt->compressor_negotiated = 1;
 }
 
+static uint32_t kr_load_be32(const uint8_t *buf) {
+  int i;
+  uint32_t r = 0;
+  for (i = 0; i < 4; i++) {
+    r <<= 8;
+    r |= *buf++;
+  }
+  return r;
+}
+
+static uint32_t kr_load_be16(const uint8_t *buf) {
+  uint32_t r = *buf++;
+  r <<= 8;
+  r |= *buf;
+  return r;
+}
+
 static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
                         const uint8_t *end) {
   unsigned num_ciphers, num_compressions;
@@ -72,9 +89,9 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
   if (buf + 6 > end) goto err;
 
-  len = be32toh(*(uint32_t *) buf) & 0xffffff;
+  len = kr_load_be32(buf) & 0xffffff;
   buf += 4;
-  proto = be16toh(*(uint16_t *) buf);
+  proto = kr_load_be16(buf);
 
   if (buf + len < end) {
     end = buf + len;
@@ -106,7 +123,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     uint16_t cipher_suites_len;
 
     if (buf + sizeof(cipher_suites_len) > end) goto err;
-    cipher_suites_len = be16toh(*(uint16_t *) buf);
+    cipher_suites_len = kr_load_be16(buf);
     buf += 2;
 
     if (buf + cipher_suites_len > end) goto err;
@@ -135,7 +152,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   if (buf + 2 > end) goto err;
-  ext_len = htobe16(*(uint16_t *) buf);
+  ext_len = kr_load_be16(buf);
   buf += 2;
   if (buf + ext_len < end) end = buf + ext_len;
 
@@ -144,9 +161,9 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     uint16_t ext_type;
     uint16_t ext_len;
 
-    ext_type = be16toh(*(uint16_t *) buf);
+    ext_type = kr_load_be16(buf);
     buf += 2;
-    ext_len = be16toh(*(uint16_t *) buf);
+    ext_len = kr_load_be16(buf);
     buf += 2;
 
     if (buf + ext_len > end) goto err;
@@ -349,12 +366,12 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
 
   if (buf + sizeof(len) > end) goto err;
 
-  len = be32toh(*(uint32_t *) buf) & 0xffffff;
+  len = kr_load_be32(buf) & 0xffffff;
   buf += sizeof(len);
 
   if (buf + len > end) goto err;
 
-  ilen = be16toh(*(uint16_t *) buf);
+  ilen = kr_load_be16(buf);
   buf += 2;
   if (buf + ilen > end) goto err;
 
@@ -370,7 +387,7 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
 
   if (ret != 48 || ((out[0] << 8) | out[1]) != ssl->nxt->peer_vers) {
     /* prevents timing attacks by failing later */
-    get_random(out, sizeof(struct tls_premaster_secret));
+    kr_get_random(out, sizeof(struct tls_premaster_secret));
     dprintf(("Bad pre-master secret\n"));
   }
 
@@ -393,7 +410,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   (void) hdr;
   if (buf + sizeof(len) > end) goto err;
 
-  len = be32toh(*(uint32_t *) buf) & 0xffffff;
+  len = kr_load_be32(buf) & 0xffffff;
   buf += sizeof(len);
 
   if (buf + len > end) goto err;
@@ -551,7 +568,7 @@ static int handle_appdata(SSL *ssl, struct vec *vec, uint8_t *out, size_t len) {
   size_t rlen;
 
   if (NULL == out) {
-    printf("%zu bytes of appdata ignored\n", vec->len);
+    printf("%d bytes of appdata ignored\n", (int) vec->len);
     return 1;
   }
 
@@ -566,8 +583,11 @@ static int handle_appdata(SSL *ssl, struct vec *vec, uint8_t *out, size_t len) {
   memcpy(rptr, vec->ptr, rlen);
   ssl->copied += rlen;
 
+  ssl->extra_appdata.ptr = vec->ptr + rlen;
+  ssl->extra_appdata.len = vec->len - rlen;
   if (rlen < vec->len) {
-    printf("%zu trailing bytes of appdata ignored\n", vec->len - rlen);
+    dprintf(
+        ("%d trailing bytes of appdata extra\n", (int) ssl->extra_appdata.len));
   }
 
   ssl->got_appdata = 1;
@@ -663,11 +683,11 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
    */
 
   if (ssl->is_server) {
-    hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
-             out->ptr, out->len, digest);
+    kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
+                out->ptr, out->len, digest);
   } else {
-    hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-             sizeof(phdr), out->ptr, out->len, digest);
+    kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
+                sizeof(phdr), out->ptr, out->len, digest);
   }
 
   if (memcmp(digest, mac, MD5_SIZE)) {
@@ -763,14 +783,17 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   ret = 1;
 
 out:
-  if (buf == ssl->rx_buf) return ret;
+  if (buf == ssl->rx_buf || ssl->extra_appdata.len > 0) return ret;
 
   if (buf < end) {
-    dprintf(("shuffle buffer down: %zu left\n", end - buf));
+    dprintf(("shuffle buffer down: %d left\n", (int) (end - buf)));
     memmove(ssl->rx_buf, buf, end - buf);
     ssl->rx_len = end - buf;
   } else {
-    ssl->rx_len = 0;
+    /* Keep idle memory consumption low. */
+    free(ssl->rx_buf);
+    ssl->rx_buf = NULL;
+    ssl->rx_max_len = ssl->rx_len = 0;
   }
 
   return ret;

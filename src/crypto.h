@@ -6,7 +6,6 @@
 #ifndef _CRYPTO_H
 #define _CRYPTO_H
 
-NS_INTERNAL int get_random(uint8_t *out, size_t len);
 NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
 
 /* axTLS crypto functions, see C files for copyright info */
@@ -68,10 +67,10 @@ NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
 /* HMAC */
 NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
                              int key_len, uint8_t *digest);
-NS_INTERNAL void hmac_md5(const uint8_t *key, size_t key_len,
-                          const uint8_t *msg, size_t msg_len,
-                          const uint8_t *msg2, size_t msg2_len,
-                          uint8_t *digest);
+NS_INTERNAL void kr_hmac_md5(const uint8_t *key, size_t key_len,
+                             const uint8_t *msg, size_t msg_len,
+                             const uint8_t *msg2, size_t msg2_len,
+                             uint8_t *digest);
 
 /* RSA */
 NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,

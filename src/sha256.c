@@ -404,10 +404,14 @@ NS_INTERNAL void SHA256_Transform(SHA256_CTX* context,
 
 #else /* SHA2_UNROLL_TRANSFORM */
 
-void SHA256_Transform(SHA256_CTX* context, const sha2_word32* data) {
+void SHA256_Transform(SHA256_CTX* context, const sha2_word32* data_in) {
+  sha2_word32 data_c[SHA256_BLOCK_LENGTH / sizeof(sha2_word32)];
   sha2_word32 a, b, c, d, e, f, g, h, s0, s1;
   sha2_word32 T1, T2, *W256;
+  sha2_word32* data = data_c;
   int j;
+
+  MEMCPY_BCOPY(data_c, data_in, sizeof(data_c));
 
   W256 = (sha2_word32*) context->buffer;
 
@@ -586,8 +590,8 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
       int j;
       for (j = 0; j < 8; j++) {
         REVERSE32(context->state[j], context->state[j]);
-        *d++ = context->state[j];
       }
+      MEMCPY_BCOPY(d, context->state, SHA256_SIZE);
     }
 #else
     MEMCPY_BCOPY(d, context->state, SHA256_SIZE);

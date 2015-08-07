@@ -64,10 +64,12 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type);
 void SSL_CTX_free(SSL_CTX *);
 
 #endif /* _KRYPTON_H */
-       /*
-        * Copyright (c) 2015 Cesanta Software Limited
-        * All rights reserved
-        */
+
+/* === ktypes.h === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
 
 #ifndef _KTYPES_H
 #define _KTYPES_H
@@ -113,9 +115,9 @@ typedef long ssize_t;
 #endif
 #define SOCKET_ERRNO WSAGetLastError()
 #pragma comment(lib, "ws2_32.lib")  // Linking with winsock library
-#else
-#include <sys/socket.h>
+#else                               /* _MSC_VER */
 #include <stdint.h>
+#include <unistd.h>
 #define __packed __attribute__((packed))
 #define SOCKET_ERRNO errno
 #endif
@@ -124,7 +126,7 @@ typedef long ssize_t;
 #define LITTLE_ENDIAN 0x41424344UL
 #define BIG_ENDIAN 0x44434241UL
 #define PDP_ENDIAN 0x42414443UL
-#define BYTE_ORDER ('ABCD')
+#define BYTE_ORDER LITTLE_ENDIAN
 #endif
 
 #ifndef htobe16
@@ -161,6 +163,24 @@ typedef long ssize_t;
 #endif
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
+
+#if defined(_POSIX_VERSION)
+#include <sys/socket.h>
+#define kr_send send
+#define kr_recv recv
+#elif defined(WIN32)
+#define kr_send send
+#define kr_recv recv
+#else /* External implementtaion must be provided */
+extern ssize_t kr_send(int fd, const void *buf, size_t len, int flags);
+extern ssize_t kr_recv(int fd, void *buf, size_t len, int flags);
+#endif
+
+#if defined(_POSIX_VERSION) || defined(WIN32)
+NS_INTERNAL int kr_get_random(uint8_t *out, size_t len);
+#else /* Expect external implementation */
+extern int kr_get_random(uint8_t *out, size_t len);
+#endif
 
 struct ro_vec {
   const uint8_t *ptr;
@@ -213,7 +233,7 @@ struct ssl_st {
   struct tls_security *nxt;
 
 /* rcv buffer: can be 16bit lens? */
-#define RX_INITIAL_BUF 1024
+#define RX_INITIAL_BUF 256
   uint8_t *rx_buf;
   uint32_t rx_len;
   uint32_t rx_max_len;
@@ -227,6 +247,7 @@ struct ssl_st {
 
   /* for handling appdata recvs */
   unsigned int copied;
+  struct vec extra_appdata;
 
   uint8_t state;
 
@@ -252,15 +273,16 @@ NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 typedef struct _bigint bigint; /**< An alias for _bigint */
 
 #endif /* _KTYPES_H */
-       /*
-        * Copyright (c) 2015 Cesanta Software Limited
-        * All rights reserved
-        */
+
+/* === crypto.h === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
 
 #ifndef _CRYPTO_H
 #define _CRYPTO_H
 
-NS_INTERNAL int get_random(uint8_t *out, size_t len);
 NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
 
 /* axTLS crypto functions, see C files for copyright info */
@@ -322,10 +344,10 @@ NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
 /* HMAC */
 NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
                              int key_len, uint8_t *digest);
-NS_INTERNAL void hmac_md5(const uint8_t *key, size_t key_len,
-                          const uint8_t *msg, size_t msg_len,
-                          const uint8_t *msg2, size_t msg2_len,
-                          uint8_t *digest);
+NS_INTERNAL void kr_hmac_md5(const uint8_t *key, size_t key_len,
+                             const uint8_t *msg, size_t msg_len,
+                             const uint8_t *msg2, size_t msg2_len,
+                             uint8_t *digest);
 
 /* RSA */
 NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
@@ -366,35 +388,37 @@ NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #define SQU_KARATSUBA_THRESH 40
 
 #endif /* _CRYPTO_H */
-       /*
-        * Copyright (c) 2007, Cameron Rich
-        *
-        * All rights reserved.
-        *
-        * Redistribution and use in source and binary forms, with or without
-        * modification, are permitted provided that the following conditions are met:
-        *
-        * * Redistributions of source code must retain the above copyright notice,
-        *   this list of conditions and the following disclaimer.
-        * * Redistributions in binary form must reproduce the above copyright notice,
-        *   this list of conditions and the following disclaimer in the documentation
-        *   and/or other materials provided with the distribution.
-        * * Neither the name of the axTLS project nor the names of its contributors
-        *   may be used to endorse or promote products derived from this software
-        *   without specific prior written permission.
-        *
-        * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-        * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-        * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-        * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-        * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-        * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-        * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-        * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-        * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-        * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-        * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-        */
+
+/* === bigint_impl.h === */
+/*
+ * Copyright (c) 2007, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #ifndef BIGINT_IMPL_HEADER
 #define BIGINT_IMPL_HEADER
@@ -495,6 +519,8 @@ typedef struct _BI_CTX BI_CTX;
 #define PERMANENT 0x7FFF55AA /**< A magic number for permanents. */
 
 #endif
+
+/* === bigint.h === */
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -592,6 +618,8 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
                            bigint *p, bigint *q, bigint *qInv);
 
 #endif
+
+/* === tlsproto.h === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -762,10 +790,12 @@ struct tls_alert {
 #define COMPRESSOR_NULL 0x00
 
 #endif /* _TLSPROTO_H */
-       /*
-        * Copyright (c) 2015 Cesanta Software Limited
-        * All rights reserved
-        */
+
+/* === tls.h === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
 
 #ifndef _TLS_H
 #define _TLS_H
@@ -835,10 +865,12 @@ NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
                                            struct tls_premaster_secret *pre);
 
 #endif /* _TLS_H */
-       /*
-        * Copyright (c) 2010 Gianni Tedesco <gianni@scaramanga.co.uk>
-        * Released under the MIT license.
-        */
+
+/* === ber.h === */
+/*
+ * Copyright (c) 2010 Gianni Tedesco <gianni@scaramanga.co.uk>
+ * Released under the MIT license.
+ */
 
 #ifndef _GBER_H
 #define _GBER_H
@@ -873,10 +905,12 @@ NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len);
 #endif
 
 #endif /* _GBER_H */
-       /*
-        * Copyright (c) 2015 Cesanta Software Limited
-        * All rights reserved
-        */
+
+/* === pem.h === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
 
 #ifndef _PEM_H
 #define _PEM_H
@@ -904,10 +938,12 @@ NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len, uint8_t *out,
                            size_t *obytes);
 
 #endif /* _PEM_H */
-       /*
-        * Copyright (c) 2015 Cesanta Software Limited
-        * All rights reserved
-        */
+
+/* === x509.h === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
 
 #ifndef _X509_H
 #define _X509_H
@@ -947,10 +983,12 @@ NS_INTERNAL void X509_free(X509 *cert);
 NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
 
 #endif /* _X509_H */
-       /*
-        * Copyright (c) 2015 Cesanta Software Limited
-        * All rights reserved
-        */
+
+/* === b64.c === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
 
 static int decode(uint8_t in, uint8_t *out) {
   if (in >= 'A' && in <= 'Z') {
@@ -1080,6 +1118,8 @@ int main(int argc, char **argv) {
   return 0;
 }
 #endif
+
+/* === ber.c === */
 /*
  * Copyright (c) 2010 Gianni Tedesco <gianni@scaramanga.co.uk>
  * Released under the MIT license.
@@ -1243,6 +1283,8 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
   if (NULL == ptr || ptr + tag->ber_len > end) return NULL;
   return ptr;
 }
+
+/* === bigint.c === */
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -2615,6 +2657,8 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
   return bi_add(ctx, m2, bi_multiply(ctx, q, h));
 }
 /** @} */
+
+/* === ctx.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -2824,6 +2868,8 @@ void SSL_CTX_free(SSL_CTX *ctx) {
     free(ctx);
   }
 }
+
+/* === hexdump.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -2870,6 +2916,8 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
   hex_dumpf(stdout, ptr, len, llen);
 }
 #endif
+
+/* === hmac.c === */
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -2941,9 +2989,9 @@ void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
  * Perform HMAC-MD5
  * NOTE: does not handle keys larger than the block size.
  */
-void hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
-              size_t msg_len, const uint8_t *msg2, size_t msg2_len,
-              uint8_t *digest) {
+void kr_hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
+                 size_t msg_len, const uint8_t *msg2, size_t msg2_len,
+                 uint8_t *digest) {
   MD5_CTX context;
   uint8_t k_ipad[64];
   uint8_t k_opad[64];
@@ -2969,6 +3017,8 @@ void hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
   MD5_Update(&context, digest, MD5_SIZE);
   MD5_Final(digest, &context);
 }
+
+/* === md5.c === */
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -3251,6 +3301,8 @@ static void Decode(uint32_t *output, const uint8_t *input, uint32_t len) {
                 (((uint32_t) input[j + 2]) << 16) |
                 (((uint32_t) input[j + 3]) << 24);
 }
+
+/* === meth.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -3278,6 +3330,8 @@ const SSL_METHOD *SSLv23_server_method(void) {
 const SSL_METHOD *SSLv23_client_method(void) {
   return &cl_meth;
 }
+
+/* === pem.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -3461,6 +3515,8 @@ void pem_free(PEM *p) {
     free(p);
   }
 }
+
+/* === prf.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -3491,13 +3547,16 @@ NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
     }
   }
 }
+
+/* === random.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+#ifdef _POSIX_VERSION
 #define RANDOM_SOURCE "/dev/urandom"
-int get_random(uint8_t *out, size_t len) {
+int kr_get_random(uint8_t *out, size_t len) {
   static FILE *fp = NULL;
   size_t ret = 0;
 
@@ -3512,20 +3571,37 @@ int get_random(uint8_t *out, size_t len) {
 
   return ret == len;
 }
+#elif defined(WIN32)
+int kr_get_random(uint8_t *out, size_t len) {
+  static int srand_called = 0;
+  if (!srand_called) {
+    /* Mix in our pointer. In case user did not invoke srand(), this is better
+     * than nothing. If he did, this will not totally screw it up. */
+    srand(rand() ^ ((int) (out + len)));
+    srand_called = 1;
+  }
+  while (len-- > 0) {
+    *(out++) = (uint8_t) rand();
+  }
+  return 1;
+}
+#endif
 
 int get_random_nonzero(uint8_t *out, size_t len) {
   size_t i;
 
-  if (!get_random(out, len)) return 0;
+  if (!kr_get_random(out, len)) return 0;
 
   for (i = 0; i < len; i++) {
     while (out[i] == 0) {
-      if (!get_random(out + i, 1)) return 0;
+      if (!kr_get_random(out + i, 1)) return 0;
     }
   }
 
   return 1;
 }
+
+/* === rc4.c === */
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -3609,6 +3685,8 @@ void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
   ctx->x = x;
   ctx->y = y;
 }
+
+/* === rsa.c === */
 /*
  * Copyright (c) 2007-2014, Cameron Rich
  *
@@ -3868,6 +3946,8 @@ int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
   bi_clear_cache(ctx->bi_ctx);
   return byte_size;
 }
+
+/* === sha1.c === */
 /*
  * SHA1 routine optimized to do word accesses rather than byte accesses,
  * and to avoid unnecessary copies into the context array.
@@ -4159,6 +4239,8 @@ void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx) {
   /* Output hash */
   for (i = 0; i < 5; i++) put_be32(hashout + i * 4, ctx->H[i]);
 }
+
+/* === sha256.c === */
 /*
  * FILE:	sha2.c
  * AUTHOR:	Aaron D. Gifford - http://www.aarongifford.com/
@@ -4563,10 +4645,14 @@ NS_INTERNAL void SHA256_Transform(SHA256_CTX *context,
 
 #else /* SHA2_UNROLL_TRANSFORM */
 
-void SHA256_Transform(SHA256_CTX *context, const sha2_word32 *data) {
+void SHA256_Transform(SHA256_CTX *context, const sha2_word32 *data_in) {
+  sha2_word32 data_c[SHA256_BLOCK_LENGTH / sizeof(sha2_word32)];
   sha2_word32 a, b, c, d, e, f, g, h, s0, s1;
   sha2_word32 T1, T2, *W256;
+  sha2_word32 *data = data_c;
   int j;
+
+  MEMCPY_BCOPY(data_c, data_in, sizeof(data_c));
 
   W256 = (sha2_word32 *) context->buffer;
 
@@ -4745,8 +4831,8 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX *context) {
       int j;
       for (j = 0; j < 8; j++) {
         REVERSE32(context->state[j], context->state[j]);
-        *d++ = context->state[j];
       }
+      MEMCPY_BCOPY(d, context->state, SHA256_SIZE);
     }
 #else
     MEMCPY_BCOPY(d, context->state, SHA256_SIZE);
@@ -4757,6 +4843,8 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX *context) {
   MEMSET_BZERO(context, sizeof(SHA256_CTX));
   usedspace = 0;
 }
+
+/* === ssl.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -4818,9 +4906,9 @@ static int do_send(SSL *ssl) {
 again:
 
 #if KRYPTON_DEBUG_NONBLOCKING
-  ret = send(ssl->fd, buf, 1, MSG_NOSIGNAL);
+  ret = kr_send(ssl->fd, buf, 1, MSG_NOSIGNAL);
 #else
-  ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+  ret = kr_send(ssl->fd, buf, len, MSG_NOSIGNAL);
 #endif
   if (ret < 0) {
     if (SOCKET_ERRNO == EWOULDBLOCK) {
@@ -4860,6 +4948,11 @@ shuffle:
   ssl->tx_len = len;
   memmove(ssl->tx_buf, buf, ssl->tx_len);
   ssl_err(ssl, SSL_ERROR_WANT_WRITE);
+  if (ssl->tx_len == 0) {
+    /* Keep idle memory consumption low. */
+    free(ssl->tx_buf);
+    ssl->tx_max_len = 0;
+  }
   return 0;
 }
 
@@ -4901,7 +4994,7 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   len = ssl->rx_max_len - ssl->rx_len;
 #endif
 
-  ret = recv(ssl->fd, ptr, len, MSG_NOSIGNAL);
+  ret = kr_recv(ssl->fd, ptr, len, MSG_NOSIGNAL);
   /*dprintf(("recv(%d, %p, %d): %d %d\n", ssl->fd, ptr, (int) len, (int) ret,
    * errno));*/
   if (ret < 0) {
@@ -5100,6 +5193,15 @@ int SSL_read(SSL *ssl, void *buf, int num) {
     return 0;
   }
 
+  if (ssl->extra_appdata.len > 0) {
+    int rlen = min(num, (int) ssl->extra_appdata.len);
+    dprintf(("yielding %d extra bytes\n", rlen));
+    memcpy(buf, ssl->extra_appdata.ptr, rlen);
+    ssl->extra_appdata.len -= rlen;
+    ssl->extra_appdata.ptr += rlen;
+    return rlen;
+  }
+
   for (ssl->copied = ssl->got_appdata = 0; !ssl->got_appdata;) {
     if (ssl->state != STATE_ESTABLISHED) {
       int ret;
@@ -5147,7 +5249,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
    * message, there's no way we can take it back if he cnages
    * his mind after a WANT_READ or a WANT_WRITE.
   */
-  if (!ssl->write_pending) {
+  if (num > 0 && !ssl->write_pending) {
     if ((res = tls_write(ssl, buf, num)) <= 0) {
       return -1;
     }
@@ -5225,6 +5327,8 @@ void ssl_err(SSL *ssl, int err) {
   }
   ssl->err = err;
 }
+
+/* === tls.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -5403,11 +5507,11 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
     phdr.vers = hdr.vers;
     phdr.len = htobe16(len);
     if (ssl->is_server) {
-      hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-               sizeof(phdr), buf, len, digest);
+      kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
+                  sizeof(phdr), buf, len, digest);
     } else {
-      hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr), buf,
-               len, digest);
+      kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
+                  buf, len, digest);
     }
 
     if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;
@@ -5458,6 +5562,8 @@ NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
 NS_INTERNAL int tls_close_notify(SSL *ssl) {
   return tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_CLOSE_NOTIFY);
 }
+
+/* === tls_cl.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -5474,7 +5580,7 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.len = htobe16(sizeof(hello) - 4);
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
-  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
+  if (!kr_get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
   }
@@ -5523,7 +5629,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   assert(buf_len < sizeof(buf)); /* Fix this */
 
   in.version = htobe16(0x0303);
-  if (!get_random(in.opaque, sizeof(in.opaque))) {
+  if (!kr_get_random(in.opaque, sizeof(in.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
   }
@@ -5570,6 +5676,8 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
 
   return 1;
 }
+
+/* === tls_recv.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -5623,6 +5731,23 @@ static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
   ssl->nxt->compressor_negotiated = 1;
 }
 
+static uint32_t kr_load_be32(const uint8_t *buf) {
+  int i;
+  uint32_t r = 0;
+  for (i = 0; i < 4; i++) {
+    r <<= 8;
+    r |= *buf++;
+  }
+  return r;
+}
+
+static uint32_t kr_load_be16(const uint8_t *buf) {
+  uint32_t r = *buf++;
+  r <<= 8;
+  r |= *buf;
+  return r;
+}
+
 static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
                         const uint8_t *end) {
   unsigned num_ciphers, num_compressions;
@@ -5642,9 +5767,9 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
   if (buf + 6 > end) goto err;
 
-  len = be32toh(*(uint32_t *) buf) & 0xffffff;
+  len = kr_load_be32(buf) & 0xffffff;
   buf += 4;
-  proto = be16toh(*(uint16_t *) buf);
+  proto = kr_load_be16(buf);
 
   if (buf + len < end) {
     end = buf + len;
@@ -5676,7 +5801,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     uint16_t cipher_suites_len;
 
     if (buf + sizeof(cipher_suites_len) > end) goto err;
-    cipher_suites_len = be16toh(*(uint16_t *) buf);
+    cipher_suites_len = kr_load_be16(buf);
     buf += 2;
 
     if (buf + cipher_suites_len > end) goto err;
@@ -5705,7 +5830,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
   }
 
   if (buf + 2 > end) goto err;
-  ext_len = htobe16(*(uint16_t *) buf);
+  ext_len = kr_load_be16(buf);
   buf += 2;
   if (buf + ext_len < end) end = buf + ext_len;
 
@@ -5714,9 +5839,9 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     uint16_t ext_type;
     uint16_t ext_len;
 
-    ext_type = be16toh(*(uint16_t *) buf);
+    ext_type = kr_load_be16(buf);
     buf += 2;
-    ext_len = be16toh(*(uint16_t *) buf);
+    ext_len = kr_load_be16(buf);
     buf += 2;
 
     if (buf + ext_len > end) goto err;
@@ -5919,12 +6044,12 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
 
   if (buf + sizeof(len) > end) goto err;
 
-  len = be32toh(*(uint32_t *) buf) & 0xffffff;
+  len = kr_load_be32(buf) & 0xffffff;
   buf += sizeof(len);
 
   if (buf + len > end) goto err;
 
-  ilen = be16toh(*(uint16_t *) buf);
+  ilen = kr_load_be16(buf);
   buf += 2;
   if (buf + ilen > end) goto err;
 
@@ -5940,7 +6065,7 @@ static int handle_key_exch(SSL *ssl, const struct tls_hdr *hdr,
 
   if (ret != 48 || ((out[0] << 8) | out[1]) != ssl->nxt->peer_vers) {
     /* prevents timing attacks by failing later */
-    get_random(out, sizeof(struct tls_premaster_secret));
+    kr_get_random(out, sizeof(struct tls_premaster_secret));
     dprintf(("Bad pre-master secret\n"));
   }
 
@@ -5963,7 +6088,7 @@ static int handle_finished(SSL *ssl, const struct tls_hdr *hdr,
   (void) hdr;
   if (buf + sizeof(len) > end) goto err;
 
-  len = be32toh(*(uint32_t *) buf) & 0xffffff;
+  len = kr_load_be32(buf) & 0xffffff;
   buf += sizeof(len);
 
   if (buf + len > end) goto err;
@@ -6121,7 +6246,7 @@ static int handle_appdata(SSL *ssl, struct vec *vec, uint8_t *out, size_t len) {
   size_t rlen;
 
   if (NULL == out) {
-    printf("%zu bytes of appdata ignored\n", vec->len);
+    printf("%d bytes of appdata ignored\n", (int) vec->len);
     return 1;
   }
 
@@ -6136,8 +6261,11 @@ static int handle_appdata(SSL *ssl, struct vec *vec, uint8_t *out, size_t len) {
   memcpy(rptr, vec->ptr, rlen);
   ssl->copied += rlen;
 
+  ssl->extra_appdata.ptr = vec->ptr + rlen;
+  ssl->extra_appdata.len = vec->len - rlen;
   if (rlen < vec->len) {
-    printf("%zu trailing bytes of appdata ignored\n", vec->len - rlen);
+    dprintf(
+        ("%d trailing bytes of appdata extra\n", (int) ssl->extra_appdata.len));
   }
 
   ssl->got_appdata = 1;
@@ -6233,11 +6361,11 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
    */
 
   if (ssl->is_server) {
-    hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
-             out->ptr, out->len, digest);
+    kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
+                out->ptr, out->len, digest);
   } else {
-    hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-             sizeof(phdr), out->ptr, out->len, digest);
+    kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
+                sizeof(phdr), out->ptr, out->len, digest);
   }
 
   if (memcmp(digest, mac, MD5_SIZE)) {
@@ -6333,18 +6461,23 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   ret = 1;
 
 out:
-  if (buf == ssl->rx_buf) return ret;
+  if (buf == ssl->rx_buf || ssl->extra_appdata.len > 0) return ret;
 
   if (buf < end) {
-    dprintf(("shuffle buffer down: %zu left\n", end - buf));
+    dprintf(("shuffle buffer down: %d left\n", (int) (end - buf)));
     memmove(ssl->rx_buf, buf, end - buf);
     ssl->rx_len = end - buf;
   } else {
-    ssl->rx_len = 0;
+    /* Keep idle memory consumption low. */
+    free(ssl->rx_buf);
+    ssl->rx_buf = NULL;
+    ssl->rx_max_len = ssl->rx_len = 0;
   }
 
   return ret;
 }
+
+/* === tls_sv.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -6366,7 +6499,9 @@ NS_INTERNAL int tls_sv_hello(SSL *ssl) {
   hello.len = htobe16(sizeof(hello) - 4);
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
-  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) return 0;
+  if (!kr_get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
+    return 0;
+  }
   hello.sess_id_len = 0;
   hello.cipher_suite = htobe16(ssl->nxt->cipher_suite);
   hello.compressor = ssl->nxt->compressor;
@@ -6445,6 +6580,8 @@ NS_INTERNAL int tls_sv_finish(SSL *ssl) {
 
   return tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished));
 }
+
+/* === x509.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -6722,6 +6859,8 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   } u;
   X509 *cert;
 
+  dprintf(("cert %p %d\n", ptr, (int) len));
+
   cert = calloc(1, sizeof(*cert));
   if (NULL == cert) return NULL;
 
@@ -6800,6 +6939,8 @@ void X509_free(X509 *cert) {
     free(cert);
   }
 }
+
+/* === x509_verify.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved

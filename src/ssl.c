@@ -61,9 +61,9 @@ static int do_send(SSL *ssl) {
 again:
 
 #if KRYPTON_DEBUG_NONBLOCKING
-  ret = send(ssl->fd, buf, 1, MSG_NOSIGNAL);
+  ret = kr_send(ssl->fd, buf, 1, MSG_NOSIGNAL);
 #else
-  ret = send(ssl->fd, buf, len, MSG_NOSIGNAL);
+  ret = kr_send(ssl->fd, buf, len, MSG_NOSIGNAL);
 #endif
   if (ret < 0) {
     if (SOCKET_ERRNO == EWOULDBLOCK) {
@@ -103,6 +103,11 @@ shuffle:
   ssl->tx_len = len;
   memmove(ssl->tx_buf, buf, ssl->tx_len);
   ssl_err(ssl, SSL_ERROR_WANT_WRITE);
+  if (ssl->tx_len == 0) {
+    /* Keep idle memory consumption low. */
+    free(ssl->tx_buf);
+    ssl->tx_max_len = 0;
+  }
   return 0;
 }
 
@@ -144,7 +149,7 @@ static int do_recv(SSL *ssl, uint8_t *out, size_t out_len) {
   len = ssl->rx_max_len - ssl->rx_len;
 #endif
 
-  ret = recv(ssl->fd, ptr, len, MSG_NOSIGNAL);
+  ret = kr_recv(ssl->fd, ptr, len, MSG_NOSIGNAL);
   /*dprintf(("recv(%d, %p, %d): %d %d\n", ssl->fd, ptr, (int) len, (int) ret,
    * errno));*/
   if (ret < 0) {
@@ -343,6 +348,15 @@ int SSL_read(SSL *ssl, void *buf, int num) {
     return 0;
   }
 
+  if (ssl->extra_appdata.len > 0) {
+    int rlen = min(num, (int) ssl->extra_appdata.len);
+    dprintf(("yielding %d extra bytes\n", rlen));
+    memcpy(buf, ssl->extra_appdata.ptr, rlen);
+    ssl->extra_appdata.len -= rlen;
+    ssl->extra_appdata.ptr += rlen;
+    return rlen;
+  }
+
   for (ssl->copied = ssl->got_appdata = 0; !ssl->got_appdata;) {
     if (ssl->state != STATE_ESTABLISHED) {
       int ret;
@@ -390,7 +404,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
    * message, there's no way we can take it back if he cnages
    * his mind after a WANT_READ or a WANT_WRITE.
   */
-  if (!ssl->write_pending) {
+  if (num > 0 && !ssl->write_pending) {
     if ((res = tls_write(ssl, buf, num)) <= 0) {
       return -1;
     }

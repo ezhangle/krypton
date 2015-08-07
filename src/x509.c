@@ -281,6 +281,8 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   } u;
   X509 *cert;
 
+  dprintf(("cert %p %d\n", ptr, (int) len));
+
   cert = calloc(1, sizeof(*cert));
   if (NULL == cert) return NULL;
 

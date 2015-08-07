@@ -19,7 +19,7 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
   hello.len = htobe16(sizeof(hello) - 4);
   hello.version = htobe16(0x0303);
   hello.random.time = htobe32(time(NULL));
-  if (!get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
+  if (!kr_get_random(hello.random.opaque, sizeof(hello.random.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
   }
@@ -68,7 +68,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
   assert(buf_len < sizeof(buf)); /* Fix this */
 
   in.version = htobe16(0x0303);
-  if (!get_random(in.opaque, sizeof(in.opaque))) {
+  if (!kr_get_random(in.opaque, sizeof(in.opaque))) {
     ssl_err(ssl, SSL_ERROR_SYSCALL);
     return 0;
   }
