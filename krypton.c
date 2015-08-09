@@ -929,7 +929,8 @@ struct der_st {
 };
 
 #define PEM_SIG_CERT (1 << 0)
-#define PEM_SIG_KEY (1 << 1)
+#define PEM_SIG_KEY (1 << 1)     /* PKCS#8 */
+#define PEM_SIG_RSA_KEY (1 << 2) /* PKCS#1 */
 NS_INTERNAL struct pem_st *pem_load(const char *fn, int type_mask);
 NS_INTERNAL void pem_free(struct pem_st *p);
 
@@ -2822,15 +2823,42 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   PEM *pem;
 
   (void) type;
-  pem = pem_load(file, PEM_SIG_KEY);
+  pem = pem_load(file, PEM_SIG_KEY | PEM_SIG_RSA_KEY);
   if (NULL == pem) goto out;
 
-  ptr = ber_decode_tag(&tag, pem->obj[0].der, pem->obj[0].der_len);
-  if (NULL == ptr) goto decode_err;
+  ptr = pem->obj[0].der;
+  end = ptr + pem->obj[0].der_len;
 
-  if (!ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+  if (pem->obj[0].der_type == PEM_SIG_KEY) {
+    const uint8_t *ai;
+    static const char *const oidAlgoRSA =
+        "\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01"; /* 1.2.840.113549.1.1.1 */
 
-  end = ptr + tag.ber_len;
+    ptr = ber_decode_tag(&tag, ptr, end - ptr);
+    if (NULL == ptr || !ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+
+    /* Version */
+    if (!decode_int(&ptr, end, &vers)) goto decode_err;
+
+    /* Verify that PrivateKeyInfo.algorithm is RSA */
+    ai = ber_decode_tag(&tag, ptr, end - ptr);
+    if (NULL == ai || !ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+    ptr = ai + tag.ber_len;
+
+    ai = ber_decode_tag(&tag, ai, end - ai);
+    if (NULL == ai || tag.ber_tag != 6 /* OID */ || tag.ber_len != 9 ||
+        memcmp(ai, oidAlgoRSA, 9) != 0) {
+      goto decode_err;
+    }
+    ai += 9;
+
+    /* Ok, it's RSA. Unwrap the key and continue. */
+    ptr = ber_decode_tag(&tag, ptr, end - ptr);
+    if (NULL == ptr || tag.ber_tag != 4 /* octet string */) goto decode_err;
+  }
+
+  ptr = ber_decode_tag(&tag, ptr, end - ptr);
+  if (NULL == ptr || !ber_id_octet_constructed(tag.ber_id)) goto decode_err;
 
   /* eat the version */
   if (!decode_int(&ptr, end, &vers)) goto decode_err;
@@ -3346,6 +3374,9 @@ static int check_end_marker(const char *str, int sig_type) {
       if (!strcmp(str, "-----END CERTIFICATE-----")) return 1;
       break;
     case PEM_SIG_KEY:
+      if (!strcmp(str, "-----END PRIVATE KEY-----")) return 1;
+      break;
+    case PEM_SIG_RSA_KEY:
       if (!strcmp(str, "-----END RSA PRIVATE KEY-----")) return 1;
       break;
     default:
@@ -3359,8 +3390,12 @@ static int check_begin_marker(const char *str, uint8_t *got) {
     *got = PEM_SIG_CERT;
     return 1;
   }
-  if (!strcmp(str, "-----BEGIN RSA PRIVATE KEY-----")) {
+  if (!strcmp(str, "-----BEGIN PRIVATE KEY-----")) {
     *got = PEM_SIG_KEY;
+    return 1;
+  }
+  if (!strcmp(str, "-----BEGIN RSA PRIVATE KEY-----")) {
+    *got = PEM_SIG_RSA_KEY;
     return 1;
   }
   return 0;
@@ -7011,7 +7046,7 @@ again:
     return 0;
   }
 
-  switch (cur->hash_alg) {
+  switch (nxt->hash_alg) {
     case X509_HASH_MD5:
       expected_len = MD5_SIZE;
       break;
@@ -7026,17 +7061,18 @@ again:
       return 0;
   }
 #if DEBUG_VERIFY
-  dprintf(("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key)),
-          nxt->sig.len);
+  dprintf(("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key),
+           nxt->sig.len));
 #endif
 
   if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len)) return 0;
 #if DEBUG_VERIFY
-  dprintf(("%zu byte digest:\n", digest_len));
+  dprintf(("%zu byte digest (%d):\n", digest_len, nxt->hash_alg));
   hex_dump(digest, digest_len, 0);
 #endif
   if (digest_len != expected_len) {
-    dprintf(("Bad digest length\n"));
+    dprintf(("Bad digest length: %d vs %d\n", (int) digest_len,
+             (int) expected_len));
     return 0;
   }
 #if DEBUG_VERIFY

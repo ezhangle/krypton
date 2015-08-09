@@ -1,0 +1,56 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 0 (0x0)
+    Signature Algorithm: sha1WithRSAEncryption
+        Issuer: CN=test.cesanta.com, O=Cesanta, OU=testing
+        Validity
+            Not Before: Jun 11 15:20:37 2015 GMT
+            Not After : Mar 10 15:20:37 2025 GMT
+        Subject: CN=api.cesanta.com
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (1024 bit)
+                Modulus:
+                    00:d8:24:ac:b5:99:0b:f2:b2:8e:72:7c:33:a4:76:
+                    4d:c8:60:f1:09:df:b6:52:ee:c7:80:55:f4:b5:43:
+                    a5:27:a3:f0:67:ea:03:0d:6c:06:64:5b:2c:3e:c2:
+                    2d:4d:cf:10:ed:9e:64:e5:ef:8e:0f:a9:b3:b7:95:
+                    66:86:69:a4:ce:d1:4d:32:c6:1e:54:51:1f:12:09:
+                    f5:5e:58:31:bf:20:62:5a:51:48:3b:49:7d:86:61:
+                    1d:8c:b4:a9:ce:4e:b8:58:c0:8b:0b:0f:d0:12:41:
+                    ff:26:f6:e0:f5:6b:93:6d:00:8d:eb:6c:91:73:09:
+                    04:12:30:59:87:15:30:07:6f
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Key Usage: 
+                Key Encipherment, Key Agreement
+            X509v3 Extended Key Usage: 
+                TLS Web Server Authentication
+            X509v3 Subject Alternative Name: 
+                IP Address:127.0.0.1
+    Signature Algorithm: sha1WithRSAEncryption
+         36:08:36:44:c2:1f:c1:a1:4e:b0:a2:57:a5:61:8a:5c:41:b3:
+         85:eb:f7:b1:ea:29:a4:3a:77:da:3c:52:98:f1:1a:37:10:4b:
+         eb:1d:26:59:bb:13:f5:08:89:f5:1b:d4:22:69:58:f2:06:f1:
+         ed:9d:2e:65:73:c0:2d:72:ce:93:53:92:a2:85:0b:41:1a:7e:
+         52:91:dc:f9:a1:08:d1:47:f8:81:df:b5:c4:f8:f0:a7:d4:45:
+         c8:83:81:4b:a8:9a:41:92:6b:ad:ce:b3:cb:f3:c2:e0:f9:1e:
+         99:1d:32:3d:20:76:cd:69:a7:18:ae:ee:30:db:55:d5:09:27:
+         bc:ee
+-----BEGIN CERTIFICATE-----
+MIICDzCCAXigAwIBAgIBADANBgkqhkiG9w0BAQUFADA/MRkwFwYDVQQDDBB0ZXN0
+LmNlc2FudGEuY29tMRAwDgYDVQQKDAdDZXNhbnRhMRAwDgYDVQQLDAd0ZXN0aW5n
+MB4XDTE1MDYxMTE1MjAzN1oXDTI1MDMxMDE1MjAzN1owGjEYMBYGA1UEAxMPYXBp
+LmNlc2FudGEuY29tMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDYJKy1mQvy
+so5yfDOkdk3IYPEJ37ZS7seAVfS1Q6Uno/Bn6gMNbAZkWyw+wi1NzxDtnmTl744P
+qbO3lWaGaaTO0U0yxh5UUR8SCfVeWDG/IGJaUUg7SX2GYR2MtKnOTrhYwIsLD9AS
+Qf8m9uD1a5NtAI3rbJFzCQQSMFmHFTAHbwIDAQABo0AwPjAJBgNVHRMEAjAAMAsG
+A1UdDwQEAwIDKDATBgNVHSUEDDAKBggrBgEFBQcDATAPBgNVHREECDAGhwR/AAAB
+MA0GCSqGSIb3DQEBBQUAA4GBADYINkTCH8GhTrCiV6VhilxBs4Xr97HqKaQ6d9o8
+UpjxGjcQS+sdJlm7E/UIifUb1CJpWPIG8e2dLmVzwC1yzpNTkqKFC0EaflKR3Pmh
+CNFH+IHftcT48KfURciDgUuomkGSa63Os8vzwuD5HpkdMj0gds1ppxiu7jDbVdUJ
+J7zu
+-----END CERTIFICATE-----

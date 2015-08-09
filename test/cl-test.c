@@ -38,7 +38,7 @@ static SSL_CTX *setup_ctx(const char *cert_chain) {
   if (!SSL_CTX_load_verify_locations(ctx, cert_chain, NULL)) goto out_free;
 
 #ifdef SSL_F_CLIENT_CERTIFICATE
-  SSL_CTX_set_cipher_list(ctx, "RC4-MD5,NULL-MD5");
+/*  SSL_CTX_set_cipher_list(ctx, "RC4-MD5,NULL-MD5"); */
 /* SSL_CTX_set_cipher_list(ctx, "NULL-MD5,RC4-MD5"); */
 #endif
   goto out;

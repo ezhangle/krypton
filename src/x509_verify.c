@@ -70,7 +70,7 @@ again:
     return 0;
   }
 
-  switch (cur->hash_alg) {
+  switch (nxt->hash_alg) {
     case X509_HASH_MD5:
       expected_len = MD5_SIZE;
       break;
@@ -85,17 +85,18 @@ again:
       return 0;
   }
 #if DEBUG_VERIFY
-  dprintf(("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key)),
-          nxt->sig.len);
+  dprintf(("%d byte RSA key, %zu byte sig\n", RSA_block_size(cur->pub_key),
+           nxt->sig.len));
 #endif
 
   if (!get_sig_digest(cur->pub_key, &nxt->sig, digest, &digest_len)) return 0;
 #if DEBUG_VERIFY
-  dprintf(("%zu byte digest:\n", digest_len));
+  dprintf(("%zu byte digest (%d):\n", digest_len, nxt->hash_alg));
   hex_dump(digest, digest_len, 0);
 #endif
   if (digest_len != expected_len) {
-    dprintf(("Bad digest length\n"));
+    dprintf(("Bad digest length: %d vs %d\n", (int) digest_len,
+             (int) expected_len));
     return 0;
   }
 #if DEBUG_VERIFY

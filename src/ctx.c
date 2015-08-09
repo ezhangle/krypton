@@ -168,15 +168,42 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   PEM *pem;
 
   (void) type;
-  pem = pem_load(file, PEM_SIG_KEY);
+  pem = pem_load(file, PEM_SIG_KEY | PEM_SIG_RSA_KEY);
   if (NULL == pem) goto out;
 
-  ptr = ber_decode_tag(&tag, pem->obj[0].der, pem->obj[0].der_len);
-  if (NULL == ptr) goto decode_err;
+  ptr = pem->obj[0].der;
+  end = ptr + pem->obj[0].der_len;
 
-  if (!ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+  if (pem->obj[0].der_type == PEM_SIG_KEY) {
+    const uint8_t *ai;
+    static const char *const oidAlgoRSA =
+        "\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01"; /* 1.2.840.113549.1.1.1 */
 
-  end = ptr + tag.ber_len;
+    ptr = ber_decode_tag(&tag, ptr, end - ptr);
+    if (NULL == ptr || !ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+
+    /* Version */
+    if (!decode_int(&ptr, end, &vers)) goto decode_err;
+
+    /* Verify that PrivateKeyInfo.algorithm is RSA */
+    ai = ber_decode_tag(&tag, ptr, end - ptr);
+    if (NULL == ai || !ber_id_octet_constructed(tag.ber_id)) goto decode_err;
+    ptr = ai + tag.ber_len;
+
+    ai = ber_decode_tag(&tag, ai, end - ai);
+    if (NULL == ai || tag.ber_tag != 6 /* OID */ || tag.ber_len != 9 ||
+        memcmp(ai, oidAlgoRSA, 9) != 0) {
+      goto decode_err;
+    }
+    ai += 9;
+
+    /* Ok, it's RSA. Unwrap the key and continue. */
+    ptr = ber_decode_tag(&tag, ptr, end - ptr);
+    if (NULL == ptr || tag.ber_tag != 4 /* octet string */) goto decode_err;
+  }
+
+  ptr = ber_decode_tag(&tag, ptr, end - ptr);
+  if (NULL == ptr || !ber_id_octet_constructed(tag.ber_id)) goto decode_err;
 
   /* eat the version */
   if (!decode_int(&ptr, end, &vers)) goto decode_err;

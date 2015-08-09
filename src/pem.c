@@ -14,6 +14,9 @@ static int check_end_marker(const char *str, int sig_type) {
       if (!strcmp(str, "-----END CERTIFICATE-----")) return 1;
       break;
     case PEM_SIG_KEY:
+      if (!strcmp(str, "-----END PRIVATE KEY-----")) return 1;
+      break;
+    case PEM_SIG_RSA_KEY:
       if (!strcmp(str, "-----END RSA PRIVATE KEY-----")) return 1;
       break;
     default:
@@ -27,8 +30,12 @@ static int check_begin_marker(const char *str, uint8_t *got) {
     *got = PEM_SIG_CERT;
     return 1;
   }
-  if (!strcmp(str, "-----BEGIN RSA PRIVATE KEY-----")) {
+  if (!strcmp(str, "-----BEGIN PRIVATE KEY-----")) {
     *got = PEM_SIG_KEY;
+    return 1;
+  }
+  if (!strcmp(str, "-----BEGIN RSA PRIVATE KEY-----")) {
+    *got = PEM_SIG_RSA_KEY;
     return 1;
   }
   return 0;

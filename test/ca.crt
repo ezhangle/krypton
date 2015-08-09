@@ -1,0 +1,56 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 11115848473786570975 (0x9a436d4ae91dd8df)
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=test.cesanta.com, O=Cesanta, OU=testing
+        Validity
+            Not Before: Jun 11 15:20:37 2015 GMT
+            Not After : Jun  8 15:20:37 2025 GMT
+        Subject: CN=test.cesanta.com, O=Cesanta, OU=testing
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (1024 bit)
+                Modulus:
+                    00:d8:4d:b6:f9:74:33:f3:38:86:5b:9f:b6:d9:54:
+                    06:cc:0f:d1:cd:0c:ce:38:d7:40:27:88:06:d9:c1:
+                    be:18:22:c2:71:0a:7e:cc:da:87:89:07:c3:a6:58:
+                    8e:be:7e:04:21:42:00:67:c3:67:1f:81:9a:c9:58:
+                    02:89:04:b1:69:77:22:fe:31:21:cd:b0:dc:f2:a5:
+                    b2:4c:56:92:ee:b0:a7:98:6c:6b:05:26:79:b9:c2:
+                    8f:71:37:db:21:84:7f:4b:f6:b8:f2:96:d1:f2:2f:
+                    9f:94:de:c7:05:76:07:b9:4b:72:60:84:85:01:dd:
+                    2d:8e:02:f0:f3:c3:d8:89:95
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Subject Key Identifier: 
+                94:60:60:F5:B6:15:63:72:0E:09:00:E9:C5:94:10:B1:70:B6:13:F7
+            X509v3 Authority Key Identifier: 
+                keyid:94:60:60:F5:B6:15:63:72:0E:09:00:E9:C5:94:10:B1:70:B6:13:F7
+
+            X509v3 Basic Constraints: 
+                CA:TRUE
+    Signature Algorithm: sha256WithRSAEncryption
+         16:ee:92:fb:52:af:04:59:e9:3f:e4:f3:ff:e3:51:b7:ee:d3:
+         a8:7c:15:f6:c7:c2:f7:cb:34:11:ac:e1:35:3c:1d:6d:74:db:
+         e6:16:ef:de:ec:1c:d4:cc:cd:ca:64:90:d7:de:27:d5:05:4d:
+         f3:4b:e5:5c:61:80:96:e9:76:cb:39:ee:ff:c8:1e:f0:b9:c0:
+         c8:73:d2:b9:f9:00:56:97:c8:09:01:74:23:7b:70:56:9c:c2:
+         c1:91:3b:3c:6c:2c:32:e7:21:0d:b5:38:ea:10:68:3a:4e:8d:
+         78:8e:09:c8:43:49:57:d8:53:da:64:a2:ae:2e:cc:55:4e:d0:
+         ea:24
+-----BEGIN CERTIFICATE-----
+MIICTDCCAbWgAwIBAgIJAJpDbUrpHdjfMA0GCSqGSIb3DQEBCwUAMD8xGTAXBgNV
+BAMMEHRlc3QuY2VzYW50YS5jb20xEDAOBgNVBAoMB0Nlc2FudGExEDAOBgNVBAsM
+B3Rlc3RpbmcwHhcNMTUwNjExMTUyMDM3WhcNMjUwNjA4MTUyMDM3WjA/MRkwFwYD
+VQQDDBB0ZXN0LmNlc2FudGEuY29tMRAwDgYDVQQKDAdDZXNhbnRhMRAwDgYDVQQL
+DAd0ZXN0aW5nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDYTbb5dDPzOIZb
+n7bZVAbMD9HNDM4410AniAbZwb4YIsJxCn7M2oeJB8OmWI6+fgQhQgBnw2cfgZrJ
+WAKJBLFpdyL+MSHNsNzypbJMVpLusKeYbGsFJnm5wo9xN9shhH9L9rjyltHyL5+U
+3scFdge5S3JghIUB3S2OAvDzw9iJlQIDAQABo1AwTjAdBgNVHQ4EFgQUlGBg9bYV
+Y3IOCQDpxZQQsXC2E/cwHwYDVR0jBBgwFoAUlGBg9bYVY3IOCQDpxZQQsXC2E/cw
+DAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOBgQAW7pL7Uq8EWek/5PP/41G3
+7tOofBX2x8L3yzQRrOE1PB1tdNvmFu/e7BzUzM3KZJDX3ifVBU3zS+VcYYCW6XbL
+Oe7/yB7wucDIc9K5+QBWl8gJAXQje3BWnMLBkTs8bCwy5yENtTjqEGg6To14jgnI
+Q0lX2FPaZKKuLsxVTtDqJA==
+-----END CERTIFICATE-----
