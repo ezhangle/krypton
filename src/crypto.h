@@ -11,8 +11,8 @@ NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
 /* axTLS crypto functions, see C files for copyright info */
 typedef struct _SHA256_CTX SHA256_CTX;
 
-NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
-                     int seed_len, uint8_t *out, int olen);
+NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
+                     size_t seed_len, uint8_t *out, size_t olen);
 
 /* SHA256 */
 #define SHA256_SIZE 32
@@ -27,29 +27,8 @@ NS_INTERNAL void SHA256_Init(SHA256_CTX *c);
 NS_INTERNAL void SHA256_Update(SHA256_CTX *, const uint8_t *input, size_t len);
 NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
 
-/* SHA1 */
 #define SHA1_SIZE 20
-typedef struct {
-  uint64_t size;
-  unsigned int H[5];
-  unsigned int W[16];
-} SHA_CTX;
-
-NS_INTERNAL void SHA1_Init(SHA_CTX *ctx);
-NS_INTERNAL void SHA1_Update(SHA_CTX *ctx, const void *in, unsigned long len);
-NS_INTERNAL void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx);
-
-/* MD5 */
 #define MD5_SIZE 16
-typedef struct {
-  uint32_t state[4];  /* state (ABCD) */
-  uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
-  uint8_t buffer[64]; /* input buffer */
-} MD5_CTX;
-
-NS_INTERNAL void MD5_Init(MD5_CTX *);
-NS_INTERNAL void MD5_Update(MD5_CTX *, const uint8_t *msg, int len);
-NS_INTERNAL void MD5_Final(uint8_t *digest, MD5_CTX *);
 
 #define MAX_DIGEST_SIZE SHA256_SIZE
 
@@ -63,14 +42,6 @@ typedef struct {
 NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
 NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
                            int length);
-
-/* HMAC */
-NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
-                             int key_len, uint8_t *digest);
-NS_INTERNAL void kr_hmac_md5(const uint8_t *key, size_t key_len,
-                             const uint8_t *msg, size_t msg_len,
-                             const uint8_t *msg2, size_t msg2_len,
-                             uint8_t *digest);
 
 /* RSA */
 NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,

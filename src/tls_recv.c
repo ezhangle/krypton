@@ -630,6 +630,8 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
                             const uint8_t *end, struct vec *out) {
   struct tls_hmac_hdr phdr;
   uint8_t digest[MD5_SIZE];
+  const uint8_t *msgs[2];
+  size_t msgl[2];
   const uint8_t *mac;
   size_t len = end - buf;
 
@@ -682,12 +684,14 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
    *      TLSCompressed.fragment);
    */
 
+  msgs[0] = (uint8_t *) &phdr;
+  msgl[0] = sizeof(phdr);
+  msgs[1] = out->ptr;
+  msgl[1] = out->len;
   if (ssl->is_server) {
-    kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
-                out->ptr, out->len, digest);
+    kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
   } else {
-    kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-                sizeof(phdr), out->ptr, out->len, digest);
+    kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
   }
 
   if (memcmp(digest, mac, MD5_SIZE)) {

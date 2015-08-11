@@ -151,6 +151,8 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
 NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   struct tls_hdr hdr;
   struct tls_hmac_hdr phdr;
+  const uint8_t *msgs[2];
+  size_t msgl[2];
   uint8_t digest[MD5_SIZE];
   size_t buf_ofs;
   size_t mac_len = ssl->tx_enc ? MD5_SIZE : 0, max = (1 << 14) - MD5_SIZE;
@@ -177,12 +179,15 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
     phdr.type = hdr.type;
     phdr.vers = hdr.vers;
     phdr.len = htobe16(len);
+
+    msgs[0] = (uint8_t *) &phdr;
+    msgl[0] = sizeof(phdr);
+    msgs[1] = buf;
+    msgl[1] = len;
     if (ssl->is_server) {
-      kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-                  sizeof(phdr), buf, len, digest);
+      kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
     } else {
-      kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
-                  buf, len, digest);
+      kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
     }
 
     if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;

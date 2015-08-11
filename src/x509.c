@@ -274,11 +274,6 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   const uint8_t *end = ptr + len;
   struct gber_tag tag;
   struct ro_vec tbs;
-  union {
-    MD5_CTX md5;
-    SHA_CTX sha1;
-    SHA256_CTX sha256;
-  } u;
   X509 *cert;
 
   dprintf(("cert %p %d\n", ptr, (int) len));
@@ -326,19 +321,13 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
 
   switch (cert->issuer_hash_alg) {
     case X509_HASH_MD5:
-      MD5_Init(&u.md5);
-      MD5_Update(&u.md5, tbs.ptr, tbs.len);
-      MD5_Final(cert->digest, &u.md5);
+      kr_hash_md5_v(1, &tbs.ptr, &tbs.len, cert->digest);
       break;
     case X509_HASH_SHA1:
-      SHA1_Init(&u.sha1);
-      SHA1_Update(&u.sha1, tbs.ptr, tbs.len);
-      SHA1_Final(cert->digest, &u.sha1);
+      kr_hash_sha1_v(1, &tbs.ptr, &tbs.len, cert->digest);
       break;
     case X509_HASH_SHA256:
-      SHA256_Init(&u.sha256);
-      SHA256_Update(&u.sha256, tbs.ptr, tbs.len);
-      SHA256_Final(cert->digest, &u.sha256);
+      kr_hash_sha256_v(1, &tbs.ptr, &tbs.len, cert->digest);
       break;
     default:
       break;

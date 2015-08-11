@@ -164,24 +164,6 @@ typedef long ssize_t;
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
 
-#if defined(_POSIX_VERSION)
-#include <sys/socket.h>
-#define kr_send send
-#define kr_recv recv
-#elif defined(WIN32)
-#define kr_send send
-#define kr_recv recv
-#else /* External implementtaion must be provided */
-extern ssize_t kr_send(int fd, const void *buf, size_t len, int flags);
-extern ssize_t kr_recv(int fd, void *buf, size_t len, int flags);
-#endif
-
-#if defined(_POSIX_VERSION) || defined(WIN32)
-NS_INTERNAL int kr_get_random(uint8_t *out, size_t len);
-#else /* Expect external implementation */
-extern int kr_get_random(uint8_t *out, size_t len);
-#endif
-
 struct ro_vec {
   const uint8_t *ptr;
   size_t len;
@@ -274,6 +256,50 @@ typedef struct _bigint bigint; /**< An alias for _bigint */
 
 #endif /* _KTYPES_H */
 
+/* === kexterns.h === */
+#ifndef _KEXTERNS_H
+#define _KEXTERNS_H
+
+#ifdef KR_EXT_IO
+extern ssize_t kr_send(int fd, const void *buf, size_t len, int flags);
+extern ssize_t kr_recv(int fd, void *buf, size_t len, int flags);
+#endif
+#ifdef KR_EXT_RANDOM
+extern int kr_get_random(uint8_t *out, size_t len);
+#endif
+#ifdef KR_EXT_MD5
+extern void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
+                          const size_t *msg_lens, uint8_t *digest);
+#endif
+#ifdef KR_EXT_SHA1
+extern void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
+                           const size_t *msg_lens, uint8_t *digest);
+#endif
+#ifdef KR_EXT_SHA256
+extern void kr_hash_sha256_v(size_t num_msgs, const uint8_t *msgs[],
+                             const size_t *msg_lens, uint8_t *digest);
+#endif
+
+/* Some defaults. */
+
+#if !defined(KR_EXT_IO) && (defined(_POSIX_VERSION) || defined(WIN32))
+#define kr_send send
+#define kr_recv recv
+#if defined(_POSIX_VERSION)
+#include <sys/socket.h>
+#endif
+#endif
+
+#if !defined(KR_EXT_RANDOM)
+#if defined(_POSIX_VERSION)
+#define KR_RANDOM_SOURCE_FILE "/dev/urandom"
+#else
+#define KR_USE_RAND
+#endif
+#endif
+
+#endif /* _KEXTERNS_H */
+
 /* === crypto.h === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
@@ -288,8 +314,8 @@ NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
 /* axTLS crypto functions, see C files for copyright info */
 typedef struct _SHA256_CTX SHA256_CTX;
 
-NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
-                     int seed_len, uint8_t *out, int olen);
+NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
+                     size_t seed_len, uint8_t *out, size_t olen);
 
 /* SHA256 */
 #define SHA256_SIZE 32
@@ -304,29 +330,8 @@ NS_INTERNAL void SHA256_Init(SHA256_CTX *c);
 NS_INTERNAL void SHA256_Update(SHA256_CTX *, const uint8_t *input, size_t len);
 NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
 
-/* SHA1 */
 #define SHA1_SIZE 20
-typedef struct {
-  uint64_t size;
-  unsigned int H[5];
-  unsigned int W[16];
-} SHA_CTX;
-
-NS_INTERNAL void SHA1_Init(SHA_CTX *ctx);
-NS_INTERNAL void SHA1_Update(SHA_CTX *ctx, const void *in, unsigned long len);
-NS_INTERNAL void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx);
-
-/* MD5 */
 #define MD5_SIZE 16
-typedef struct {
-  uint32_t state[4];  /* state (ABCD) */
-  uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
-  uint8_t buffer[64]; /* input buffer */
-} MD5_CTX;
-
-NS_INTERNAL void MD5_Init(MD5_CTX *);
-NS_INTERNAL void MD5_Update(MD5_CTX *, const uint8_t *msg, int len);
-NS_INTERNAL void MD5_Final(uint8_t *digest, MD5_CTX *);
 
 #define MAX_DIGEST_SIZE SHA256_SIZE
 
@@ -340,14 +345,6 @@ typedef struct {
 NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
 NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
                            int length);
-
-/* HMAC */
-NS_INTERNAL void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
-                             int key_len, uint8_t *digest);
-NS_INTERNAL void kr_hmac_md5(const uint8_t *key, size_t key_len,
-                             const uint8_t *msg, size_t msg_len,
-                             const uint8_t *msg2, size_t msg2_len,
-                             uint8_t *digest);
 
 /* RSA */
 NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
@@ -2947,103 +2944,42 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
 
 /* === hmac.c === */
 /*
- * Copyright (c) 2007, Cameron Rich
- *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors
- *   may be used to endorse or promote products derived from this software
- *   without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * HMAC implementation - This code was originally taken from RFC2104
- * See http://www.ietf.org/rfc/rfc2104.txt and
- * http://www.faqs.org/rfcs/rfc2202.html
- */
-
-/**
- * Perform HMAC-SHA256
+ * Generic HMAC implementation, takes a vector hash function as an argument.
  * NOTE: does not handle keys larger than the block size.
  */
-void hmac_sha256(const uint8_t *msg, int length, const uint8_t *key,
-                 int key_len, uint8_t *digest) {
-  SHA256_CTX context;
-  uint8_t k_ipad[64];
-  uint8_t k_opad[64];
-  int i;
+static void kr_hmac_v(void (*hash_func)(size_t, const uint8_t **,
+                                        const size_t *, uint8_t *),
+                      const uint8_t *key, size_t key_len, size_t num_msgs,
+                      const uint8_t *msgs[], const size_t *msg_lens,
+                      uint8_t *digest, size_t digest_len) {
+  uint8_t k_pad[64];
+  const uint8_t **k_msgs =
+      (const uint8_t **) calloc(num_msgs + 2, sizeof(uint8_t *));
+  size_t *k_msg_lens = (size_t *) calloc(num_msgs + 2, sizeof(size_t));
+  size_t i;
+  assert(key_len <= sizeof(k_pad));
 
-  memset(k_ipad, 0, sizeof k_ipad);
-  memset(k_opad, 0, sizeof k_opad);
-  memcpy(k_ipad, key, key_len);
-  memcpy(k_opad, key, key_len);
+  memset(k_pad, 0, sizeof(k_pad));
+  memcpy(k_pad, key, key_len);
+  for (i = 0; i < 64; i++) k_pad[i] ^= 0x36;
 
-  for (i = 0; i < 64; i++) {
-    k_ipad[i] ^= 0x36;
-    k_opad[i] ^= 0x5c;
-  }
+  k_msgs[0] = k_pad;
+  k_msg_lens[0] = sizeof(k_pad);
+  memcpy(k_msgs + 1, msgs, num_msgs * sizeof(uint8_t *));
+  memcpy(k_msg_lens + 1, msg_lens, num_msgs * sizeof(size_t));
+  hash_func(num_msgs + 1, k_msgs, k_msg_lens, digest);
 
-  SHA256_Init(&context);
-  SHA256_Update(&context, k_ipad, 64);
-  SHA256_Update(&context, msg, length);
-  SHA256_Final(digest, &context);
-  SHA256_Init(&context);
-  SHA256_Update(&context, k_opad, 64);
-  SHA256_Update(&context, digest, SHA256_SIZE);
-  SHA256_Final(digest, &context);
-}
+  memset(k_pad, 0, sizeof(k_pad));
+  memcpy(k_pad, key, key_len);
+  for (i = 0; i < 64; i++) k_pad[i] ^= 0x5c;
+  k_msgs[0] = k_pad;
+  k_msg_lens[0] = sizeof(k_pad);
+  k_msgs[1] = digest;
+  k_msg_lens[1] = digest_len;
+  hash_func(2, k_msgs, k_msg_lens, digest);
 
-/**
- * Perform HMAC-MD5
- * NOTE: does not handle keys larger than the block size.
- */
-void kr_hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
-                 size_t msg_len, const uint8_t *msg2, size_t msg2_len,
-                 uint8_t *digest) {
-  MD5_CTX context;
-  uint8_t k_ipad[64];
-  uint8_t k_opad[64];
-  int i;
-
-  memset(k_ipad, 0, sizeof k_ipad);
-  memset(k_opad, 0, sizeof k_opad);
-  memcpy(k_ipad, key, key_len);
-  memcpy(k_opad, key, key_len);
-
-  for (i = 0; i < 64; i++) {
-    k_ipad[i] ^= 0x36;
-    k_opad[i] ^= 0x5c;
-  }
-
-  MD5_Init(&context);
-  MD5_Update(&context, k_ipad, 64);
-  if (msg_len) MD5_Update(&context, msg, msg_len);
-  if (msg2_len) MD5_Update(&context, msg2, msg2_len);
-  MD5_Final(digest, &context);
-  MD5_Init(&context);
-  MD5_Update(&context, k_opad, 64);
-  MD5_Update(&context, digest, MD5_SIZE);
-  MD5_Final(digest, &context);
+  free(k_msg_lens);
+  free(k_msgs);
 }
 
 /* === md5.c === */
@@ -3081,8 +3017,15 @@ void kr_hmac_md5(const uint8_t *key, size_t key_len, const uint8_t *msg,
  * This file implements the MD5 algorithm as defined in RFC1321
  */
 
-/* Constants for MD5Transform routine.
- */
+#ifndef KR_EXT_MD5
+
+typedef struct {
+  uint32_t state[4];  /* state (ABCD) */
+  uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
+  uint8_t buffer[64]; /* input buffer */
+} MD5_CTX;
+
+/* Constants for MD5Transform routine. */
 #define S11 7
 #define S12 12
 #define S13 17
@@ -3330,656 +3273,23 @@ static void Decode(uint32_t *output, const uint8_t *input, uint32_t len) {
                 (((uint32_t) input[j + 3]) << 24);
 }
 
-/* === meth.c === */
-/*
- * Copyright (c) 2015 Cesanta Software Limited
- * All rights reserved
- */
-
-const SSL_METHOD meth = {0, 0};
-const SSL_METHOD sv_meth = {0, 1};
-const SSL_METHOD cl_meth = {1, 0};
-
-const SSL_METHOD *TLSv1_2_method(void) {
-  return &meth;
-}
-const SSL_METHOD *TLSv1_2_server_method(void) {
-  return &sv_meth;
-}
-const SSL_METHOD *TLSv1_2_client_method(void) {
-  return &cl_meth;
-}
-const SSL_METHOD *SSLv23_method(void) {
-  return &meth;
-}
-const SSL_METHOD *SSLv23_server_method(void) {
-  return &sv_meth;
-}
-const SSL_METHOD *SSLv23_client_method(void) {
-  return &cl_meth;
-}
-
-/* === pem.c === */
-/*
- * Copyright (c) 2015 Cesanta Software Limited
- * All rights reserved
- */
-
-#define DER_INCREMENT 1024
-#define OBJ_INCREMENT 4
-
-static int check_end_marker(const char *str, int sig_type) {
-  switch (sig_type) {
-    case PEM_SIG_CERT:
-      if (!strcmp(str, "-----END CERTIFICATE-----")) return 1;
-      break;
-    case PEM_SIG_KEY:
-      if (!strcmp(str, "-----END PRIVATE KEY-----")) return 1;
-      break;
-    case PEM_SIG_RSA_KEY:
-      if (!strcmp(str, "-----END RSA PRIVATE KEY-----")) return 1;
-      break;
-    default:
-      assert(0);
-  }
-  return 0;
-}
-
-static int check_begin_marker(const char *str, uint8_t *got) {
-  if (!strcmp(str, "-----BEGIN CERTIFICATE-----")) {
-    *got = PEM_SIG_CERT;
-    return 1;
-  }
-  if (!strcmp(str, "-----BEGIN PRIVATE KEY-----")) {
-    *got = PEM_SIG_KEY;
-    return 1;
-  }
-  if (!strcmp(str, "-----BEGIN RSA PRIVATE KEY-----")) {
-    *got = PEM_SIG_RSA_KEY;
-    return 1;
-  }
-  return 0;
-}
-
-static int add_line(DER *d, size_t *max_len, const uint8_t *buf, size_t len) {
-  uint8_t dec[96];
-  size_t olen;
-
-  if (!b64_decode(buf, len, dec, &olen)) {
-    dprintf(("pem: base64 error\n"));
-    return 0;
-  }
-
-  if (d->der_len + olen > *max_len) {
-    size_t new_len;
-    uint8_t *new;
-
-    new_len = *max_len + DER_INCREMENT;
-    new = realloc(d->der, new_len);
-    if (NULL == new) {
-      dprintf(("pem: realloc: %s\n", strerror(errno)));
-      return 0;
-    }
-
-    d->der = new;
-    *max_len = new_len;
-  }
-
-  memcpy(d->der + d->der_len, dec, olen);
-  d->der_len += olen;
-
-  return 1;
-}
-
-static int add_object(PEM *p) {
-  if (p->num_obj >= p->max_obj) {
-    unsigned int max;
-    DER *new;
-
-    max = p->max_obj + OBJ_INCREMENT;
-
-    new = realloc(p->obj, sizeof(*p->obj) * max);
-    if (NULL == new) return 0;
-
-    p->obj = new;
-    p->max_obj = max;
-  }
-  return 1;
-}
-
-PEM *pem_load(const char *fn, int type_mask) {
-  /* 2x larger than necesssary */
-  unsigned int state, cur, i;
-  char buf[128];
-  size_t der_max_len = 0;
-  uint8_t got;
-  PEM *p;
-  FILE *f;
-
-  p = calloc(1, sizeof(*p));
-  if (NULL == p) {
-    goto out;
-  }
-
-  f = fopen(fn, "r");
-  if (NULL == f) {
-    dprintf(("%s: fopen: %s\n", fn, strerror(errno)));
-    goto out_free;
-  }
-
-  for (state = cur = 0; fgets(buf, sizeof(buf), f);) {
-    char *lf;
-
-    /* Trim trailing whitespaces*/
-    lf = strchr(buf, '\n');
-    while (lf > buf && isspace(*(unsigned char *) lf)) {
-      *lf-- = '\0';
-    }
-    lf++;
-
-    switch (state) {
-      case 0: /* begin marker */
-        if (check_begin_marker(buf, &got)) {
-          if (got & type_mask) {
-            if (!add_object(p)) goto out_close;
-            cur = p->num_obj++;
-            p->obj[cur].der_type = got;
-            p->obj[cur].der_len = 0;
-            p->obj[cur].der = NULL;
-            der_max_len = 0;
-            state = 1;
-          }
-          /* else ignore everything else */
-        }
-        break;
-      case 1: /* content*/
-        if (check_end_marker(buf, p->obj[cur].der_type)) {
-          p->tot_len += p->obj[cur].der_len;
-          state = 0;
-          break;
-        }
-
-        if (!add_line(&p->obj[cur], &der_max_len, (uint8_t *) buf, lf - buf)) {
-          dprintf(("%s: Corrupted key or cert\n", fn));
-          goto out_close;
-        }
-
-        break;
-      default:
-        break;
-    }
-  }
-
-  if (state != 0) {
-    dprintf(("%s: no end marker\n", fn));
-    goto out_close;
-  }
-  if (p->num_obj < 1) {
-    dprintf(("%s: no objects in file\n", fn));
-    goto out_close;
-  }
-
-/* success */
-#if 0
-	dprintf(("%s: Loaded %zu byte PEM\n", fn, p->der_len));
-	ber_dump(p->der, p->der_len);
-#endif
-  fclose(f);
-  goto out;
-
-out_close:
-  for (i = 0; i < p->num_obj; i++) {
-    free(p->obj[i].der);
-  }
-  free(p->obj);
-  fclose(f);
-out_free:
-  free(p);
-  p = NULL;
-out:
-  return p;
-}
-
-void pem_free(PEM *p) {
-  if (p) {
-    unsigned int i;
-    for (i = 0; i < p->num_obj; i++) {
-      free(p->obj[i].der);
-    }
-    free(p->obj);
-    free(p);
-  }
-}
-
-/* === prf.c === */
-/*
- * Copyright (c) 2015 Cesanta Software Limited
- * All rights reserved
- */
-
-/* TLS1.2 Pseudo-Random-Function */
-NS_INTERNAL void prf(const uint8_t *sec, int sec_len, const uint8_t *seed,
-                     int seed_len, uint8_t *out, int olen) {
-  size_t A1_len = SHA256_SIZE + seed_len;
-  uint8_t A1[128];
-
-  assert(A1_len < sizeof(A1)); /* TODO(lsm): fix this */
-
-  hmac_sha256(seed, seed_len, sec, sec_len, A1);
-  memcpy(A1 + SHA256_SIZE, seed, seed_len);
-
-  for (;;) {
-    if (olen >= SHA256_SIZE) {
-      hmac_sha256(A1, A1_len, sec, sec_len, out);
-      out += SHA256_SIZE;
-      olen -= SHA256_SIZE;
-      if (olen) hmac_sha256(A1, SHA256_SIZE, sec, sec_len, A1);
-    } else {
-      uint8_t tmp[SHA256_SIZE];
-      hmac_sha256(A1, A1_len, sec, sec_len, tmp);
-      memcpy(out, tmp, olen);
-      break;
-    }
-  }
-}
-
-/* === random.c === */
-/*
- * Copyright (c) 2015 Cesanta Software Limited
- * All rights reserved
- */
-
-#ifdef _POSIX_VERSION
-#define RANDOM_SOURCE "/dev/urandom"
-int kr_get_random(uint8_t *out, size_t len) {
-  static FILE *fp = NULL;
-  size_t ret = 0;
-
-  if (fp == NULL) {
-    /* TODO(lsm): provide cleanup API  */
-    fp = fopen(RANDOM_SOURCE, "rb");
-  }
-
-  if (fp != NULL) {
-    ret = fread(out, 1, len, fp);
-  }
-
-  return ret == len;
-}
-#elif defined(WIN32)
-int kr_get_random(uint8_t *out, size_t len) {
-  static int srand_called = 0;
-  if (!srand_called) {
-    /* Mix in our pointer. In case user did not invoke srand(), this is better
-     * than nothing. If he did, this will not totally screw it up. */
-    srand(rand() ^ ((int) (out + len)));
-    srand_called = 1;
-  }
-  while (len-- > 0) {
-    *(out++) = (uint8_t) rand();
-  }
-  return 1;
-}
-#endif
-
-int get_random_nonzero(uint8_t *out, size_t len) {
+static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
+                          const size_t *msg_lens, uint8_t *digest) {
   size_t i;
-
-  if (!kr_get_random(out, len)) return 0;
-
-  for (i = 0; i < len; i++) {
-    while (out[i] == 0) {
-      if (!kr_get_random(out + i, 1)) return 0;
-    }
+  MD5_CTX md5;
+  MD5_Init(&md5);
+  for (i = 0; i < num_msgs; i++) {
+    MD5_Update(&md5, msgs[i], msg_lens[i]);
   }
-
-  return 1;
+  MD5_Final(digest, &md5);
 }
+#endif /* !KR_EXT_MD5 */
 
-/* === rc4.c === */
-/*
- * Copyright (c) 2007, Cameron Rich
- *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors
- *   may be used to endorse or promote products derived from this software
- *   without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * An implementation of the RC4/ARC4 algorithm.
- * Originally written by Christophe Devine.
- */
-
-/**
- * Get ready for an encrypt/decrypt operation
- */
-void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length) {
-  int i, j = 0, k = 0, a;
-  uint8_t *m;
-
-  ctx->x = 0;
-  ctx->y = 0;
-  m = ctx->m;
-
-  for (i = 0; i < 256; i++) m[i] = i;
-
-  for (i = 0; i < 256; i++) {
-    a = m[i];
-    j = (uint8_t)(j + a + key[k]);
-    m[i] = m[j];
-    m[j] = a;
-
-    if (++k >= length) k = 0;
-  }
-}
-
-/**
- * Perform the encrypt/decrypt operation (can use it for either since
- * this is a stream cipher).
- * NOTE: *msg and *out must be the same pointer (performance tweak)
- */
-void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
-  int i;
-  uint8_t *m, x, y, a, b;
-
-  (void) msg;
-  x = ctx->x;
-  y = ctx->y;
-  m = ctx->m;
-
-  for (i = 0; i < length; i++) {
-    a = m[++x];
-    y += a;
-    m[x] = b = m[y];
-    m[y] = a;
-    out[i] ^= m[(uint8_t)(a + b)];
-  }
-
-  ctx->x = x;
-  ctx->y = y;
-}
-
-/* === rsa.c === */
-/*
- * Copyright (c) 2007-2014, Cameron Rich
- *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors
- *   may be used to endorse or promote products derived from this software
- *   without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * Implements the RSA public encryption algorithm. Uses the bigint library to
- * perform its calculations.
- */
-
-#define CONFIG_SSL_CERT_VERIFICATION 1
-
-struct _RSA_CTX {
-  bigint *m;    /* modulus */
-  bigint *e;    /* public exponent */
-  bigint *d;    /* private exponent */
-  bigint *p;    /* p as in m = pq */
-  bigint *q;    /* q as in m = pq */
-  bigint *dP;   /* d mod (p-1) */
-  bigint *dQ;   /* d mod (q-1) */
-  bigint *qInv; /* q^-1 mod p */
-  int num_octets;
-  BI_CTX *bi_ctx;
-};
-
-int RSA_block_size(RSA_CTX *ctx) {
-  return ctx->num_octets;
-}
-
-void RSA_priv_key_new(RSA_CTX **ctx, const uint8_t *modulus, int mod_len,
-                      const uint8_t *pub_exp, int pub_len,
-                      const uint8_t *priv_exp, int priv_len, const uint8_t *p,
-                      int p_len, const uint8_t *q, int q_len, const uint8_t *dP,
-                      int dP_len, const uint8_t *dQ, int dQ_len,
-                      const uint8_t *qInv, int qInv_len) {
-  RSA_CTX *rsa_ctx;
-  BI_CTX *bi_ctx;
-  RSA_pub_key_new(ctx, modulus, mod_len, pub_exp, pub_len);
-  rsa_ctx = *ctx;
-  bi_ctx = rsa_ctx->bi_ctx;
-  rsa_ctx->d = bi_import(bi_ctx, priv_exp, priv_len);
-  bi_permanent(rsa_ctx->d);
-
-  rsa_ctx->p = bi_import(bi_ctx, p, p_len);
-  rsa_ctx->q = bi_import(bi_ctx, q, q_len);
-  rsa_ctx->dP = bi_import(bi_ctx, dP, dP_len);
-  rsa_ctx->dQ = bi_import(bi_ctx, dQ, dQ_len);
-  rsa_ctx->qInv = bi_import(bi_ctx, qInv, qInv_len);
-  bi_permanent(rsa_ctx->dP);
-  bi_permanent(rsa_ctx->dQ);
-  bi_permanent(rsa_ctx->qInv);
-  bi_set_mod(bi_ctx, rsa_ctx->p, BIGINT_P_OFFSET);
-  bi_set_mod(bi_ctx, rsa_ctx->q, BIGINT_Q_OFFSET);
-}
-
-void RSA_pub_key_new(RSA_CTX **ctx, const uint8_t *modulus, int mod_len,
-                     const uint8_t *pub_exp, int pub_len) {
-  RSA_CTX *rsa_ctx;
-  BI_CTX *bi_ctx;
-
-  if (*ctx) /* if we load multiple certs, dump the old one */
-    RSA_free(*ctx);
-
-  bi_ctx = bi_initialize();
-  *ctx = (RSA_CTX *) calloc(1, sizeof(RSA_CTX));
-  rsa_ctx = *ctx;
-  rsa_ctx->bi_ctx = bi_ctx;
-  rsa_ctx->num_octets = mod_len;
-  rsa_ctx->m = bi_import(bi_ctx, modulus, mod_len);
-  bi_set_mod(bi_ctx, rsa_ctx->m, BIGINT_M_OFFSET);
-  rsa_ctx->e = bi_import(bi_ctx, pub_exp, pub_len);
-  bi_permanent(rsa_ctx->e);
-}
-
-/**
- * Free up any RSA context resources.
- */
-void RSA_free(RSA_CTX *rsa_ctx) {
-  BI_CTX *bi_ctx;
-  if (rsa_ctx == NULL) /* deal with ptrs that are null */
-    return;
-
-  bi_ctx = rsa_ctx->bi_ctx;
-
-  bi_depermanent(rsa_ctx->e);
-  bi_free(bi_ctx, rsa_ctx->e);
-  bi_free_mod(rsa_ctx->bi_ctx, BIGINT_M_OFFSET);
-
-  if (rsa_ctx->d) {
-    bi_depermanent(rsa_ctx->d);
-    bi_free(bi_ctx, rsa_ctx->d);
-    bi_depermanent(rsa_ctx->dP);
-    bi_depermanent(rsa_ctx->dQ);
-    bi_depermanent(rsa_ctx->qInv);
-    bi_free(bi_ctx, rsa_ctx->dP);
-    bi_free(bi_ctx, rsa_ctx->dQ);
-    bi_free(bi_ctx, rsa_ctx->qInv);
-    bi_free_mod(rsa_ctx->bi_ctx, BIGINT_P_OFFSET);
-    bi_free_mod(rsa_ctx->bi_ctx, BIGINT_Q_OFFSET);
-  }
-
-  bi_terminate(bi_ctx);
-  free(rsa_ctx);
-}
-
-/**
- * @brief Use PKCS1.5 for decryption/verification.
- * @param ctx [in] The context
- * @param in_data [in] The data to decrypt (must be < modulus size-11)
- * @param out_data [out] The decrypted data.
- * @param out_len [int] The size of the decrypted buffer in bytes
- * @param is_decryption [in] Decryption or verify operation.
- * @return  The number of bytes that were originally encrypted. -1 on error.
- * @see http://www.rsasecurity.com/rsalabs/node.asp?id=2125
- */
-int RSA_decrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint8_t *out_data,
-                int out_len, int is_decryption) {
-  const int byte_size = ctx->num_octets;
-  int i = 0, size;
-  bigint *decrypted_bi, *dat_bi;
-  uint8_t *block = (uint8_t *) alloca(byte_size);
-  int pad_count = 0;
-
-  if (out_len < byte_size) /* check output has enough size */
-    return -1;
-
-  memset(out_data, 0, out_len); /* initialise */
-
-  /* decrypt */
-  dat_bi = bi_import(ctx->bi_ctx, in_data, byte_size);
-#ifdef CONFIG_SSL_CERT_VERIFICATION
-  decrypted_bi = is_decryption ? /* decrypt or verify? */
-                     RSA_private(ctx, dat_bi)
-                               : RSA_public(ctx, dat_bi);
-#else /* always a decryption */
-  decrypted_bi = RSA_private(ctx, dat_bi);
-#endif
-
-  /* convert to a normal block */
-  bi_export(ctx->bi_ctx, decrypted_bi, block, byte_size);
-
-  if (block[i++] != 0) /* leading 0? */
-    return -1;
-
-#ifdef CONFIG_SSL_CERT_VERIFICATION
-  if (is_decryption == 0) /* PKCS1.5 signing pads with "0xff"s */
-  {
-    if (block[i++] != 0x01) /* BT correct? */
-      return -1;
-
-    while (block[i++] == 0xff && i < byte_size) pad_count++;
-  } else /* PKCS1.5 encryption padding is random */
-#endif
-  {
-    if (block[i++] != 0x02) /* BT correct? */
-      return -1;
-
-    while (block[i++] && i < byte_size) pad_count++;
-  }
-
-  /* check separator byte 0x00 - and padding must be 8 or more bytes */
-  if (i == byte_size || pad_count < 8) return -1;
-
-  size = byte_size - i;
-
-  /* get only the bit we want */
-  memcpy(out_data, &block[i], size);
-  return size;
-}
-
-/**
- * Performs m = c^d mod n
- */
-bigint *RSA_private(const RSA_CTX *c, bigint *bi_msg) {
-  return bi_crt(c->bi_ctx, bi_msg, c->dP, c->dQ, c->p, c->q, c->qInv);
-}
-
-#ifdef CONFIG_SSL_FULL_MODE
-/**
- * Used for diagnostics.
- */
-void RSA_print(const RSA_CTX *rsa_ctx) {
-  if (rsa_ctx == NULL) return;
-
-  printf("-----------------   RSA DEBUG   ----------------\n");
-  printf("Size:\t%d\n", rsa_ctx->num_octets);
-  bi_print("Modulus", rsa_ctx->m);
-  bi_print("Public Key", rsa_ctx->e);
-  bi_print("Private Key", rsa_ctx->d);
-}
-#endif
-
-/**
- * Performs c = m^e mod n
- */
-bigint *RSA_public(const RSA_CTX *c, bigint *bi_msg) {
-  c->bi_ctx->mod_offset = BIGINT_M_OFFSET;
-  return bi_mod_power(c->bi_ctx, bi_msg, c->e);
-}
-
-/**
- * Use PKCS1.5 for encryption/signing.
- * see http://www.rsasecurity.com/rsalabs/node.asp?id=2125
- */
-int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
-                uint8_t *out_data, int is_signing) {
-  int byte_size = ctx->num_octets;
-  int num_pads_needed = byte_size - in_len - 3;
-  bigint *dat_bi, *encrypt_bi;
-
-  /* note: in_len+11 must be > byte_size */
-  out_data[0] = 0; /* ensure encryption block is < modulus */
-
-  if (is_signing) {
-    out_data[1] = 1; /* PKCS1.5 signing pads with "0xff"'s */
-    memset(&out_data[2], 0xff, num_pads_needed);
-  } else /* randomize the encryption padding with non-zero bytes */
-  {
-    out_data[1] = 2;
-    if (get_random_nonzero(&out_data[2], num_pads_needed) < 0) return -1;
-  }
-
-  out_data[2 + num_pads_needed] = 0;
-  memcpy(&out_data[3 + num_pads_needed], in_data, in_len);
-
-  /* now encrypt it */
-  dat_bi = bi_import(ctx->bi_ctx, out_data, byte_size);
-  encrypt_bi = is_signing ? RSA_private(ctx, dat_bi) : RSA_public(ctx, dat_bi);
-  bi_export(ctx->bi_ctx, encrypt_bi, out_data, byte_size);
-
-  /* save a few bytes of memory */
-  bi_clear_cache(ctx->bi_ctx);
-  return byte_size;
+static void kr_hmac_md5_v(const uint8_t *key, size_t key_len, size_t num_msgs,
+                          const uint8_t *msgs[], const size_t *msg_lens,
+                          uint8_t *digest) {
+  kr_hmac_v(kr_hash_md5_v, key, key_len, num_msgs, msgs, msg_lens, digest,
+            MD5_SIZE);
 }
 
 /* === sha1.c === */
@@ -3990,67 +3300,18 @@ int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
  * This was initially based on the Mozilla SHA1 implementation, although
  * none of the original Mozilla code remains.
  */
+#ifndef KR_EXT_SHA1
 
-//#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
-#if 0
-
-/*
- * Force usage of rol or ror by selecting the one with the smaller constant.
- * It _can_ generate slightly smaller code (a constant of 1 is special), but
- * perhaps more importantly it's possibly faster on any uarch that does a
- * rotate with a loop.
- */
-
-#define SHA_ASM(op, x, n)                                \
-  ({                                                     \
-    unsigned int __res;                                  \
-    __asm__(op " %1,%0" : "=r"(__res) : "i"(n), "0"(x)); \
-    __res;                                               \
-  })
-#define SHA_ROL(x, n) SHA_ASM("rol", x, n)
-#define SHA_ROR(x, n) SHA_ASM("ror", x, n)
-
-#else
+typedef struct {
+  uint64_t size;
+  unsigned int H[5];
+  unsigned int W[16];
+} SHA_CTX;
 
 #define SHA_ROT(X, l, r) (((X) << (l)) | ((X) >> (r)))
 #define SHA_ROL(X, n) SHA_ROT(X, n, 32 - (n))
 #define SHA_ROR(X, n) SHA_ROT(X, 32 - (n), n)
-
-#endif
-
-/*
- * If you have 32 registers or more, the compiler can (and should)
- * try to change the array[] accesses into registers. However, on
- * machines with less than ~25 registers, that won't really work,
- * and at least gcc will make an unholy mess of it.
- *
- * So to avoid that mess which just slows things down, we force
- * the stores to memory to actually happen (we might be better off
- * with a 'W(t)=(val);asm("":"+m" (W(t))' there instead, as
- * suggested by Artur Skawina - that will also make gcc unable to
- * try to do the silly "optimize away loads" part because it won't
- * see what the value will be).
- *
- * Ben Herrenschmidt reports that on PPC, the C version comes close
- * to the optimized asm with this (ie on PPC you don't want that
- * 'volatile', since there are lots of registers).
- *
- * On ARM we get the best code generation by forcing a full memory barrier
- * between each SHA_ROUND, otherwise gcc happily get wild with spilling and
- * the stack frame size simply explode and performance goes down the drain.
- */
-
-#if defined(__i386__) || defined(__x86_64__)
-#define setW(x, val) (*(volatile unsigned int *) &W(x) = (val))
-#elif defined(__GNUC__) && defined(__arm__)
-#define setW(x, val)          \
-  do {                        \
-    W(x) = (val);             \
-    __asm__("" ::: "memory"); \
-  } while (0)
-#else
 #define setW(x, val) (W(x) = (val))
-#endif
 
 /*
  * Performance might be improved if the CPU architecture is OK with
@@ -4275,6 +3536,27 @@ void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx) {
   for (i = 0; i < 5; i++) put_be32(hashout + i * 4, ctx->H[i]);
 }
 
+static void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
+                           const size_t *msg_lens, uint8_t *digest) {
+  size_t i;
+  SHA_CTX sha1;
+  SHA1_Init(&sha1);
+  for (i = 0; i < num_msgs; i++) {
+    SHA1_Update(&sha1, msgs[i], msg_lens[i]);
+  }
+  SHA1_Final(digest, &sha1);
+}
+#endif /* !KR_EXT_SHA1 */
+
+#if 0 /* TODO: Add SHA1 support as HMAC. */
+static void kr_hmac_sha1_v(const uint8_t *key, size_t key_len, size_t num_msgs,
+                           const uint8_t *msgs[], const size_t *msg_lens,
+                           uint8_t *digest) {
+  kr_hmac_v(kr_hash_sha1_v, key, key_len, num_msgs, msgs, msg_lens, digest,
+            SHA1_SIZE);
+}
+#endif
+
 /* === sha256.c === */
 /*
  * FILE:	sha2.c
@@ -4308,6 +3590,8 @@ void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx) {
  * SUCH DAMAGE.
  *
  */
+
+#ifndef KR_EXT_SHA256
 
 /*
  * ASSERT NOTE:
@@ -4877,6 +4161,678 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX *context) {
   /* Clean up state data: */
   MEMSET_BZERO(context, sizeof(SHA256_CTX));
   usedspace = 0;
+}
+
+static void kr_hash_sha256_v(size_t num_msgs, const uint8_t *msgs[],
+                             const size_t *msg_lens, uint8_t *digest) {
+  size_t i;
+  SHA256_CTX ctx;
+  SHA256_Init(&ctx);
+  for (i = 0; i < num_msgs; i++) {
+    SHA256_Update(&ctx, msgs[i], msg_lens[i]);
+  }
+  SHA256_Final(digest, &ctx);
+}
+#endif /* !KR_EXT_SHA256 */
+
+static void kr_hmac_sha256_v(const uint8_t *key, size_t key_len,
+                             size_t num_msgs, const uint8_t *msgs[],
+                             const size_t *msg_lens, uint8_t *digest) {
+  kr_hmac_v(kr_hash_sha256_v, key, key_len, num_msgs, msgs, msg_lens, digest,
+            SHA256_SIZE);
+}
+
+/* === meth.c === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+const SSL_METHOD meth = {0, 0};
+const SSL_METHOD sv_meth = {0, 1};
+const SSL_METHOD cl_meth = {1, 0};
+
+const SSL_METHOD *TLSv1_2_method(void) {
+  return &meth;
+}
+const SSL_METHOD *TLSv1_2_server_method(void) {
+  return &sv_meth;
+}
+const SSL_METHOD *TLSv1_2_client_method(void) {
+  return &cl_meth;
+}
+const SSL_METHOD *SSLv23_method(void) {
+  return &meth;
+}
+const SSL_METHOD *SSLv23_server_method(void) {
+  return &sv_meth;
+}
+const SSL_METHOD *SSLv23_client_method(void) {
+  return &cl_meth;
+}
+
+/* === pem.c === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+#define DER_INCREMENT 1024
+#define OBJ_INCREMENT 4
+
+static int check_end_marker(const char *str, int sig_type) {
+  switch (sig_type) {
+    case PEM_SIG_CERT:
+      if (!strcmp(str, "-----END CERTIFICATE-----")) return 1;
+      break;
+    case PEM_SIG_KEY:
+      if (!strcmp(str, "-----END PRIVATE KEY-----")) return 1;
+      break;
+    case PEM_SIG_RSA_KEY:
+      if (!strcmp(str, "-----END RSA PRIVATE KEY-----")) return 1;
+      break;
+    default:
+      assert(0);
+  }
+  return 0;
+}
+
+static int check_begin_marker(const char *str, uint8_t *got) {
+  if (!strcmp(str, "-----BEGIN CERTIFICATE-----")) {
+    *got = PEM_SIG_CERT;
+    return 1;
+  }
+  if (!strcmp(str, "-----BEGIN PRIVATE KEY-----")) {
+    *got = PEM_SIG_KEY;
+    return 1;
+  }
+  if (!strcmp(str, "-----BEGIN RSA PRIVATE KEY-----")) {
+    *got = PEM_SIG_RSA_KEY;
+    return 1;
+  }
+  return 0;
+}
+
+static int add_line(DER *d, size_t *max_len, const uint8_t *buf, size_t len) {
+  uint8_t dec[96];
+  size_t olen;
+
+  if (!b64_decode(buf, len, dec, &olen)) {
+    dprintf(("pem: base64 error\n"));
+    return 0;
+  }
+
+  if (d->der_len + olen > *max_len) {
+    size_t new_len;
+    uint8_t *new;
+
+    new_len = *max_len + DER_INCREMENT;
+    new = realloc(d->der, new_len);
+    if (NULL == new) {
+      dprintf(("pem: realloc: %s\n", strerror(errno)));
+      return 0;
+    }
+
+    d->der = new;
+    *max_len = new_len;
+  }
+
+  memcpy(d->der + d->der_len, dec, olen);
+  d->der_len += olen;
+
+  return 1;
+}
+
+static int add_object(PEM *p) {
+  if (p->num_obj >= p->max_obj) {
+    unsigned int max;
+    DER *new;
+
+    max = p->max_obj + OBJ_INCREMENT;
+
+    new = realloc(p->obj, sizeof(*p->obj) * max);
+    if (NULL == new) return 0;
+
+    p->obj = new;
+    p->max_obj = max;
+  }
+  return 1;
+}
+
+PEM *pem_load(const char *fn, int type_mask) {
+  /* 2x larger than necesssary */
+  unsigned int state, cur, i;
+  char buf[128];
+  size_t der_max_len = 0;
+  uint8_t got;
+  PEM *p;
+  FILE *f;
+
+  p = calloc(1, sizeof(*p));
+  if (NULL == p) {
+    goto out;
+  }
+
+  f = fopen(fn, "r");
+  if (NULL == f) {
+    dprintf(("%s: fopen: %s\n", fn, strerror(errno)));
+    goto out_free;
+  }
+
+  for (state = cur = 0; fgets(buf, sizeof(buf), f);) {
+    char *lf;
+
+    /* Trim trailing whitespaces*/
+    lf = strchr(buf, '\n');
+    while (lf > buf && isspace(*(unsigned char *) lf)) {
+      *lf-- = '\0';
+    }
+    lf++;
+
+    switch (state) {
+      case 0: /* begin marker */
+        if (check_begin_marker(buf, &got)) {
+          if (got & type_mask) {
+            if (!add_object(p)) goto out_close;
+            cur = p->num_obj++;
+            p->obj[cur].der_type = got;
+            p->obj[cur].der_len = 0;
+            p->obj[cur].der = NULL;
+            der_max_len = 0;
+            state = 1;
+          }
+          /* else ignore everything else */
+        }
+        break;
+      case 1: /* content*/
+        if (check_end_marker(buf, p->obj[cur].der_type)) {
+          p->tot_len += p->obj[cur].der_len;
+          state = 0;
+          break;
+        }
+
+        if (!add_line(&p->obj[cur], &der_max_len, (uint8_t *) buf, lf - buf)) {
+          dprintf(("%s: Corrupted key or cert\n", fn));
+          goto out_close;
+        }
+
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (state != 0) {
+    dprintf(("%s: no end marker\n", fn));
+    goto out_close;
+  }
+  if (p->num_obj < 1) {
+    dprintf(("%s: no objects in file\n", fn));
+    goto out_close;
+  }
+
+/* success */
+#if 0
+	dprintf(("%s: Loaded %zu byte PEM\n", fn, p->der_len));
+	ber_dump(p->der, p->der_len);
+#endif
+  fclose(f);
+  goto out;
+
+out_close:
+  for (i = 0; i < p->num_obj; i++) {
+    free(p->obj[i].der);
+  }
+  free(p->obj);
+  fclose(f);
+out_free:
+  free(p);
+  p = NULL;
+out:
+  return p;
+}
+
+void pem_free(PEM *p) {
+  if (p) {
+    unsigned int i;
+    for (i = 0; i < p->num_obj; i++) {
+      free(p->obj[i].der);
+    }
+    free(p->obj);
+    free(p);
+  }
+}
+
+/* === prf.c === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+/* TLS1.2 Pseudo-Random-Function */
+NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
+                     size_t seed_len, uint8_t *out, size_t olen) {
+  uint8_t A1[128];
+  const uint8_t *A1_ptr = &A1[0];
+  size_t A1_len = SHA256_SIZE + seed_len;
+
+  assert(A1_len < sizeof(A1)); /* TODO(lsm): fix this */
+
+  kr_hmac_sha256_v(sec, sec_len, 1, &seed, &seed_len, A1);
+  memcpy(A1 + SHA256_SIZE, seed, seed_len);
+
+  for (;;) {
+    if (olen >= SHA256_SIZE) {
+      size_t l = SHA256_SIZE;
+      kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &A1_len, out);
+      out += SHA256_SIZE;
+      olen -= SHA256_SIZE;
+      if (olen) kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &l, A1);
+    } else {
+      uint8_t tmp[SHA256_SIZE];
+      kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &A1_len, tmp);
+      memcpy(out, tmp, olen);
+      break;
+    }
+  }
+}
+
+/* === random.c === */
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+#ifdef KR_RANDOM_SOURCE_FILE
+int kr_get_random(uint8_t *out, size_t len) {
+  static FILE *fp = NULL;
+  size_t ret = 0;
+
+  if (fp == NULL) {
+    /* TODO(lsm): provide cleanup API  */
+    fp = fopen(KR_RANDOM_SOURCE_FILE, "rb");
+  }
+
+  if (fp != NULL) {
+    ret = fread(out, 1, len, fp);
+  }
+
+  return ret == len;
+}
+#elif defined(KR_USE_RAND)
+int kr_get_random(uint8_t *out, size_t len) {
+  static int srand_called = 0;
+  if (!srand_called) {
+    /* Mix in our pointer. In case user did not invoke srand(), this is better
+     * than nothing. If he did, this will not totally screw it up. */
+    srand(rand() ^ ((int) (out + len)));
+    srand_called = 1;
+  }
+  while (len-- > 0) {
+    *(out++) = (uint8_t) rand();
+  }
+  return 1;
+}
+#endif
+
+int get_random_nonzero(uint8_t *out, size_t len) {
+  size_t i;
+
+  if (!kr_get_random(out, len)) return 0;
+
+  for (i = 0; i < len; i++) {
+    while (out[i] == 0) {
+      if (!kr_get_random(out + i, 1)) return 0;
+    }
+  }
+
+  return 1;
+}
+
+/* === rc4.c === */
+/*
+ * Copyright (c) 2007, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * An implementation of the RC4/ARC4 algorithm.
+ * Originally written by Christophe Devine.
+ */
+
+/**
+ * Get ready for an encrypt/decrypt operation
+ */
+void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length) {
+  int i, j = 0, k = 0, a;
+  uint8_t *m;
+
+  ctx->x = 0;
+  ctx->y = 0;
+  m = ctx->m;
+
+  for (i = 0; i < 256; i++) m[i] = i;
+
+  for (i = 0; i < 256; i++) {
+    a = m[i];
+    j = (uint8_t)(j + a + key[k]);
+    m[i] = m[j];
+    m[j] = a;
+
+    if (++k >= length) k = 0;
+  }
+}
+
+/**
+ * Perform the encrypt/decrypt operation (can use it for either since
+ * this is a stream cipher).
+ * NOTE: *msg and *out must be the same pointer (performance tweak)
+ */
+void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
+  int i;
+  uint8_t *m, x, y, a, b;
+
+  (void) msg;
+  x = ctx->x;
+  y = ctx->y;
+  m = ctx->m;
+
+  for (i = 0; i < length; i++) {
+    a = m[++x];
+    y += a;
+    m[x] = b = m[y];
+    m[y] = a;
+    out[i] ^= m[(uint8_t)(a + b)];
+  }
+
+  ctx->x = x;
+  ctx->y = y;
+}
+
+/* === rsa.c === */
+/*
+ * Copyright (c) 2007-2014, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * Implements the RSA public encryption algorithm. Uses the bigint library to
+ * perform its calculations.
+ */
+
+#define CONFIG_SSL_CERT_VERIFICATION 1
+
+struct _RSA_CTX {
+  bigint *m;    /* modulus */
+  bigint *e;    /* public exponent */
+  bigint *d;    /* private exponent */
+  bigint *p;    /* p as in m = pq */
+  bigint *q;    /* q as in m = pq */
+  bigint *dP;   /* d mod (p-1) */
+  bigint *dQ;   /* d mod (q-1) */
+  bigint *qInv; /* q^-1 mod p */
+  int num_octets;
+  BI_CTX *bi_ctx;
+};
+
+int RSA_block_size(RSA_CTX *ctx) {
+  return ctx->num_octets;
+}
+
+void RSA_priv_key_new(RSA_CTX **ctx, const uint8_t *modulus, int mod_len,
+                      const uint8_t *pub_exp, int pub_len,
+                      const uint8_t *priv_exp, int priv_len, const uint8_t *p,
+                      int p_len, const uint8_t *q, int q_len, const uint8_t *dP,
+                      int dP_len, const uint8_t *dQ, int dQ_len,
+                      const uint8_t *qInv, int qInv_len) {
+  RSA_CTX *rsa_ctx;
+  BI_CTX *bi_ctx;
+  RSA_pub_key_new(ctx, modulus, mod_len, pub_exp, pub_len);
+  rsa_ctx = *ctx;
+  bi_ctx = rsa_ctx->bi_ctx;
+  rsa_ctx->d = bi_import(bi_ctx, priv_exp, priv_len);
+  bi_permanent(rsa_ctx->d);
+
+  rsa_ctx->p = bi_import(bi_ctx, p, p_len);
+  rsa_ctx->q = bi_import(bi_ctx, q, q_len);
+  rsa_ctx->dP = bi_import(bi_ctx, dP, dP_len);
+  rsa_ctx->dQ = bi_import(bi_ctx, dQ, dQ_len);
+  rsa_ctx->qInv = bi_import(bi_ctx, qInv, qInv_len);
+  bi_permanent(rsa_ctx->dP);
+  bi_permanent(rsa_ctx->dQ);
+  bi_permanent(rsa_ctx->qInv);
+  bi_set_mod(bi_ctx, rsa_ctx->p, BIGINT_P_OFFSET);
+  bi_set_mod(bi_ctx, rsa_ctx->q, BIGINT_Q_OFFSET);
+}
+
+void RSA_pub_key_new(RSA_CTX **ctx, const uint8_t *modulus, int mod_len,
+                     const uint8_t *pub_exp, int pub_len) {
+  RSA_CTX *rsa_ctx;
+  BI_CTX *bi_ctx;
+
+  if (*ctx) /* if we load multiple certs, dump the old one */
+    RSA_free(*ctx);
+
+  bi_ctx = bi_initialize();
+  *ctx = (RSA_CTX *) calloc(1, sizeof(RSA_CTX));
+  rsa_ctx = *ctx;
+  rsa_ctx->bi_ctx = bi_ctx;
+  rsa_ctx->num_octets = mod_len;
+  rsa_ctx->m = bi_import(bi_ctx, modulus, mod_len);
+  bi_set_mod(bi_ctx, rsa_ctx->m, BIGINT_M_OFFSET);
+  rsa_ctx->e = bi_import(bi_ctx, pub_exp, pub_len);
+  bi_permanent(rsa_ctx->e);
+}
+
+/**
+ * Free up any RSA context resources.
+ */
+void RSA_free(RSA_CTX *rsa_ctx) {
+  BI_CTX *bi_ctx;
+  if (rsa_ctx == NULL) /* deal with ptrs that are null */
+    return;
+
+  bi_ctx = rsa_ctx->bi_ctx;
+
+  bi_depermanent(rsa_ctx->e);
+  bi_free(bi_ctx, rsa_ctx->e);
+  bi_free_mod(rsa_ctx->bi_ctx, BIGINT_M_OFFSET);
+
+  if (rsa_ctx->d) {
+    bi_depermanent(rsa_ctx->d);
+    bi_free(bi_ctx, rsa_ctx->d);
+    bi_depermanent(rsa_ctx->dP);
+    bi_depermanent(rsa_ctx->dQ);
+    bi_depermanent(rsa_ctx->qInv);
+    bi_free(bi_ctx, rsa_ctx->dP);
+    bi_free(bi_ctx, rsa_ctx->dQ);
+    bi_free(bi_ctx, rsa_ctx->qInv);
+    bi_free_mod(rsa_ctx->bi_ctx, BIGINT_P_OFFSET);
+    bi_free_mod(rsa_ctx->bi_ctx, BIGINT_Q_OFFSET);
+  }
+
+  bi_terminate(bi_ctx);
+  free(rsa_ctx);
+}
+
+/**
+ * @brief Use PKCS1.5 for decryption/verification.
+ * @param ctx [in] The context
+ * @param in_data [in] The data to decrypt (must be < modulus size-11)
+ * @param out_data [out] The decrypted data.
+ * @param out_len [int] The size of the decrypted buffer in bytes
+ * @param is_decryption [in] Decryption or verify operation.
+ * @return  The number of bytes that were originally encrypted. -1 on error.
+ * @see http://www.rsasecurity.com/rsalabs/node.asp?id=2125
+ */
+int RSA_decrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint8_t *out_data,
+                int out_len, int is_decryption) {
+  const int byte_size = ctx->num_octets;
+  int i = 0, size;
+  bigint *decrypted_bi, *dat_bi;
+  uint8_t *block = (uint8_t *) alloca(byte_size);
+  int pad_count = 0;
+
+  if (out_len < byte_size) /* check output has enough size */
+    return -1;
+
+  memset(out_data, 0, out_len); /* initialise */
+
+  /* decrypt */
+  dat_bi = bi_import(ctx->bi_ctx, in_data, byte_size);
+#ifdef CONFIG_SSL_CERT_VERIFICATION
+  decrypted_bi = is_decryption ? /* decrypt or verify? */
+                     RSA_private(ctx, dat_bi)
+                               : RSA_public(ctx, dat_bi);
+#else /* always a decryption */
+  decrypted_bi = RSA_private(ctx, dat_bi);
+#endif
+
+  /* convert to a normal block */
+  bi_export(ctx->bi_ctx, decrypted_bi, block, byte_size);
+
+  if (block[i++] != 0) /* leading 0? */
+    return -1;
+
+#ifdef CONFIG_SSL_CERT_VERIFICATION
+  if (is_decryption == 0) /* PKCS1.5 signing pads with "0xff"s */
+  {
+    if (block[i++] != 0x01) /* BT correct? */
+      return -1;
+
+    while (block[i++] == 0xff && i < byte_size) pad_count++;
+  } else /* PKCS1.5 encryption padding is random */
+#endif
+  {
+    if (block[i++] != 0x02) /* BT correct? */
+      return -1;
+
+    while (block[i++] && i < byte_size) pad_count++;
+  }
+
+  /* check separator byte 0x00 - and padding must be 8 or more bytes */
+  if (i == byte_size || pad_count < 8) return -1;
+
+  size = byte_size - i;
+
+  /* get only the bit we want */
+  memcpy(out_data, &block[i], size);
+  return size;
+}
+
+/**
+ * Performs m = c^d mod n
+ */
+bigint *RSA_private(const RSA_CTX *c, bigint *bi_msg) {
+  return bi_crt(c->bi_ctx, bi_msg, c->dP, c->dQ, c->p, c->q, c->qInv);
+}
+
+#ifdef CONFIG_SSL_FULL_MODE
+/**
+ * Used for diagnostics.
+ */
+void RSA_print(const RSA_CTX *rsa_ctx) {
+  if (rsa_ctx == NULL) return;
+
+  printf("-----------------   RSA DEBUG   ----------------\n");
+  printf("Size:\t%d\n", rsa_ctx->num_octets);
+  bi_print("Modulus", rsa_ctx->m);
+  bi_print("Public Key", rsa_ctx->e);
+  bi_print("Private Key", rsa_ctx->d);
+}
+#endif
+
+/**
+ * Performs c = m^e mod n
+ */
+bigint *RSA_public(const RSA_CTX *c, bigint *bi_msg) {
+  c->bi_ctx->mod_offset = BIGINT_M_OFFSET;
+  return bi_mod_power(c->bi_ctx, bi_msg, c->e);
+}
+
+/**
+ * Use PKCS1.5 for encryption/signing.
+ * see http://www.rsasecurity.com/rsalabs/node.asp?id=2125
+ */
+int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
+                uint8_t *out_data, int is_signing) {
+  int byte_size = ctx->num_octets;
+  int num_pads_needed = byte_size - in_len - 3;
+  bigint *dat_bi, *encrypt_bi;
+
+  /* note: in_len+11 must be > byte_size */
+  out_data[0] = 0; /* ensure encryption block is < modulus */
+
+  if (is_signing) {
+    out_data[1] = 1; /* PKCS1.5 signing pads with "0xff"'s */
+    memset(&out_data[2], 0xff, num_pads_needed);
+  } else /* randomize the encryption padding with non-zero bytes */
+  {
+    out_data[1] = 2;
+    if (get_random_nonzero(&out_data[2], num_pads_needed) < 0) return -1;
+  }
+
+  out_data[2 + num_pads_needed] = 0;
+  memcpy(&out_data[3 + num_pads_needed], in_data, in_len);
+
+  /* now encrypt it */
+  dat_bi = bi_import(ctx->bi_ctx, out_data, byte_size);
+  encrypt_bi = is_signing ? RSA_private(ctx, dat_bi) : RSA_public(ctx, dat_bi);
+  bi_export(ctx->bi_ctx, encrypt_bi, out_data, byte_size);
+
+  /* save a few bytes of memory */
+  bi_clear_cache(ctx->bi_ctx);
+  return byte_size;
 }
 
 /* === ssl.c === */
@@ -5515,6 +5471,8 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
 NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   struct tls_hdr hdr;
   struct tls_hmac_hdr phdr;
+  const uint8_t *msgs[2];
+  size_t msgl[2];
   uint8_t digest[MD5_SIZE];
   size_t buf_ofs;
   size_t mac_len = ssl->tx_enc ? MD5_SIZE : 0, max = (1 << 14) - MD5_SIZE;
@@ -5541,12 +5499,15 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
     phdr.type = hdr.type;
     phdr.vers = hdr.vers;
     phdr.len = htobe16(len);
+
+    msgs[0] = (uint8_t *) &phdr;
+    msgl[0] = sizeof(phdr);
+    msgs[1] = buf;
+    msgl[1] = len;
     if (ssl->is_server) {
-      kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-                  sizeof(phdr), buf, len, digest);
+      kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
     } else {
-      kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
-                  buf, len, digest);
+      kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
     }
 
     if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;
@@ -6343,6 +6304,8 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
                             const uint8_t *end, struct vec *out) {
   struct tls_hmac_hdr phdr;
   uint8_t digest[MD5_SIZE];
+  const uint8_t *msgs[2];
+  size_t msgl[2];
   const uint8_t *mac;
   size_t len = end - buf;
 
@@ -6395,12 +6358,14 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
    *      TLSCompressed.fragment);
    */
 
+  msgs[0] = (uint8_t *) &phdr;
+  msgl[0] = sizeof(phdr);
+  msgs[1] = out->ptr;
+  msgl[1] = out->len;
   if (ssl->is_server) {
-    kr_hmac_md5(ssl->cur->keys, MD5_SIZE, (uint8_t *) &phdr, sizeof(phdr),
-                out->ptr, out->len, digest);
+    kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
   } else {
-    kr_hmac_md5(ssl->cur->keys + MD5_SIZE, MD5_SIZE, (uint8_t *) &phdr,
-                sizeof(phdr), out->ptr, out->len, digest);
+    kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
   }
 
   if (memcmp(digest, mac, MD5_SIZE)) {
@@ -6887,11 +6852,6 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
   const uint8_t *end = ptr + len;
   struct gber_tag tag;
   struct ro_vec tbs;
-  union {
-    MD5_CTX md5;
-    SHA_CTX sha1;
-    SHA256_CTX sha256;
-  } u;
   X509 *cert;
 
   dprintf(("cert %p %d\n", ptr, (int) len));
@@ -6939,19 +6899,13 @@ X509 *X509_new(const uint8_t *ptr, size_t len) {
 
   switch (cert->issuer_hash_alg) {
     case X509_HASH_MD5:
-      MD5_Init(&u.md5);
-      MD5_Update(&u.md5, tbs.ptr, tbs.len);
-      MD5_Final(cert->digest, &u.md5);
+      kr_hash_md5_v(1, &tbs.ptr, &tbs.len, cert->digest);
       break;
     case X509_HASH_SHA1:
-      SHA1_Init(&u.sha1);
-      SHA1_Update(&u.sha1, tbs.ptr, tbs.len);
-      SHA1_Final(cert->digest, &u.sha1);
+      kr_hash_sha1_v(1, &tbs.ptr, &tbs.len, cert->digest);
       break;
     case X509_HASH_SHA256:
-      SHA256_Init(&u.sha256);
-      SHA256_Update(&u.sha256, tbs.ptr, tbs.len);
-      SHA256_Final(cert->digest, &u.sha256);
+      kr_hash_sha256_v(1, &tbs.ptr, &tbs.len, cert->digest);
       break;
     default:
       break;

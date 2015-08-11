@@ -33,6 +33,8 @@
 
 #include "ktypes.h"
 
+#ifndef KR_EXT_SHA256
+
 /*
  * ASSERT NOTE:
  * Some sanity checking code is included using assert().  On my FreeBSD
@@ -206,7 +208,7 @@ typedef uint64_t sha2_word64; /* Exactly 8 bytes */
  * library -- they are intended for private internal visibility/use
  * only.
  */
-NS_INTERNAL void SHA256_Transform(SHA256_CTX*, const sha2_word32*);
+NS_INTERNAL void SHA256_Transform(SHA256_CTX *, const sha2_word32 *);
 
 /*** SHA-XYZ INITIAL HASH VALUES AND CONSTANTS ************************/
 /* Hash constant words K for SHA-256: */
@@ -301,8 +303,8 @@ static const sha2_word64 sha512_initial_hash_value[8] = {
 #endif
 
 /*** SHA-256: *********************************************************/
-void SHA256_Init(SHA256_CTX* context) {
-  if (context == (SHA256_CTX*) 0) {
+void SHA256_Init(SHA256_CTX *context) {
+  if (context == (SHA256_CTX *) 0) {
     return;
   }
   MEMCPY_BCOPY(context->state, sha256_initial_hash_value, SHA256_SIZE);
@@ -345,13 +347,13 @@ void SHA256_Init(SHA256_CTX* context) {
   (h) = T1 + Sigma0_256(a) + Maj((a), (b), (c));           \
   j++
 
-NS_INTERNAL void SHA256_Transform(SHA256_CTX* context,
-                                  const sha2_word32* data) {
+NS_INTERNAL void SHA256_Transform(SHA256_CTX *context,
+                                  const sha2_word32 *data) {
   sha2_word32 a, b, c, d, e, f, g, h, s0, s1;
   sha2_word32 T1, *W256;
   int j;
 
-  W256 = (sha2_word32*) context->buffer;
+  W256 = (sha2_word32 *) context->buffer;
 
   /* Initialize registers with the prev. intermediate value */
   a = context->state[0];
@@ -404,16 +406,16 @@ NS_INTERNAL void SHA256_Transform(SHA256_CTX* context,
 
 #else /* SHA2_UNROLL_TRANSFORM */
 
-void SHA256_Transform(SHA256_CTX* context, const sha2_word32* data_in) {
+void SHA256_Transform(SHA256_CTX *context, const sha2_word32 *data_in) {
   sha2_word32 data_c[SHA256_BLOCK_LENGTH / sizeof(sha2_word32)];
   sha2_word32 a, b, c, d, e, f, g, h, s0, s1;
   sha2_word32 T1, T2, *W256;
-  sha2_word32* data = data_c;
+  sha2_word32 *data = data_c;
   int j;
 
   MEMCPY_BCOPY(data_c, data_in, sizeof(data_c));
 
-  W256 = (sha2_word32*) context->buffer;
+  W256 = (sha2_word32 *) context->buffer;
 
   /* Initialize registers with the prev. intermediate value */
   a = context->state[0];
@@ -488,7 +490,7 @@ void SHA256_Transform(SHA256_CTX* context, const sha2_word32* data_in) {
 
 #endif /* SHA2_UNROLL_TRANSFORM */
 
-void SHA256_Update(SHA256_CTX* context, const sha2_byte* data, size_t len) {
+void SHA256_Update(SHA256_CTX *context, const sha2_byte *data, size_t len) {
   unsigned int freespace, usedspace;
 
   if (len == 0) {
@@ -497,7 +499,7 @@ void SHA256_Update(SHA256_CTX* context, const sha2_byte* data, size_t len) {
   }
 
   /* Sanity check: */
-  assert(context != (SHA256_CTX*) 0 && data != (sha2_byte*) 0);
+  assert(context != (SHA256_CTX *) 0 && data != (sha2_byte *) 0);
 
   usedspace = (context->bitcount >> 3) % SHA256_BLOCK_LENGTH;
   if (usedspace > 0) {
@@ -510,7 +512,7 @@ void SHA256_Update(SHA256_CTX* context, const sha2_byte* data, size_t len) {
       context->bitcount += freespace << 3;
       len -= freespace;
       data += freespace;
-      SHA256_Transform(context, (sha2_word32*) context->buffer);
+      SHA256_Transform(context, (sha2_word32 *) context->buffer);
     } else {
       /* The buffer is not yet full */
       MEMCPY_BCOPY(&context->buffer[usedspace], data, len);
@@ -522,7 +524,7 @@ void SHA256_Update(SHA256_CTX* context, const sha2_byte* data, size_t len) {
   }
   while (len >= SHA256_BLOCK_LENGTH) {
     /* Process as many complete blocks as we can */
-    SHA256_Transform(context, (sha2_word32*) data);
+    SHA256_Transform(context, (sha2_word32 *) data);
     context->bitcount += SHA256_BLOCK_LENGTH << 3;
     len -= SHA256_BLOCK_LENGTH;
     data += SHA256_BLOCK_LENGTH;
@@ -536,16 +538,16 @@ void SHA256_Update(SHA256_CTX* context, const sha2_byte* data, size_t len) {
   usedspace = freespace = 0;
 }
 
-void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
-  sha2_word32* d = (sha2_word32*) digest;
+void SHA256_Final(sha2_byte digest[], SHA256_CTX *context) {
+  sha2_word32 *d = (sha2_word32 *) digest;
   unsigned int usedspace;
-  char* ptr;
+  char *ptr;
 
   /* Sanity check: */
-  assert(context != (SHA256_CTX*) 0);
+  assert(context != (SHA256_CTX *) 0);
 
   /* If no digest buffer is passed, we don't bother doing this: */
-  if (digest != (sha2_byte*) 0) {
+  if (digest != (sha2_byte *) 0) {
     usedspace = (context->bitcount >> 3) % SHA256_BLOCK_LENGTH;
 #if BYTE_ORDER == LITTLE_ENDIAN
     /* Convert FROM host byte order */
@@ -565,7 +567,7 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
                        SHA256_BLOCK_LENGTH - usedspace);
         }
         /* Do second-to-last transform: */
-        SHA256_Transform(context, (sha2_word32*) context->buffer);
+        SHA256_Transform(context, (sha2_word32 *) context->buffer);
 
         /* And set-up for the last transform: */
         MEMSET_BZERO(context->buffer, SHA256_SHORT_BLOCK_LENGTH);
@@ -578,11 +580,11 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
       *context->buffer = 0x80;
     }
     /* Set the bit count: */
-    ptr = (char*) &context->buffer[SHA256_SHORT_BLOCK_LENGTH];
-    *(sha2_word64*) ptr = context->bitcount;
+    ptr = (char *) &context->buffer[SHA256_SHORT_BLOCK_LENGTH];
+    *(sha2_word64 *) ptr = context->bitcount;
 
     /* Final transform: */
-    SHA256_Transform(context, (sha2_word32*) context->buffer);
+    SHA256_Transform(context, (sha2_word32 *) context->buffer);
 
 #if BYTE_ORDER == LITTLE_ENDIAN
     {
@@ -601,4 +603,23 @@ void SHA256_Final(sha2_byte digest[], SHA256_CTX* context) {
   /* Clean up state data: */
   MEMSET_BZERO(context, sizeof(SHA256_CTX));
   usedspace = 0;
+}
+
+static void kr_hash_sha256_v(size_t num_msgs, const uint8_t *msgs[],
+                             const size_t *msg_lens, uint8_t *digest) {
+  size_t i;
+  SHA256_CTX ctx;
+  SHA256_Init(&ctx);
+  for (i = 0; i < num_msgs; i++) {
+    SHA256_Update(&ctx, msgs[i], msg_lens[i]);
+  }
+  SHA256_Final(digest, &ctx);
+}
+#endif /* !KR_EXT_SHA256 */
+
+static void kr_hmac_sha256_v(const uint8_t *key, size_t key_len,
+                             size_t num_msgs, const uint8_t *msgs[],
+                             const size_t *msg_lens, uint8_t *digest) {
+  kr_hmac_v(kr_hash_sha256_v, key, key_len, num_msgs, msgs, msg_lens, digest,
+            SHA256_SIZE);
 }

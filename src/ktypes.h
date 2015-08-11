@@ -96,24 +96,6 @@ typedef long ssize_t;
 
 /* #define KRYPTON_DEBUG_NONBLOCKING 1 */
 
-#if defined(_POSIX_VERSION)
-#include <sys/socket.h>
-#define kr_send send
-#define kr_recv recv
-#elif defined(WIN32)
-#define kr_send send
-#define kr_recv recv
-#else /* External implementtaion must be provided */
-extern ssize_t kr_send(int fd, const void *buf, size_t len, int flags);
-extern ssize_t kr_recv(int fd, void *buf, size_t len, int flags);
-#endif
-
-#if defined(_POSIX_VERSION) || defined(WIN32)
-NS_INTERNAL int kr_get_random(uint8_t *out, size_t len);
-#else /* Expect external implementation */
-extern int kr_get_random(uint8_t *out, size_t len);
-#endif
-
 struct ro_vec {
   const uint8_t *ptr;
   size_t len;

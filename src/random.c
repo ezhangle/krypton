@@ -5,15 +5,14 @@
 
 #include "ktypes.h"
 
-#ifdef _POSIX_VERSION
-#define RANDOM_SOURCE "/dev/urandom"
+#ifdef KR_RANDOM_SOURCE_FILE
 int kr_get_random(uint8_t *out, size_t len) {
   static FILE *fp = NULL;
   size_t ret = 0;
 
   if (fp == NULL) {
     /* TODO(lsm): provide cleanup API  */
-    fp = fopen(RANDOM_SOURCE, "rb");
+    fp = fopen(KR_RANDOM_SOURCE_FILE, "rb");
   }
 
   if (fp != NULL) {
@@ -22,7 +21,7 @@ int kr_get_random(uint8_t *out, size_t len) {
 
   return ret == len;
 }
-#elif defined(WIN32)
+#elif defined(KR_USE_RAND)
 int kr_get_random(uint8_t *out, size_t len) {
   static int srand_called = 0;
   if (!srand_called) {

@@ -32,10 +32,17 @@
  * This file implements the MD5 algorithm as defined in RFC1321
  */
 
+#ifndef KR_EXT_MD5
+
 #include "ktypes.h"
 
-/* Constants for MD5Transform routine.
- */
+typedef struct {
+  uint32_t state[4];  /* state (ABCD) */
+  uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
+  uint8_t buffer[64]; /* input buffer */
+} MD5_CTX;
+
+/* Constants for MD5Transform routine. */
 #define S11 7
 #define S12 12
 #define S13 17
@@ -281,4 +288,23 @@ static void Decode(uint32_t *output, const uint8_t *input, uint32_t len) {
     output[i] = ((uint32_t) input[j]) | (((uint32_t) input[j + 1]) << 8) |
                 (((uint32_t) input[j + 2]) << 16) |
                 (((uint32_t) input[j + 3]) << 24);
+}
+
+static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
+                          const size_t *msg_lens, uint8_t *digest) {
+  size_t i;
+  MD5_CTX md5;
+  MD5_Init(&md5);
+  for (i = 0; i < num_msgs; i++) {
+    MD5_Update(&md5, msgs[i], msg_lens[i]);
+  }
+  MD5_Final(digest, &md5);
+}
+#endif /* !KR_EXT_MD5 */
+
+static void kr_hmac_md5_v(const uint8_t *key, size_t key_len, size_t num_msgs,
+                          const uint8_t *msgs[], const size_t *msg_lens,
+                          uint8_t *digest) {
+  kr_hmac_v(kr_hash_md5_v, key, key_len, num_msgs, msgs, msg_lens, digest,
+            MD5_SIZE);
 }

@@ -5,69 +5,20 @@
  * This was initially based on the Mozilla SHA1 implementation, although
  * none of the original Mozilla code remains.
  */
+#ifndef KR_EXT_SHA1
 
 #include "ktypes.h"
 
-//#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
-#if 0
-
-/*
- * Force usage of rol or ror by selecting the one with the smaller constant.
- * It _can_ generate slightly smaller code (a constant of 1 is special), but
- * perhaps more importantly it's possibly faster on any uarch that does a
- * rotate with a loop.
- */
-
-#define SHA_ASM(op, x, n)                                \
-  ({                                                     \
-    unsigned int __res;                                  \
-    __asm__(op " %1,%0" : "=r"(__res) : "i"(n), "0"(x)); \
-    __res;                                               \
-  })
-#define SHA_ROL(x, n) SHA_ASM("rol", x, n)
-#define SHA_ROR(x, n) SHA_ASM("ror", x, n)
-
-#else
+typedef struct {
+  uint64_t size;
+  unsigned int H[5];
+  unsigned int W[16];
+} SHA_CTX;
 
 #define SHA_ROT(X, l, r) (((X) << (l)) | ((X) >> (r)))
 #define SHA_ROL(X, n) SHA_ROT(X, n, 32 - (n))
 #define SHA_ROR(X, n) SHA_ROT(X, 32 - (n), n)
-
-#endif
-
-/*
- * If you have 32 registers or more, the compiler can (and should)
- * try to change the array[] accesses into registers. However, on
- * machines with less than ~25 registers, that won't really work,
- * and at least gcc will make an unholy mess of it.
- *
- * So to avoid that mess which just slows things down, we force
- * the stores to memory to actually happen (we might be better off
- * with a 'W(t)=(val);asm("":"+m" (W(t))' there instead, as
- * suggested by Artur Skawina - that will also make gcc unable to
- * try to do the silly "optimize away loads" part because it won't
- * see what the value will be).
- *
- * Ben Herrenschmidt reports that on PPC, the C version comes close
- * to the optimized asm with this (ie on PPC you don't want that
- * 'volatile', since there are lots of registers).
- *
- * On ARM we get the best code generation by forcing a full memory barrier
- * between each SHA_ROUND, otherwise gcc happily get wild with spilling and
- * the stack frame size simply explode and performance goes down the drain.
- */
-
-#if defined(__i386__) || defined(__x86_64__)
-#define setW(x, val) (*(volatile unsigned int *) &W(x) = (val))
-#elif defined(__GNUC__) && defined(__arm__)
-#define setW(x, val)          \
-  do {                        \
-    W(x) = (val);             \
-    __asm__("" ::: "memory"); \
-  } while (0)
-#else
 #define setW(x, val) (W(x) = (val))
-#endif
 
 /*
  * Performance might be improved if the CPU architecture is OK with
@@ -291,3 +242,24 @@ void SHA1_Final(unsigned char hashout[20], SHA_CTX *ctx) {
   /* Output hash */
   for (i = 0; i < 5; i++) put_be32(hashout + i * 4, ctx->H[i]);
 }
+
+static void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
+                           const size_t *msg_lens, uint8_t *digest) {
+  size_t i;
+  SHA_CTX sha1;
+  SHA1_Init(&sha1);
+  for (i = 0; i < num_msgs; i++) {
+    SHA1_Update(&sha1, msgs[i], msg_lens[i]);
+  }
+  SHA1_Final(digest, &sha1);
+}
+#endif /* !KR_EXT_SHA1 */
+
+#if 0 /* TODO: Add SHA1 support as HMAC. */
+static void kr_hmac_sha1_v(const uint8_t *key, size_t key_len, size_t num_msgs,
+                           const uint8_t *msgs[], const size_t *msg_lens,
+                           uint8_t *digest) {
+  kr_hmac_v(kr_hash_sha1_v, key, key_len, num_msgs, msgs, msg_lens, digest,
+            SHA1_SIZE);
+}
+#endif
