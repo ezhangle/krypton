@@ -23,7 +23,7 @@
 
 #define TEST_PORT 4343
 
-static SSL_CTX *setup_ctx(const char *cert_chain) {
+static SSL_CTX *setup_ctx(const char *cert_chain, const char *cipher) {
   SSL_CTX *ctx;
 
   ctx = SSL_CTX_new(SSLv23_client_method());
@@ -37,9 +37,11 @@ static SSL_CTX *setup_ctx(const char *cert_chain) {
 
   if (!SSL_CTX_load_verify_locations(ctx, cert_chain, NULL)) goto out_free;
 
-#ifdef SSL_F_CLIENT_CERTIFICATE
-/*  SSL_CTX_set_cipher_list(ctx, "RC4-MD5,NULL-MD5"); */
-/* SSL_CTX_set_cipher_list(ctx, "NULL-MD5,RC4-MD5"); */
+#ifdef OPENSSL_VERSION_NUMBER
+  if (cipher != NULL) {
+    SSL_CTX_set_cipher_list(ctx, cipher);
+    fprintf(stderr, "Cipher spec: %s\n", cipher);
+  }
 #endif
   goto out;
 
@@ -164,7 +166,7 @@ static void ns_set_non_blocking_mode(int sock) {
 #endif
 }
 
-static int do_test(const char *cert_chain) {
+static int do_test(const char *cert_chain, const char *cipher) {
   struct sockaddr_in sa;
   struct pollfd pfd;
   SSL_CTX *ctx;
@@ -172,7 +174,7 @@ static int do_test(const char *cert_chain) {
   int ret = 0;
   int fd;
 
-  ctx = setup_ctx(cert_chain);
+  ctx = setup_ctx(cert_chain, cipher);
   if (NULL == ctx) goto out;
 
   ssl = SSL_new(ctx);
@@ -229,8 +231,9 @@ out:
   return ret;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+  const char *cipher = argc > 1 ? argv[1] : NULL;
   SSL_library_init();
-  if (!do_test("ca.crt")) return EXIT_FAILURE;
+  if (!do_test("ca.crt", cipher)) return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }

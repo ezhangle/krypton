@@ -121,8 +121,8 @@ NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf),
       sec->keys, sizeof(sec->keys));
 
-  RC4_setup(&sec->client_write_ctx, sec->keys + 32, 16);
-  RC4_setup(&sec->server_write_ctx, sec->keys + 48, 16);
+  RC4_setup(&sec->client_write_ctx, sec->keys + 2 * tls_mac_len(sec), 16);
+  RC4_setup(&sec->server_write_ctx, sec->keys + 2 * tls_mac_len(sec) + 16, 16);
 }
 
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
@@ -153,9 +153,10 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   struct tls_hmac_hdr phdr;
   const uint8_t *msgs[2];
   size_t msgl[2];
-  uint8_t digest[MD5_SIZE];
+  uint8_t digest[MAX_DIGEST_SIZE];
   size_t buf_ofs;
-  size_t mac_len = ssl->tx_enc ? MD5_SIZE : 0, max = (1 << 14) - MD5_SIZE;
+  size_t mac_len = ssl->tx_enc ? tls_mac_len(ssl->cur) : 0;
+  size_t max = (1 << 14) - mac_len;
 
   if (len > max) {
     len = max;
@@ -184,13 +185,10 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
     msgl[0] = sizeof(phdr);
     msgs[1] = buf;
     msgl[1] = len;
-    if (ssl->is_server) {
-      kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
-    } else {
-      kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
-    }
+    kr_ssl_hmac(ssl, ssl->is_server ? KR_SERVER_MAC : KR_CLIENT_MAC, 2, msgs,
+                msgl, digest);
 
-    if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;
+    if (!tls_tx_push(ssl, digest, mac_len)) return 0;
 
     if (ssl->is_server) {
       ssl->cur->server_write_seq++;
@@ -200,10 +198,11 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
 
     switch (ssl->cur->cipher_suite) {
 #if ALLOW_NULL_CIPHERS
-      case CIPHER_TLS_NULL_MD5:
+      case TLS_RSA_WITH_NULL_MD5:
         break;
 #endif
-      case CIPHER_TLS_RC4_MD5:
+      case TLS_RSA_WITH_RC4_128_MD5:
+      case TLS_RSA_WITH_RC4_128_SHA:
         if (ssl->is_server) {
           RC4_crypt(&ssl->cur->server_write_ctx, ssl->tx_buf + buf_ofs,
                     ssl->tx_buf + buf_ofs, len + mac_len);
@@ -237,4 +236,17 @@ NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
 
 NS_INTERNAL int tls_close_notify(SSL *ssl) {
   return tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_CLOSE_NOTIFY);
+}
+
+NS_INTERNAL size_t tls_mac_len(tls_sec_t sec) {
+  switch (sec->cipher_suite) {
+    case TLS_RSA_WITH_NULL_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+      return MD5_SIZE;
+    case TLS_RSA_WITH_RC4_128_SHA:
+      return SHA1_SIZE;
+  }
+  abort();
+  /* not reached */
+  return MAX_DIGEST_SIZE;
 }

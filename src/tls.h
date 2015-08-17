@@ -13,7 +13,7 @@ typedef struct tls_security {
    * client_write_key
    * server_write_key
   */
-  uint8_t keys[MD5_SIZE * 2 + RC4_KEY_SIZE * 2];
+  uint8_t keys[MAX_DIGEST_SIZE * 2 + MAX_KEY_SIZE * 2];
 
   uint64_t client_write_seq;
   uint64_t server_write_seq;
@@ -49,6 +49,7 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
+NS_INTERNAL size_t tls_mac_len(tls_sec_t sec);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);

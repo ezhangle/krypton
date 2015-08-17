@@ -30,14 +30,15 @@ NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
 #define SHA1_SIZE 20
 #define MD5_SIZE 16
 
-#define MAX_DIGEST_SIZE SHA256_SIZE
-
 /* RC4 */
 #define RC4_KEY_SIZE 16
 typedef struct {
   uint8_t x, y;
   uint8_t m[256];
 } RC4_CTX;
+
+#define MAX_DIGEST_SIZE SHA256_SIZE
+#define MAX_KEY_SIZE RC4_KEY_SIZE
 
 NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
 NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
@@ -81,4 +82,17 @@ NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #define MUL_KARATSUBA_THRESH 20
 #define SQU_KARATSUBA_THRESH 40
 
+/* cs = 0 -> client MAC, cs = 1 -> server MAC. */
+#define KR_CLIENT_MAC 0
+#define KR_SERVER_MAC 1
+static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                        const uint8_t *msgs[], const size_t *msg_lens,
+                        uint8_t *digest);
+
+typedef void (*kr_hash_func_t)(size_t, const uint8_t **, const size_t *,
+                               uint8_t *);
+static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
+                      const size_t *msg_lens, uint8_t *digest,
+                      size_t digest_len);
 #endif /* _CRYPTO_H */

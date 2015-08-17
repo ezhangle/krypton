@@ -333,14 +333,15 @@ NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
 #define SHA1_SIZE 20
 #define MD5_SIZE 16
 
-#define MAX_DIGEST_SIZE SHA256_SIZE
-
 /* RC4 */
 #define RC4_KEY_SIZE 16
 typedef struct {
   uint8_t x, y;
   uint8_t m[256];
 } RC4_CTX;
+
+#define MAX_DIGEST_SIZE SHA256_SIZE
+#define MAX_KEY_SIZE RC4_KEY_SIZE
 
 NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
 NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
@@ -384,6 +385,19 @@ NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #define MUL_KARATSUBA_THRESH 20
 #define SQU_KARATSUBA_THRESH 40
 
+/* cs = 0 -> client MAC, cs = 1 -> server MAC. */
+#define KR_CLIENT_MAC 0
+#define KR_SERVER_MAC 1
+static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                        const uint8_t *msgs[], const size_t *msg_lens,
+                        uint8_t *digest);
+
+typedef void (*kr_hash_func_t)(size_t, const uint8_t **, const size_t *,
+                               uint8_t *);
+static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
+                      const size_t *msg_lens, uint8_t *digest,
+                      size_t digest_len);
 #endif /* _CRYPTO_H */
 
 /* === bigint_impl.h === */
@@ -629,7 +643,7 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
 #define ALLOW_NULL_CIPHERS 0
 
 /* just count non-NULL ciphers */
-#define NUM_CIPHER_SUITES 1
+#define NUM_CIPHER_SUITES 2
 
 #define NUM_COMPRESSORS 1
 
@@ -780,9 +794,12 @@ struct tls_alert {
 #define ALERT_NO_RENEGOTIATION 100
 #define ALERT_UNSUPPORTED_EXT 110
 
-#define CIPHER_TLS_NULL_MD5 0x0001
-#define CIPHER_TLS_RC4_MD5 0x0004
-#define CIPHER_EMPTY_RENEG_EXT 0x00ff
+/* http://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-4
+ */
+#define TLS_RSA_WITH_NULL_MD5 0x0001
+#define TLS_RSA_WITH_RC4_128_MD5 0x0004
+#define TLS_RSA_WITH_RC4_128_SHA 0x0005
+#define TLS_EMPTY_RENEGOTIATION_INFO_SCSV 0x00ff
 
 #define COMPRESSOR_NULL 0x00
 
@@ -804,7 +821,7 @@ typedef struct tls_security {
    * client_write_key
    * server_write_key
   */
-  uint8_t keys[MD5_SIZE * 2 + RC4_KEY_SIZE * 2];
+  uint8_t keys[MAX_DIGEST_SIZE * 2 + MAX_KEY_SIZE * 2];
 
   uint64_t client_write_seq;
   uint64_t server_write_seq;
@@ -840,6 +857,7 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
+NS_INTERNAL size_t tls_mac_len(tls_sec_t sec);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);
@@ -2942,46 +2960,6 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
 }
 #endif
 
-/* === hmac.c === */
-/*
- * Generic HMAC implementation, takes a vector hash function as an argument.
- * NOTE: does not handle keys larger than the block size.
- */
-static void kr_hmac_v(void (*hash_func)(size_t, const uint8_t **,
-                                        const size_t *, uint8_t *),
-                      const uint8_t *key, size_t key_len, size_t num_msgs,
-                      const uint8_t *msgs[], const size_t *msg_lens,
-                      uint8_t *digest, size_t digest_len) {
-  uint8_t k_pad[64];
-  const uint8_t **k_msgs =
-      (const uint8_t **) calloc(num_msgs + 2, sizeof(uint8_t *));
-  size_t *k_msg_lens = (size_t *) calloc(num_msgs + 2, sizeof(size_t));
-  size_t i;
-  assert(key_len <= sizeof(k_pad));
-
-  memset(k_pad, 0, sizeof(k_pad));
-  memcpy(k_pad, key, key_len);
-  for (i = 0; i < 64; i++) k_pad[i] ^= 0x36;
-
-  k_msgs[0] = k_pad;
-  k_msg_lens[0] = sizeof(k_pad);
-  memcpy(k_msgs + 1, msgs, num_msgs * sizeof(uint8_t *));
-  memcpy(k_msg_lens + 1, msg_lens, num_msgs * sizeof(size_t));
-  hash_func(num_msgs + 1, k_msgs, k_msg_lens, digest);
-
-  memset(k_pad, 0, sizeof(k_pad));
-  memcpy(k_pad, key, key_len);
-  for (i = 0; i < 64; i++) k_pad[i] ^= 0x5c;
-  k_msgs[0] = k_pad;
-  k_msg_lens[0] = sizeof(k_pad);
-  k_msgs[1] = digest;
-  k_msg_lens[1] = digest_len;
-  hash_func(2, k_msgs, k_msg_lens, digest);
-
-  free(k_msg_lens);
-  free(k_msgs);
-}
-
 /* === md5.c === */
 /*
  * Copyright (c) 2007, Cameron Rich
@@ -3285,13 +3263,6 @@ static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
 }
 #endif /* !KR_EXT_MD5 */
 
-static void kr_hmac_md5_v(const uint8_t *key, size_t key_len, size_t num_msgs,
-                          const uint8_t *msgs[], const size_t *msg_lens,
-                          uint8_t *digest) {
-  kr_hmac_v(kr_hash_md5_v, key, key_len, num_msgs, msgs, msg_lens, digest,
-            MD5_SIZE);
-}
-
 /* === sha1.c === */
 /*
  * SHA1 routine optimized to do word accesses rather than byte accesses,
@@ -3547,15 +3518,6 @@ static void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
   SHA1_Final(digest, &sha1);
 }
 #endif /* !KR_EXT_SHA1 */
-
-#if 0 /* TODO: Add SHA1 support as HMAC. */
-static void kr_hmac_sha1_v(const uint8_t *key, size_t key_len, size_t num_msgs,
-                           const uint8_t *msgs[], const size_t *msg_lens,
-                           uint8_t *digest) {
-  kr_hmac_v(kr_hash_sha1_v, key, key_len, num_msgs, msgs, msg_lens, digest,
-            SHA1_SIZE);
-}
-#endif
 
 /* === sha256.c === */
 /*
@@ -4180,6 +4142,66 @@ static void kr_hmac_sha256_v(const uint8_t *key, size_t key_len,
                              const size_t *msg_lens, uint8_t *digest) {
   kr_hmac_v(kr_hash_sha256_v, key, key_len, num_msgs, msgs, msg_lens, digest,
             SHA256_SIZE);
+}
+
+/* === hmac.c === */
+/*
+ * Generic HMAC implementation, takes a vector hash function as an argument.
+ * NOTE: does not handle keys larger than the block size.
+ */
+static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
+                      const size_t *msg_lens, uint8_t *digest,
+                      size_t digest_len) {
+  uint8_t k_pad[64];
+  const uint8_t **k_msgs =
+      (const uint8_t **) calloc(num_msgs + 2, sizeof(uint8_t *));
+  size_t *k_msg_lens = (size_t *) calloc(num_msgs + 2, sizeof(size_t));
+  size_t i;
+  assert(key_len <= sizeof(k_pad));
+
+  memset(k_pad, 0, sizeof(k_pad));
+  memcpy(k_pad, key, key_len);
+  for (i = 0; i < 64; i++) k_pad[i] ^= 0x36;
+
+  k_msgs[0] = k_pad;
+  k_msg_lens[0] = sizeof(k_pad);
+  memcpy(k_msgs + 1, msgs, num_msgs * sizeof(uint8_t *));
+  memcpy(k_msg_lens + 1, msg_lens, num_msgs * sizeof(size_t));
+  hash_func(num_msgs + 1, k_msgs, k_msg_lens, digest);
+
+  memset(k_pad, 0, sizeof(k_pad));
+  memcpy(k_pad, key, key_len);
+  for (i = 0; i < 64; i++) k_pad[i] ^= 0x5c;
+  k_msgs[0] = k_pad;
+  k_msg_lens[0] = sizeof(k_pad);
+  k_msgs[1] = digest;
+  k_msg_lens[1] = digest_len;
+  hash_func(2, k_msgs, k_msg_lens, digest);
+
+  free(k_msg_lens);
+  free(k_msgs);
+}
+
+static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                        const uint8_t *msgs[], const size_t *msg_lens,
+                        uint8_t *digest) {
+  kr_hash_func_t hf = NULL;
+  size_t mac_len = tls_mac_len(ssl->cur);
+  const uint8_t *key =
+      (cs == KR_CLIENT_MAC ? ssl->cur->keys : ssl->cur->keys + mac_len);
+  switch (ssl->cur->cipher_suite) {
+    case TLS_RSA_WITH_NULL_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+      hf = kr_hash_md5_v;
+      break;
+    case TLS_RSA_WITH_RC4_128_SHA:
+      hf = kr_hash_sha1_v;
+      break;
+    default:
+      abort();
+  }
+  kr_hmac_v(hf, key, mac_len, num_msgs, msgs, msg_lens, digest, mac_len);
 }
 
 /* === meth.c === */
@@ -5441,8 +5463,8 @@ NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf),
       sec->keys, sizeof(sec->keys));
 
-  RC4_setup(&sec->client_write_ctx, sec->keys + 32, 16);
-  RC4_setup(&sec->server_write_ctx, sec->keys + 48, 16);
+  RC4_setup(&sec->client_write_ctx, sec->keys + 2 * tls_mac_len(sec), 16);
+  RC4_setup(&sec->server_write_ctx, sec->keys + 2 * tls_mac_len(sec) + 16, 16);
 }
 
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
@@ -5473,9 +5495,10 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
   struct tls_hmac_hdr phdr;
   const uint8_t *msgs[2];
   size_t msgl[2];
-  uint8_t digest[MD5_SIZE];
+  uint8_t digest[MAX_DIGEST_SIZE];
   size_t buf_ofs;
-  size_t mac_len = ssl->tx_enc ? MD5_SIZE : 0, max = (1 << 14) - MD5_SIZE;
+  size_t mac_len = ssl->tx_enc ? tls_mac_len(ssl->cur) : 0;
+  size_t max = (1 << 14) - mac_len;
 
   if (len > max) {
     len = max;
@@ -5504,13 +5527,10 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
     msgl[0] = sizeof(phdr);
     msgs[1] = buf;
     msgl[1] = len;
-    if (ssl->is_server) {
-      kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
-    } else {
-      kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
-    }
+    kr_ssl_hmac(ssl, ssl->is_server ? KR_SERVER_MAC : KR_CLIENT_MAC, 2, msgs,
+                msgl, digest);
 
-    if (!tls_tx_push(ssl, digest, sizeof(digest))) return 0;
+    if (!tls_tx_push(ssl, digest, mac_len)) return 0;
 
     if (ssl->is_server) {
       ssl->cur->server_write_seq++;
@@ -5520,10 +5540,11 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
 
     switch (ssl->cur->cipher_suite) {
 #if ALLOW_NULL_CIPHERS
-      case CIPHER_TLS_NULL_MD5:
+      case TLS_RSA_WITH_NULL_MD5:
         break;
 #endif
-      case CIPHER_TLS_RC4_MD5:
+      case TLS_RSA_WITH_RC4_128_MD5:
+      case TLS_RSA_WITH_RC4_128_SHA:
         if (ssl->is_server) {
           RC4_crypt(&ssl->cur->server_write_ctx, ssl->tx_buf + buf_ofs,
                     ssl->tx_buf + buf_ofs, len + mac_len);
@@ -5559,6 +5580,19 @@ NS_INTERNAL int tls_close_notify(SSL *ssl) {
   return tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_CLOSE_NOTIFY);
 }
 
+NS_INTERNAL size_t tls_mac_len(tls_sec_t sec) {
+  switch (sec->cipher_suite) {
+    case TLS_RSA_WITH_NULL_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+      return MD5_SIZE;
+    case TLS_RSA_WITH_RC4_128_SHA:
+      return SHA1_SIZE;
+  }
+  abort();
+  /* not reached */
+  return MAX_DIGEST_SIZE;
+}
+
 /* === tls_cl.c === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
@@ -5585,12 +5619,14 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
       htobe16((NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1) * 2);
 #if ALLOW_NULL_CIPHERS
   /* if we allow them, it's for testing reasons, so NULL comes first */
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_NULL_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[2] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_NULL_MD5);
+  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[2] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[3] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #else
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[2] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #endif
   hello.num_compressors = 1;
   hello.compressor[0] = 0;
@@ -5682,9 +5718,10 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
 static int check_cipher(uint16_t suite) {
   switch (suite) {
 #if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
+    case TLS_RSA_WITH_NULL_MD5:
 #endif
-    case CIPHER_TLS_RC4_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
       return 1;
     default:
       return 0;
@@ -5704,9 +5741,10 @@ static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
   if (ssl->nxt->cipher_negotiated) return;
   switch (suite) {
 #if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
+    case TLS_RSA_WITH_NULL_MD5:
 #endif
-    case CIPHER_TLS_RC4_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
       break;
     default:
       return;
@@ -6303,11 +6341,12 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
                             const uint8_t *end, struct vec *out) {
   struct tls_hmac_hdr phdr;
-  uint8_t digest[MD5_SIZE];
+  uint8_t digest[MAX_DIGEST_SIZE];
   const uint8_t *msgs[2];
   size_t msgl[2];
   const uint8_t *mac;
   size_t len = end - buf;
+  size_t mac_len = tls_mac_len(ssl->cur);
 
   if (!ssl->rx_enc) {
     out->ptr = buf;
@@ -6315,17 +6354,18 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     return 1;
   }
 
-  if (len < MD5_SIZE) {
+  if (len < mac_len) {
     dprintf(("No room for MAC\n"));
     return 0;
   }
 
   switch (ssl->cur->cipher_suite) {
 #if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
+    case TLS_RSA_WITH_NULL_MD5:
       break;
 #endif
-    case CIPHER_TLS_RC4_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
       if (ssl->is_server) {
         RC4_crypt(&ssl->cur->client_write_ctx, buf, buf, len);
       } else {
@@ -6337,7 +6377,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   }
 
   out->ptr = buf;
-  out->len = len - MD5_SIZE;
+  out->len = len - mac_len;
 
   mac = out->ptr + out->len;
 
@@ -6362,13 +6402,10 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   msgl[0] = sizeof(phdr);
   msgs[1] = out->ptr;
   msgl[1] = out->len;
-  if (ssl->is_server) {
-    kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
-  } else {
-    kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
-  }
+  kr_ssl_hmac(ssl, ssl->is_server ? KR_CLIENT_MAC : KR_SERVER_MAC, 2, msgs,
+              msgl, digest);
 
-  if (memcmp(digest, mac, MD5_SIZE)) {
+  if (memcmp(digest, mac, mac_len)) {
     dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;

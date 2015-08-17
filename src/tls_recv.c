@@ -8,9 +8,10 @@
 static int check_cipher(uint16_t suite) {
   switch (suite) {
 #if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
+    case TLS_RSA_WITH_NULL_MD5:
 #endif
-    case CIPHER_TLS_RC4_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
       return 1;
     default:
       return 0;
@@ -30,9 +31,10 @@ static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
   if (ssl->nxt->cipher_negotiated) return;
   switch (suite) {
 #if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
+    case TLS_RSA_WITH_NULL_MD5:
 #endif
-    case CIPHER_TLS_RC4_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
       break;
     default:
       return;
@@ -629,11 +631,12 @@ static int handle_alert(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
 static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
                             const uint8_t *end, struct vec *out) {
   struct tls_hmac_hdr phdr;
-  uint8_t digest[MD5_SIZE];
+  uint8_t digest[MAX_DIGEST_SIZE];
   const uint8_t *msgs[2];
   size_t msgl[2];
   const uint8_t *mac;
   size_t len = end - buf;
+  size_t mac_len = tls_mac_len(ssl->cur);
 
   if (!ssl->rx_enc) {
     out->ptr = buf;
@@ -641,17 +644,18 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     return 1;
   }
 
-  if (len < MD5_SIZE) {
+  if (len < mac_len) {
     dprintf(("No room for MAC\n"));
     return 0;
   }
 
   switch (ssl->cur->cipher_suite) {
 #if ALLOW_NULL_CIPHERS
-    case CIPHER_TLS_NULL_MD5:
+    case TLS_RSA_WITH_NULL_MD5:
       break;
 #endif
-    case CIPHER_TLS_RC4_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
       if (ssl->is_server) {
         RC4_crypt(&ssl->cur->client_write_ctx, buf, buf, len);
       } else {
@@ -663,7 +667,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   }
 
   out->ptr = buf;
-  out->len = len - MD5_SIZE;
+  out->len = len - mac_len;
 
   mac = out->ptr + out->len;
 
@@ -688,13 +692,10 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   msgl[0] = sizeof(phdr);
   msgs[1] = out->ptr;
   msgl[1] = out->len;
-  if (ssl->is_server) {
-    kr_hmac_md5_v(ssl->cur->keys, MD5_SIZE, 2, msgs, msgl, digest);
-  } else {
-    kr_hmac_md5_v(ssl->cur->keys + MD5_SIZE, MD5_SIZE, 2, msgs, msgl, digest);
-  }
+  kr_ssl_hmac(ssl, ssl->is_server ? KR_CLIENT_MAC : KR_SERVER_MAC, 2, msgs,
+              msgl, digest);
 
-  if (memcmp(digest, mac, MD5_SIZE)) {
+  if (memcmp(digest, mac, mac_len)) {
     dprintf(("Bad MAC\n"));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;

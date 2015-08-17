@@ -23,7 +23,8 @@
 
 #define TEST_PORT 4343
 
-static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
+static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file,
+                          const char *cipher) {
   SSL_CTX *ctx;
 
   ctx = SSL_CTX_new(SSLv23_server_method());
@@ -41,6 +42,12 @@ static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file) {
     goto out_free;
   }
 
+#ifdef OPENSSL_VERSION_NUMBER
+  if (cipher != NULL) {
+    SSL_CTX_set_cipher_list(ctx, cipher);
+    fprintf(stderr, "Cipher spec: %s\n", cipher);
+  }
+#endif
   goto out;
 
 out_free:
@@ -168,7 +175,8 @@ static void ns_set_non_blocking_mode(int sock) {
 #endif
 }
 
-static int do_test(const char *cert_file, const char *key_file) {
+static int do_test(const char *cert_file, const char *key_file,
+                   const char *cipher) {
   struct sockaddr_in sa;
   socklen_t slen;
   SSL_CTX *ctx;
@@ -176,7 +184,7 @@ static int do_test(const char *cert_file, const char *key_file) {
   int ret = 0;
   int fd, cfd;
 
-  ctx = setup_ctx(cert_file, key_file);
+  ctx = setup_ctx(cert_file, key_file, cipher);
   if (NULL == ctx) goto out;
 
   ssl = SSL_new(ctx);
@@ -246,8 +254,9 @@ out:
   return ret;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+  const char *cipher = argc > 1 ? argv[1] : NULL;
   SSL_library_init();
-  if (!do_test("server.crt", "server.key")) return EXIT_FAILURE;
+  if (!do_test("server.crt", "server.key", cipher)) return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }

@@ -301,10 +301,3 @@ static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
   MD5_Final(digest, &md5);
 }
 #endif /* !KR_EXT_MD5 */
-
-static void kr_hmac_md5_v(const uint8_t *key, size_t key_len, size_t num_msgs,
-                          const uint8_t *msgs[], const size_t *msg_lens,
-                          uint8_t *digest) {
-  kr_hmac_v(kr_hash_md5_v, key, key_len, num_msgs, msgs, msg_lens, digest,
-            MD5_SIZE);
-}

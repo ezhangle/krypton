@@ -2,14 +2,14 @@
 # All rights reserved
 
 SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c \
-          src/hmac.c src/md5.c src/sha1.c src/sha256.c \
+          src/md5.c src/sha1.c src/sha256.c src/hmac.c \
           src/meth.c src/pem.c src/prf.c src/random.c \
           src/rc4.c src/rsa.c src/ssl.c src/tls.c src/tls_cl.c \
           src/tls_recv.c src/tls_sv.c src/x509.c src/x509_verify.c
 HEADERS = src/ktypes.h src/kexterns.h src/crypto.h src/bigint_impl.h \
           src/bigint.h src/tlsproto.h src/tls.h src/ber.h src/pem.h src/x509.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c
-CFLAGS := -O2 -W -Wall -Wno-unused-parameter $(CLFAGS_EXTRA)
+CFLAGS := -O2 -W -Wall -g -Wno-unused-parameter $(CLFAGS_EXTRA)
 
 CLANG_FORMAT := clang-format
 
@@ -18,9 +18,9 @@ ifneq ("$(wildcard /usr/local/bin/clang-3.6)","")
 	CLANG_FORMAT:=/usr/local/bin/clang-format-3.6
 endif
 
-.PHONY: all clean tests openssl-tests krypton-tests
+.PHONY: all clean format tests openssl-tests krypton-tests
 
-all: tests format
+all: tests
 
 krypton.c: $(HEADERS) $(SOURCES) Makefile
 	@echo "AMALGAMATING\tkrypton.c"
@@ -58,7 +58,7 @@ endif
 	wine $(VC6_DIR)/bin/cl \
 		krypton.c test/win-test.c
 
-format:
+format: krypton.c
 	@find . -name "*.[ch]" | xargs $(CLANG_FORMAT) -i
 
 clean:

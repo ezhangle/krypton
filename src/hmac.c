@@ -2,11 +2,10 @@
  * Generic HMAC implementation, takes a vector hash function as an argument.
  * NOTE: does not handle keys larger than the block size.
  */
-static void kr_hmac_v(void (*hash_func)(size_t, const uint8_t **,
-                                        const size_t *, uint8_t *),
-                      const uint8_t *key, size_t key_len, size_t num_msgs,
-                      const uint8_t *msgs[], const size_t *msg_lens,
-                      uint8_t *digest, size_t digest_len) {
+static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
+                      const size_t *msg_lens, uint8_t *digest,
+                      size_t digest_len) {
   uint8_t k_pad[64];
   const uint8_t **k_msgs =
       (const uint8_t **) calloc(num_msgs + 2, sizeof(uint8_t *));
@@ -35,4 +34,25 @@ static void kr_hmac_v(void (*hash_func)(size_t, const uint8_t **,
 
   free(k_msg_lens);
   free(k_msgs);
+}
+
+static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                        const uint8_t *msgs[], const size_t *msg_lens,
+                        uint8_t *digest) {
+  kr_hash_func_t hf = NULL;
+  size_t mac_len = tls_mac_len(ssl->cur);
+  const uint8_t *key =
+      (cs == KR_CLIENT_MAC ? ssl->cur->keys : ssl->cur->keys + mac_len);
+  switch (ssl->cur->cipher_suite) {
+    case TLS_RSA_WITH_NULL_MD5:
+    case TLS_RSA_WITH_RC4_128_MD5:
+      hf = kr_hash_md5_v;
+      break;
+    case TLS_RSA_WITH_RC4_128_SHA:
+      hf = kr_hash_sha1_v;
+      break;
+    default:
+      abort();
+  }
+  kr_hmac_v(hf, key, mac_len, num_msgs, msgs, msg_lens, digest, mac_len);
 }

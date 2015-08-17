@@ -28,12 +28,14 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
       htobe16((NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1) * 2);
 #if ALLOW_NULL_CIPHERS
   /* if we allow them, it's for testing reasons, so NULL comes first */
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_NULL_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[2] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_NULL_MD5);
+  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[2] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[3] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #else
-  hello.cipher_suite[0] = htobe16(CIPHER_TLS_RC4_MD5);
-  hello.cipher_suite[1] = htobe16(CIPHER_EMPTY_RENEG_EXT);
+  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[2] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #endif
   hello.num_compressors = 1;
   hello.compressor[0] = 0;
