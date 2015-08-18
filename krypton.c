@@ -6511,6 +6511,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
       return 0;
     }
     buf = msg_end;
+    /* Yield each individual APP_DATA frame, for simplicity. */
+    if (hdr->type == TLS_APP_DATA) break;
   }
 
   ret = 1;
