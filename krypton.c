@@ -5201,10 +5201,6 @@ int SSL_read(SSL *ssl, void *buf, int num) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return -1;
   }
-  if (ssl->close_notify || ssl->state == STATE_CLOSING) {
-    ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
-    return 0;
-  }
 
   if (ssl->extra_appdata.len > 0) {
     int rlen = min(num, (int) ssl->extra_appdata.len);
@@ -5212,7 +5208,22 @@ int SSL_read(SSL *ssl, void *buf, int num) {
     memcpy(buf, ssl->extra_appdata.ptr, rlen);
     ssl->extra_appdata.len -= rlen;
     ssl->extra_appdata.ptr += rlen;
+    if (ssl->extra_appdata.len == 0) {
+      size_t shift_len =
+          (ssl->extra_appdata.ptr - ssl->rx_buf) + tls_mac_len(ssl->cur);
+      ssl->rx_len -= shift_len;
+      dprintf(("extra data consumed, shift %d, %d left\n", (int) shift_len,
+               (int) ssl->rx_len));
+      if (ssl->rx_len > 0) {
+        memmove(ssl->rx_buf, ssl->rx_buf + shift_len, ssl->rx_len);
+      }
+    }
     return rlen;
+  }
+
+  if (ssl->close_notify || ssl->state == STATE_CLOSING) {
+    ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
+    return 0;
   }
 
   for (ssl->copied = ssl->got_appdata = 0; !ssl->got_appdata;) {
@@ -5240,6 +5251,11 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
   if (ssl->fatal) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return -1;
+  }
+  if (num == 0 && ssl->tx_len > 0) {
+    if (!do_send(ssl)) return -1;
+    ssl_err(ssl, SSL_ERROR_NONE);
+    return 0;
   }
   if (ssl->close_notify || ssl->state == STATE_CLOSING) {
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
@@ -6406,9 +6422,11 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
               msgl, digest);
 
   if (memcmp(digest, mac, mac_len)) {
-    dprintf(("Bad MAC\n"));
+    dprintf(("Bad MAC %d\n", (int) out->len));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
+  } else {
+    dprintf(("MAC ok %d\n", (int) out->len));
   }
 
   if (ssl->is_server) {
@@ -6428,7 +6446,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     uint8_t *msg_end;
     int iret = 1;
     uint8_t *buf2;
-    struct vec v;
+    struct vec v = {NULL, 0};
 
     if (ssl->close_notify) {
       dprintf(("messages after close_notify??\n"));

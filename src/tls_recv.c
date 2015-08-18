@@ -696,9 +696,11 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
               msgl, digest);
 
   if (memcmp(digest, mac, mac_len)) {
-    dprintf(("Bad MAC\n"));
+    dprintf(("Bad MAC %d\n", (int) out->len));
     tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
     return 0;
+  } else {
+    dprintf(("MAC ok %d\n", (int) out->len));
   }
 
   if (ssl->is_server) {
@@ -718,7 +720,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     uint8_t *msg_end;
     int iret = 1;
     uint8_t *buf2;
-    struct vec v;
+    struct vec v = {NULL, 0};
 
     if (ssl->close_notify) {
       dprintf(("messages after close_notify??\n"));

@@ -146,8 +146,9 @@ again:
 }
 
 static int test_content(SSL *ssl) {
-  static const char *const str1 = "Hello TLS1.2 world!";
-  static const char *const str2 = "Hi yourself!";
+  static const char *const str1 = "GET / HTTP/1.0\r\n\r\n";
+  static const char *const str2 =
+      "200 Ok\r\nContent-type: text-plain\r\n\r\nHi yourself!";
   char buf[512];
   int ret;
 
@@ -255,7 +256,15 @@ out:
 }
 
 int main(int argc, char **argv) {
-  const char *cipher = argc > 1 ? argv[1] : NULL;
+  int opt;
+  const char *cipher = NULL;
+  while ((opt = getopt(argc, argv, "c:")) != -1) {
+    switch (opt) {
+      case 'c':
+        cipher = optarg;
+        break;
+    }
+  }
   SSL_library_init();
   if (!do_test("server.crt", "server.key", cipher)) return EXIT_FAILURE;
   return EXIT_SUCCESS;

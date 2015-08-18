@@ -13,6 +13,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
@@ -21,7 +22,8 @@
 
 #include <openssl/ssl.h>
 
-#define TEST_PORT 4343
+#define TEST_ADDR "localhost:4343"
+#define DEFAULT_PORT "443"
 
 static SSL_CTX *setup_ctx(const char *cert_chain, const char *cipher) {
   SSL_CTX *ctx;
@@ -141,19 +143,25 @@ again:
 }
 
 static int test_content(SSL *ssl) {
-  static const char *const str1 = "Hello TLS1.2 world!";
-  static const char *const str2 = "Hi yourself!";
-  char buf[512];
+  static const char *const str1 = "GET / HTTP/1.0\r\n\r\n";
+  static const char *const str2 =
+      "200 Ok\r\nContent-type: text-plain\r\n\r\nHi yourself!";
+  char buf[2048], *p;
   int ret;
 
   ret = do_write(ssl, str1, strlen(str1));
   if (ret < 0 || (size_t) ret != strlen(str1)) return 0;
 
-  ret = do_read(ssl, buf, sizeof(buf));
-  if (ret < 0 || (size_t) ret != strlen(str2)) return 0;
-  printf("Got: %.*s\n", ret, buf);
+  for (p = buf; p - buf < (int) sizeof(buf);) {
+    ret = do_read(ssl, p, 5);
+    if (ret < 0) return 0;
+    p += ret;
+    *p = '\0';
+    if (ret == 0) break;
+  }
+  printf("Got: %.*s\n", (p - buf), buf);
 
-  return !memcmp(buf, str2, ret);
+  return ((size_t) ret != strlen(str2) && memcmp(buf, str2, ret) == 0);
 }
 
 static void ns_set_non_blocking_mode(int sock) {
@@ -166,13 +174,41 @@ static void ns_set_non_blocking_mode(int sock) {
 #endif
 }
 
-static int do_test(const char *cert_chain, const char *cipher) {
-  struct sockaddr_in sa;
+static int do_test(const char *caddr, const char *cert_chain,
+                   const char *cipher) {
+  struct addrinfo hints, *rp;
   struct pollfd pfd;
+  char *addr = strdup(caddr);
+  char *port;
   SSL_CTX *ctx;
   SSL *ssl;
   int ret = 0;
   int fd;
+
+  memset(&hints, 0, sizeof(struct addrinfo));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = 0;
+  hints.ai_protocol = 0;
+
+  port = strchr(addr, ':');
+  if (port != NULL) {
+    *port = '\0';
+    port++;
+  } else {
+    port = DEFAULT_PORT;
+  }
+
+  ret = getaddrinfo(addr, port, &hints, &rp);
+  if (ret != 0) {
+    fprintf(stderr, "getaddrinfo(%s): %s\n", addr, gai_strerror(ret));
+    ret = 0;
+    goto out;
+  }
+  if (rp == NULL) {
+    fprintf(stderr, "could not resolve %s\n", addr);
+    goto out;
+  }
 
   ctx = setup_ctx(cert_chain, cipher);
   if (NULL == ctx) goto out;
@@ -180,24 +216,21 @@ static int do_test(const char *cert_chain, const char *cipher) {
   ssl = SSL_new(ctx);
   if (NULL == ssl) goto out_ctx;
 
-  fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+  fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
   if (fd < 0) {
     fprintf(stderr, "socket: %s\n", strerror(errno));
     goto out_ssl;
   }
-  ns_set_non_blocking_mode(fd);
 
-  if (!SSL_set_fd(ssl, fd)) goto out_close;
-
-  sa.sin_family = AF_INET;
-  sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  sa.sin_port = htons(TEST_PORT);
-  if (connect(fd, (struct sockaddr *) &sa, sizeof(sa))) {
+  if (connect(fd, rp->ai_addr, rp->ai_addrlen)) {
     if (errno != EINPROGRESS) {
       fprintf(stderr, "connect: %s\n", strerror(errno));
       goto out_close;
     }
   }
+
+  ns_set_non_blocking_mode(fd);
+  if (!SSL_set_fd(ssl, fd)) goto out_close;
 
   pfd.events = POLLOUT;
   pfd.fd = fd;
@@ -228,12 +261,27 @@ out_ssl:
 out_ctx:
   SSL_CTX_free(ctx);
 out:
+  freeaddrinfo(rp);
+  free(addr);
   return ret;
 }
 
 int main(int argc, char **argv) {
-  const char *cipher = argc > 1 ? argv[1] : NULL;
+  int opt;
+  const char *addr = NULL, *cipher = NULL;
+  while ((opt = getopt(argc, argv, "c:")) != -1) {
+    switch (opt) {
+      case 'c':
+        cipher = optarg;
+        break;
+    }
+  }
+  if (optind < argc) {
+    addr = argv[optind];
+  } else {
+    addr = TEST_ADDR;
+  }
   SSL_library_init();
-  if (!do_test("ca.crt", cipher)) return EXIT_FAILURE;
+  if (!do_test(addr, "ca.crt", cipher)) return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }
