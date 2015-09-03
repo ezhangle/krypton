@@ -159,7 +159,7 @@ static int test_content(SSL *ssl) {
     *p = '\0';
     if (ret == 0) break;
   }
-  printf("Got: %.*s\n", (p - buf), buf);
+  printf("Got: %.*s\n", (int) (p - buf), buf);
 
   return ((size_t) ret != strlen(str2) && memcmp(buf, str2, ret) == 0);
 }
