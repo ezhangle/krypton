@@ -33,7 +33,6 @@ krypton.c: $(HEADERS) $(SOURCES) Makefile
 
 tests: openssl-tests krypton-tests
 
-krypton-tests: CFLAGS += -DUSE_KRYPTON=1 -I.
 krypton-tests: sv-test-krypton cl-test-krypton
 
 openssl-tests: sv-test-openssl cl-test-openssl
@@ -43,6 +42,8 @@ sv-test-openssl: test/sv-test.c
 
 cl-test-openssl: test/cl-test.c
 	$(CC) $(CFLAGS) -o cl-test-openssl test/cl-test.c -lssl -lcrypto
+
+%-test-krypton: CFLAGS += -DUSE_KRYPTON=1 -I.
 
 sv-test-krypton: test/sv-test.c krypton.c
 	$(CC) $(CFLAGS) -o sv-test-krypton test/sv-test.c krypton.c

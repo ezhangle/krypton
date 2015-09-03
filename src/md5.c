@@ -110,7 +110,7 @@ static const uint8_t PADDING[64] = {
 /**
  * MD5 initialization - begins an MD5 operation, writing a new ctx.
  */
-void MD5_Init(MD5_CTX *ctx) {
+void kr_md5_init(MD5_CTX *ctx) {
   ctx->count[0] = ctx->count[1] = 0;
 
   /* Load magic initialization constants.
@@ -124,7 +124,7 @@ void MD5_Init(MD5_CTX *ctx) {
 /**
  * Accepts an array of octets as the next portion of the message.
  */
-void MD5_Update(MD5_CTX *ctx, const uint8_t *msg, int len) {
+void kr_md5_update(MD5_CTX *ctx, const uint8_t *msg, int len) {
   uint32_t x;
   int i, partLen;
 
@@ -156,7 +156,7 @@ void MD5_Update(MD5_CTX *ctx, const uint8_t *msg, int len) {
 /**
  * Return the 128-bit message digest into the user's array
  */
-void MD5_Final(uint8_t *digest, MD5_CTX *ctx) {
+void kr_md5_final(uint8_t *digest, MD5_CTX *ctx) {
   uint8_t bits[8];
   uint32_t x, padLen;
 
@@ -167,10 +167,10 @@ void MD5_Final(uint8_t *digest, MD5_CTX *ctx) {
    */
   x = (uint32_t)((ctx->count[0] >> 3) & 0x3f);
   padLen = (x < 56) ? (56 - x) : (120 - x);
-  MD5_Update(ctx, PADDING, padLen);
+  kr_md5_update(ctx, PADDING, padLen);
 
   /* Append length (before padding) */
-  MD5_Update(ctx, bits, 8);
+  kr_md5_update(ctx, bits, 8);
 
   /* Store state in digest */
   Encode(digest, ctx->state, MD5_SIZE);
@@ -294,10 +294,10 @@ static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
                           const size_t *msg_lens, uint8_t *digest) {
   size_t i;
   MD5_CTX md5;
-  MD5_Init(&md5);
+  kr_md5_init(&md5);
   for (i = 0; i < num_msgs; i++) {
-    MD5_Update(&md5, msgs[i], msg_lens[i]);
+    kr_md5_update(&md5, msgs[i], msg_lens[i]);
   }
-  MD5_Final(digest, &md5);
+  kr_md5_final(digest, &md5);
 }
 #endif /* !KR_EXT_MD5 */
