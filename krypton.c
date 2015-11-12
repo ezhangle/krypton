@@ -254,6 +254,7 @@ NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
 
 typedef struct _bigint bigint; /**< An alias for _bigint */
 
+
 #endif /* _KTYPES_H */
 
 /* === kexterns.h === */
@@ -1006,6 +1007,7 @@ NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
  * All rights reserved
  */
 
+
 static int decode(uint8_t in, uint8_t *out) {
   if (in >= 'A' && in <= 'Z') {
     *out = in - 'A';
@@ -1140,6 +1142,7 @@ int main(int argc, char **argv) {
  * Copyright (c) 2010 Gianni Tedesco <gianni@scaramanga.co.uk>
  * Released under the MIT license.
  */
+
 
 #if KRYPTON_DEBUG
 static void hex_dumpf_r(FILE *f, const uint8_t *tmp, size_t len, size_t llen,
@@ -1362,6 +1365,7 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
  * <http://www.cacr.math.uwaterloo.ca/hac/about/chap14.pdf>
  * @{
  */
+
 
 #define V1 v->comps[v->size - 1]                     /**< v1 for division */
 #define V2 v->comps[v->size - 2]                     /**< v2 for division */
@@ -2680,6 +2684,7 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
  * All rights reserved
  */
 
+
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth) {
   SSL_CTX *ctx;
 
@@ -2997,6 +3002,7 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
 
 #ifndef KR_EXT_MD5
 
+
 typedef struct {
   uint32_t state[4];  /* state (ABCD) */
   uint32_t count[2];  /* number of bits, modulo 2^64 (lsb first) */
@@ -3272,6 +3278,7 @@ static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
  * none of the original Mozilla code remains.
  */
 #ifndef KR_EXT_SHA1
+
 
 typedef struct {
   uint64_t size;
@@ -3552,6 +3559,7 @@ static void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
  * SUCH DAMAGE.
  *
  */
+
 
 #ifndef KR_EXT_SHA256
 
@@ -4210,6 +4218,7 @@ static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
  * All rights reserved
  */
 
+
 const SSL_METHOD meth = {0, 0};
 const SSL_METHOD sv_meth = {0, 1};
 const SSL_METHOD cl_meth = {1, 0};
@@ -4238,6 +4247,7 @@ const SSL_METHOD *SSLv23_client_method(void) {
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
+
 
 #define DER_INCREMENT 1024
 #define OBJ_INCREMENT 4
@@ -4431,6 +4441,7 @@ void pem_free(PEM *p) {
  * All rights reserved
  */
 
+
 /* TLS1.2 Pseudo-Random-Function */
 NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
                      size_t seed_len, uint8_t *out, size_t olen) {
@@ -4464,6 +4475,7 @@ NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
+
 
 #ifdef KR_RANDOM_SOURCE_FILE
 int kr_get_random(uint8_t *out, size_t len) {
@@ -4546,6 +4558,7 @@ int get_random_nonzero(uint8_t *out, size_t len) {
  * An implementation of the RC4/ARC4 algorithm.
  * Originally written by Christophe Devine.
  */
+
 
 /**
  * Get ready for an encrypt/decrypt operation
@@ -4633,6 +4646,7 @@ void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
  */
 
 #define CONFIG_SSL_CERT_VERIFICATION 1
+
 
 struct _RSA_CTX {
   bigint *m;    /* modulus */
@@ -4862,6 +4876,7 @@ int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
+
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -5363,6 +5378,7 @@ void ssl_err(SSL *ssl, int err) {
  * All rights reserved
  */
 
+
 NS_INTERNAL tls_sec_t tls_new_security(void) {
   struct tls_security *sec;
 
@@ -5615,6 +5631,7 @@ NS_INTERNAL size_t tls_mac_len(tls_sec_t sec) {
  * All rights reserved
  */
 
+
 #include <time.h>
 
 NS_INTERNAL int tls_cl_hello(SSL *ssl) {
@@ -5730,6 +5747,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
+
 
 static int check_cipher(uint16_t suite) {
   switch (suite) {
@@ -6540,6 +6558,7 @@ out:
  * All rights reserved
  */
 
+
 #include <time.h>
 
 NS_INTERNAL int tls_sv_hello(SSL *ssl) {
@@ -6643,6 +6662,7 @@ NS_INTERNAL int tls_sv_finish(SSL *ssl) {
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
+
 
 static int parse_enc_alg(X509 *cert, const uint8_t *ptr, size_t len) {
   static const char *const rsaEncrypt = "\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01";
@@ -6991,6 +7011,7 @@ void X509_free(X509 *cert) {
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
+
 
 static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
                           size_t *dlen) {

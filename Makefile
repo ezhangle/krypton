@@ -60,7 +60,7 @@ endif
 		krypton.c test/win-test.c
 
 format: krypton.c
-	@find . -name "*.[ch]" | xargs $(CLANG_FORMAT) -i
+	@$(CLANG_FORMAT) -i src/*.[ch] test/*.[ch]
 
 clean:
 	rm -rf *-openssl *-krypton *.o *.gc* *.dSYM *.exe *.obj *.pdb
