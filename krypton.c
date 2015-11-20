@@ -6764,6 +6764,8 @@ static int decode_extension(X509 *cert, const uint8_t *oid, size_t oid_len,
                             size_t val_len) {
   static const char *const oidBasicConstraints = "\x55\x1d\x13";
   struct gber_tag tag;
+
+  (void) critical;
   /* TODO: handle all critical extensions. */
 
   if (oid_len != 3 || memcmp(oid, oidBasicConstraints, oid_len)) return 1;
