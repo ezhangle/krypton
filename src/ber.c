@@ -67,12 +67,12 @@ static int do_ber_dump(FILE *f, const uint8_t *ptr, size_t len,
   return 1;
 }
 
-NS_INTERNAL int ber_dump(const uint8_t *ptr, size_t len) {
-  return do_ber_dump(stdout, ptr, len, 1);
+int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
+  return do_ber_dump(f, ptr, len, 1);
 }
 
-NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
-  return do_ber_dump(f, ptr, len, 1);
+int ber_dump(const uint8_t *ptr, size_t len) {
+  return ber_dumpf(stdout, ptr, len);
 }
 
 NS_INTERNAL const char *ber_id_octet_clsname(uint8_t id) {

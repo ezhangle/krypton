@@ -180,8 +180,8 @@ struct ssl_st {
 NS_INTERNAL void ssl_err(struct ssl_st *ssl, int err);
 
 #if KRYPTON_DEBUG
-NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
-NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
+void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
+void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
 
 typedef struct _bigint bigint; /**< An alias for _bigint */

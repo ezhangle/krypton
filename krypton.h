@@ -6,6 +6,10 @@
 #ifndef _KRYPTON_H
 #define _KRYPTON_H
 
+#ifdef KR_LOCALS
+#include <kr_locals.h>
+#endif
+
 typedef struct x509_store_ctx_st X509_STORE_CTX;
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;

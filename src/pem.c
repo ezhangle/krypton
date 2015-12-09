@@ -136,6 +136,10 @@ PEM *pem_load(const char *fn, int type_mask) {
         if (check_end_marker(buf, p->obj[cur].der_type)) {
           p->tot_len += p->obj[cur].der_len;
           state = 0;
+#if 0
+          dprintf(("%s: Loaded %d byte PEM\n", fn, p->obj[cur].der_len));
+          ber_dump(p->obj[cur].der, p->obj[cur].der_len);
+#endif
           break;
         }
 
@@ -159,11 +163,6 @@ PEM *pem_load(const char *fn, int type_mask) {
     goto out_close;
   }
 
-/* success */
-#if 0
-	dprintf(("%s: Loaded %zu byte PEM\n", fn, p->der_len));
-	ber_dump(p->der, p->der_len);
-#endif
   fclose(f);
   goto out;
 

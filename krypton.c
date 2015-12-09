@@ -6,6 +6,10 @@
 #ifndef _KRYPTON_H
 #define _KRYPTON_H
 
+#ifdef KR_LOCALS
+#include <kr_locals.h>
+#endif
+
 typedef struct x509_store_ctx_st X509_STORE_CTX;
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;
@@ -248,8 +252,8 @@ struct ssl_st {
 NS_INTERNAL void ssl_err(struct ssl_st *ssl, int err);
 
 #if KRYPTON_DEBUG
-NS_INTERNAL void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
-NS_INTERNAL void hex_dump(const void *ptr, size_t len, size_t llen);
+void hex_dumpf(FILE *f, const void *buf, size_t len, size_t llen);
+void hex_dump(const void *ptr, size_t len, size_t llen);
 #endif
 
 typedef struct _bigint bigint; /**< An alias for _bigint */
@@ -916,8 +920,8 @@ NS_INTERNAL unsigned int ber_id_octet_class(uint8_t id);
 
 #if KRYPTON_DEBUG
 NS_INTERNAL const char *ber_id_octet_clsname(uint8_t id);
-NS_INTERNAL int ber_dump(const uint8_t *ptr, size_t len);
-NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len);
+int ber_dump(const uint8_t *ptr, size_t len);
+int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len);
 #endif
 
 #endif /* _GBER_H */
@@ -1206,12 +1210,12 @@ static int do_ber_dump(FILE *f, const uint8_t *ptr, size_t len,
   return 1;
 }
 
-NS_INTERNAL int ber_dump(const uint8_t *ptr, size_t len) {
-  return do_ber_dump(stdout, ptr, len, 1);
+int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
+  return do_ber_dump(f, ptr, len, 1);
 }
 
-NS_INTERNAL int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len) {
-  return do_ber_dump(f, ptr, len, 1);
+int ber_dump(const uint8_t *ptr, size_t len) {
+  return ber_dumpf(stdout, ptr, len);
 }
 
 NS_INTERNAL const char *ber_id_octet_clsname(uint8_t id) {
@@ -4380,6 +4384,10 @@ PEM *pem_load(const char *fn, int type_mask) {
         if (check_end_marker(buf, p->obj[cur].der_type)) {
           p->tot_len += p->obj[cur].der_len;
           state = 0;
+#if 0
+          dprintf(("%s: Loaded %d byte PEM\n", fn, p->obj[cur].der_len));
+          ber_dump(p->obj[cur].der, p->obj[cur].der_len);
+#endif
           break;
         }
 
@@ -4403,11 +4411,6 @@ PEM *pem_load(const char *fn, int type_mask) {
     goto out_close;
   }
 
-/* success */
-#if 0
-	dprintf(("%s: Loaded %zu byte PEM\n", fn, p->der_len));
-	ber_dump(p->der, p->der_len);
-#endif
   fclose(f);
   goto out;
 

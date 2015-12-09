@@ -9,7 +9,7 @@ SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c \
 HEADERS = src/ktypes.h src/kexterns.h src/crypto.h src/bigint_impl.h \
           src/bigint.h src/tlsproto.h src/tls.h src/ber.h src/pem.h src/x509.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c
-CFLAGS := -O2 -W -Wall -g -Wno-unused-parameter $(CLFAGS_EXTRA)
+CFLAGS := -O2 -W -Wall -g -Wno-unused-parameter $(CFLAGS_EXTRA)
 
 CLANG_FORMAT := clang-format
 
