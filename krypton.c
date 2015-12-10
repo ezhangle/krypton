@@ -192,7 +192,11 @@ struct ssl_method_st {
 };
 
 struct ssl_ctx_st {
+#ifndef KR_NO_LOAD_CA_STORE
   X509 *ca_store;
+#else
+  char *ca_file;
+#endif
   PEM *pem_cert;
   RSA_CTX *rsa_privkey;
   uint8_t mode;
@@ -951,7 +955,16 @@ struct der_st {
 #define PEM_SIG_CERT (1 << 0)
 #define PEM_SIG_KEY (1 << 1)     /* PKCS#8 */
 #define PEM_SIG_RSA_KEY (1 << 2) /* PKCS#1 */
-NS_INTERNAL struct pem_st *pem_load(const char *fn, int type_mask);
+
+enum pem_filter_result {
+  PEM_FILTER_NO = 0,
+  PEM_FILTER_YES = 1,
+  PEM_FILTER_YES_AND_STOP = 3,
+};
+typedef enum pem_filter_result (*pem_filter_fn)(const DER *obj, int type,
+                                                void *arg);
+NS_INTERNAL PEM *pem_load(const char *fn, pem_filter_fn flt, void *flt_arg);
+NS_INTERNAL PEM *pem_load_types(const char *fn, int type_mask);
 NS_INTERNAL void pem_free(struct pem_st *p);
 
 /* not crypto, but required for reading keys and certs */
@@ -998,7 +1011,7 @@ struct X509_st {
 
 NS_INTERNAL X509 *X509_new(const uint8_t *ptr, size_t len);
 /* chain should be backwards with subject at the end */
-NS_INTERNAL int X509_verify(X509 *ca_store, X509 *chain);
+NS_INTERNAL int X509_verify(SSL_CTX *ctx, X509 *chain);
 NS_INTERNAL void X509_free(X509 *cert);
 
 NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
@@ -2729,6 +2742,13 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
   ctx->vrfy_mode = mode;
 }
 
+#ifdef KR_NO_LOAD_CA_STORE
+static enum pem_filter_result pem_no_filter(const DER *obj, int type,
+                                            void *arg) {
+  return PEM_FILTER_NO;
+}
+#endif
+
 int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
                                   const char *CAPath) {
   unsigned int i;
@@ -2745,7 +2765,8 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
     return 0;
   }
 
-  p = pem_load(CAfile, PEM_SIG_CERT);
+#ifndef KR_NO_LOAD_CA_STORE
+  p = pem_load_types(CAfile, PEM_SIG_CERT);
   if (NULL == p) goto out;
 
   for (ca = NULL, i = 0; i < p->num_obj; i++) {
@@ -2764,13 +2785,27 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
   ret = 1;
 out:
   return ret;
+#else /* KR_NO_LOAD_CA_STORE */
+  (void) ca;
+  (void) i;
+
+  /* Do a dry-run through cert store. We'll get an empty store back. */
+  p = pem_load(CAfile, pem_no_filter, NULL);
+  if (p != NULL) {
+    free(ctx->ca_file);
+    ctx->ca_file = strdup(CAfile);
+    pem_free(p);
+    ret = 1;
+  }
+  return ret;
+#endif
 }
 
 int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file) {
   int ret = 0;
   PEM *p;
 
-  p = pem_load(file, PEM_SIG_CERT);
+  p = pem_load_types(file, PEM_SIG_CERT);
   if (NULL == p) goto out;
 
   pem_free(ctx->pem_cert);
@@ -2789,7 +2824,7 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type) {
     return 0;
   }
 
-  p = pem_load(file, PEM_SIG_CERT);
+  p = pem_load_types(file, PEM_SIG_CERT);
   if (NULL == p) goto out;
 
   pem_free(ctx->pem_cert);
@@ -2847,7 +2882,7 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   PEM *pem;
 
   (void) type;
-  pem = pem_load(file, PEM_SIG_KEY | PEM_SIG_RSA_KEY);
+  pem = pem_load_types(file, PEM_SIG_KEY | PEM_SIG_RSA_KEY);
   if (NULL == pem) goto out;
 
   ptr = pem->obj[0].der;
@@ -2914,7 +2949,11 @@ out:
 
 void SSL_CTX_free(SSL_CTX *ctx) {
   if (ctx) {
+#ifndef KR_NO_LOAD_CA_STORE
     X509_free(ctx->ca_store);
+#else
+    free(ctx->ca_file);
+#endif
     pem_free(ctx->pem_cert);
     RSA_free(ctx->rsa_privkey);
     free(ctx);
@@ -4256,6 +4295,8 @@ const SSL_METHOD *SSLv23_client_method(void) {
 #define DER_INCREMENT 1024
 #define OBJ_INCREMENT 4
 
+static void der_free(DER *der);
+
 static int check_end_marker(const char *str, int sig_type) {
   switch (sig_type) {
     case PEM_SIG_CERT:
@@ -4335,7 +4376,7 @@ static int add_object(PEM *p) {
   return 1;
 }
 
-PEM *pem_load(const char *fn, int type_mask) {
+PEM *pem_load(const char *fn, pem_filter_fn flt, void *flt_arg) {
   /* 2x larger than necesssary */
   unsigned int state, cur, i;
   char buf[128];
@@ -4344,6 +4385,9 @@ PEM *pem_load(const char *fn, int type_mask) {
   PEM *p;
   FILE *f;
 
+#ifdef DEBUG_PEM_LOAD
+  dprintf(("loading PEM objects from %s\n", fn));
+#endif
   p = calloc(1, sizeof(*p));
   if (NULL == p) {
     goto out;
@@ -4368,23 +4412,30 @@ PEM *pem_load(const char *fn, int type_mask) {
     switch (state) {
       case 0: /* begin marker */
         if (check_begin_marker(buf, &got)) {
-          if (got & type_mask) {
-            if (!add_object(p)) goto out_close;
-            cur = p->num_obj++;
-            p->obj[cur].der_type = got;
-            p->obj[cur].der_len = 0;
-            p->obj[cur].der = NULL;
-            der_max_len = 0;
-            state = 1;
-          }
-          /* else ignore everything else */
+          if (!add_object(p)) goto out_close;
+          cur = p->num_obj++;
+          p->obj[cur].der_type = got;
+          p->obj[cur].der_len = 0;
+          p->obj[cur].der = NULL;
+          der_max_len = 0;
+          state = 1;
         }
         break;
       case 1: /* content*/
         if (check_end_marker(buf, p->obj[cur].der_type)) {
-          p->tot_len += p->obj[cur].der_len;
+          enum pem_filter_result keep = flt(&p->obj[cur], got, flt_arg);
+          if (keep != PEM_FILTER_NO) {
+            p->tot_len += p->obj[cur].der_len;
+            if (keep == PEM_FILTER_YES_AND_STOP) {
+              fclose(f);
+              return p;
+            }
+          } else { /* Rejected by filter */
+            der_free(&p->obj[cur]);
+            cur = --p->num_obj;
+          }
           state = 0;
-#if 0
+#ifdef DEBUG_PEM_LOAD
           dprintf(("%s: Loaded %d byte PEM\n", fn, p->obj[cur].der_len));
           ber_dump(p->obj[cur].der, p->obj[cur].der_len);
 #endif
@@ -4406,9 +4457,9 @@ PEM *pem_load(const char *fn, int type_mask) {
     dprintf(("%s: no end marker\n", fn));
     goto out_close;
   }
+
   if (p->num_obj < 1) {
     dprintf(("%s: no objects in file\n", fn));
-    goto out_close;
   }
 
   fclose(f);
@@ -4427,11 +4478,26 @@ out:
   return p;
 }
 
+static enum pem_filter_result pem_type_filter(const DER *obj, int type,
+                                              void *arg) {
+  int type_mask = *((int *) arg);
+  (void) obj;
+  return (type & type_mask ? PEM_FILTER_YES : PEM_FILTER_NO);
+}
+
+PEM *pem_load_types(const char *fn, int type_mask) {
+  return pem_load(fn, pem_type_filter, &type_mask);
+}
+
+static void der_free(DER *der) {
+  free(der->der);
+}
+
 void pem_free(PEM *p) {
   if (p) {
     unsigned int i;
     for (i = 0; i < p->num_obj; i++) {
-      free(p->obj[i].der);
+      der_free(&p->obj[i]);
     }
     free(p->obj);
     free(p);
@@ -6083,7 +6149,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
   }
 
   if (ssl->ctx->vrfy_mode) {
-    if (!X509_verify(ssl->ctx->ca_store, chain)) {
+    if (!X509_verify(ssl->ctx, chain)) {
       err = ALERT_BAD_CERT;
       goto err;
     }
@@ -7147,10 +7213,11 @@ again:
  *
  * This will matter in practice, for example if the root CA cert expires...
 */
-static X509 *find_anchor(X509 *ca_store, X509 *chain) {
+#ifndef KR_NO_LOAD_CA_STORE
+static X509 *find_anchor(SSL_CTX *ctx, X509 *chain) {
   X509 *cur;
 
-  for (cur = ca_store; cur; cur = cur->next) {
+  for (cur = ctx->ca_store; cur; cur = cur->next) {
     if (x509_issued_by(&cur->subject, &chain->issuer)) {
       return cur;
     }
@@ -7158,11 +7225,42 @@ static X509 *find_anchor(X509 *ca_store, X509 *chain) {
 
   return NULL;
 }
+#else
 
-int X509_verify(X509 *ca_store, X509 *chain) {
+static enum pem_filter_result pem_issuer_filter(const DER *obj, int type,
+                                                void *arg) {
+  enum pem_filter_result res = PEM_FILTER_NO;
+  struct vec *issuer = (struct vec *) arg;
+  if (type != PEM_SIG_CERT) return PEM_FILTER_NO;
+  X509 *new = X509_new(obj->der, obj->der_len);
+  if (new != NULL && x509_issued_by(&new->subject, issuer)) {
+    res = PEM_FILTER_YES_AND_STOP;
+#if DEBUG_VERIFY
+    dprintf(("found trust anchor\n"));
+#endif
+  }
+  X509_free(new);
+  return res;
+}
+
+static X509 *find_anchor(SSL_CTX *ctx, X509 *chain) {
+  PEM *p = pem_load(ctx->ca_file, pem_issuer_filter, &chain->issuer);
+  if (p != NULL && p->num_obj == 1) {
+    X509 *new = X509_new(p->obj->der, p->obj->der_len);
+    if (new != NULL && x509_issued_by(&new->subject, &chain->issuer)) {
+      return new;
+    }
+    X509_free(new);
+  }
+  return NULL;
+}
+#endif
+
+int X509_verify(SSL_CTX *ctx, X509 *chain) {
+  int res;
   X509 *anchor;
 
-  anchor = find_anchor(ca_store, chain);
+  anchor = find_anchor(ctx, chain);
   if (NULL == anchor) {
     dprintf(("vrfy: Cannot find trust anchor\n"));
     return 0;
@@ -7173,5 +7271,9 @@ int X509_verify(X509 *ca_store, X509 *chain) {
   hex_dump(anchor->subject.ptr, anchor->subject.len, 0);
 #endif
 
-  return do_verify(anchor, chain);
+  res = do_verify(anchor, chain);
+#ifdef KR_NO_LOAD_CA_STORE
+  X509_free(anchor);
+#endif
+  return res;
 }

@@ -8,6 +8,8 @@
 #define DER_INCREMENT 1024
 #define OBJ_INCREMENT 4
 
+static void der_free(DER *der);
+
 static int check_end_marker(const char *str, int sig_type) {
   switch (sig_type) {
     case PEM_SIG_CERT:
@@ -87,7 +89,7 @@ static int add_object(PEM *p) {
   return 1;
 }
 
-PEM *pem_load(const char *fn, int type_mask) {
+PEM *pem_load(const char *fn, pem_filter_fn flt, void *flt_arg) {
   /* 2x larger than necesssary */
   unsigned int state, cur, i;
   char buf[128];
@@ -96,6 +98,9 @@ PEM *pem_load(const char *fn, int type_mask) {
   PEM *p;
   FILE *f;
 
+#ifdef DEBUG_PEM_LOAD
+  dprintf(("loading PEM objects from %s\n", fn));
+#endif
   p = calloc(1, sizeof(*p));
   if (NULL == p) {
     goto out;
@@ -120,23 +125,30 @@ PEM *pem_load(const char *fn, int type_mask) {
     switch (state) {
       case 0: /* begin marker */
         if (check_begin_marker(buf, &got)) {
-          if (got & type_mask) {
-            if (!add_object(p)) goto out_close;
-            cur = p->num_obj++;
-            p->obj[cur].der_type = got;
-            p->obj[cur].der_len = 0;
-            p->obj[cur].der = NULL;
-            der_max_len = 0;
-            state = 1;
-          }
-          /* else ignore everything else */
+          if (!add_object(p)) goto out_close;
+          cur = p->num_obj++;
+          p->obj[cur].der_type = got;
+          p->obj[cur].der_len = 0;
+          p->obj[cur].der = NULL;
+          der_max_len = 0;
+          state = 1;
         }
         break;
       case 1: /* content*/
         if (check_end_marker(buf, p->obj[cur].der_type)) {
-          p->tot_len += p->obj[cur].der_len;
+          enum pem_filter_result keep = flt(&p->obj[cur], got, flt_arg);
+          if (keep != PEM_FILTER_NO) {
+            p->tot_len += p->obj[cur].der_len;
+            if (keep == PEM_FILTER_YES_AND_STOP) {
+              fclose(f);
+              return p;
+            }
+          } else { /* Rejected by filter */
+            der_free(&p->obj[cur]);
+            cur = --p->num_obj;
+          }
           state = 0;
-#if 0
+#ifdef DEBUG_PEM_LOAD
           dprintf(("%s: Loaded %d byte PEM\n", fn, p->obj[cur].der_len));
           ber_dump(p->obj[cur].der, p->obj[cur].der_len);
 #endif
@@ -158,9 +170,9 @@ PEM *pem_load(const char *fn, int type_mask) {
     dprintf(("%s: no end marker\n", fn));
     goto out_close;
   }
+
   if (p->num_obj < 1) {
     dprintf(("%s: no objects in file\n", fn));
-    goto out_close;
   }
 
   fclose(f);
@@ -179,11 +191,26 @@ out:
   return p;
 }
 
+static enum pem_filter_result pem_type_filter(const DER *obj, int type,
+                                              void *arg) {
+  int type_mask = *((int *) arg);
+  (void) obj;
+  return (type & type_mask ? PEM_FILTER_YES : PEM_FILTER_NO);
+}
+
+PEM *pem_load_types(const char *fn, int type_mask) {
+  return pem_load(fn, pem_type_filter, &type_mask);
+}
+
+static void der_free(DER *der) {
+  free(der->der);
+}
+
 void pem_free(PEM *p) {
   if (p) {
     unsigned int i;
     for (i = 0; i < p->num_obj; i++) {
-      free(p->obj[i].der);
+      der_free(&p->obj[i]);
     }
     free(p->obj);
     free(p);

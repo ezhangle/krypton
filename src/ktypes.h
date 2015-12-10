@@ -120,7 +120,11 @@ struct ssl_method_st {
 };
 
 struct ssl_ctx_st {
+#ifndef KR_NO_LOAD_CA_STORE
   X509 *ca_store;
+#else
+  char *ca_file;
+#endif
   PEM *pem_cert;
   RSA_CTX *rsa_privkey;
   uint8_t mode;

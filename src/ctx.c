@@ -50,6 +50,13 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
   ctx->vrfy_mode = mode;
 }
 
+#ifdef KR_NO_LOAD_CA_STORE
+static enum pem_filter_result pem_no_filter(const DER *obj, int type,
+                                            void *arg) {
+  return PEM_FILTER_NO;
+}
+#endif
+
 int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
                                   const char *CAPath) {
   unsigned int i;
@@ -66,7 +73,8 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
     return 0;
   }
 
-  p = pem_load(CAfile, PEM_SIG_CERT);
+#ifndef KR_NO_LOAD_CA_STORE
+  p = pem_load_types(CAfile, PEM_SIG_CERT);
   if (NULL == p) goto out;
 
   for (ca = NULL, i = 0; i < p->num_obj; i++) {
@@ -85,13 +93,27 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
   ret = 1;
 out:
   return ret;
+#else /* KR_NO_LOAD_CA_STORE */
+  (void) ca;
+  (void) i;
+
+  /* Do a dry-run through cert store. We'll get an empty store back. */
+  p = pem_load(CAfile, pem_no_filter, NULL);
+  if (p != NULL) {
+    free(ctx->ca_file);
+    ctx->ca_file = strdup(CAfile);
+    pem_free(p);
+    ret = 1;
+  }
+  return ret;
+#endif
 }
 
 int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file) {
   int ret = 0;
   PEM *p;
 
-  p = pem_load(file, PEM_SIG_CERT);
+  p = pem_load_types(file, PEM_SIG_CERT);
   if (NULL == p) goto out;
 
   pem_free(ctx->pem_cert);
@@ -110,7 +132,7 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type) {
     return 0;
   }
 
-  p = pem_load(file, PEM_SIG_CERT);
+  p = pem_load_types(file, PEM_SIG_CERT);
   if (NULL == p) goto out;
 
   pem_free(ctx->pem_cert);
@@ -168,7 +190,7 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type) {
   PEM *pem;
 
   (void) type;
-  pem = pem_load(file, PEM_SIG_KEY | PEM_SIG_RSA_KEY);
+  pem = pem_load_types(file, PEM_SIG_KEY | PEM_SIG_RSA_KEY);
   if (NULL == pem) goto out;
 
   ptr = pem->obj[0].der;
@@ -235,7 +257,11 @@ out:
 
 void SSL_CTX_free(SSL_CTX *ctx) {
   if (ctx) {
+#ifndef KR_NO_LOAD_CA_STORE
     X509_free(ctx->ca_store);
+#else
+    free(ctx->ca_file);
+#endif
     pem_free(ctx->pem_cert);
     RSA_free(ctx->rsa_privkey);
     free(ctx);

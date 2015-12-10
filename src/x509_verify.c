@@ -134,10 +134,11 @@ again:
  *
  * This will matter in practice, for example if the root CA cert expires...
 */
-static X509 *find_anchor(X509 *ca_store, X509 *chain) {
+#ifndef KR_NO_LOAD_CA_STORE
+static X509 *find_anchor(SSL_CTX *ctx, X509 *chain) {
   X509 *cur;
 
-  for (cur = ca_store; cur; cur = cur->next) {
+  for (cur = ctx->ca_store; cur; cur = cur->next) {
     if (x509_issued_by(&cur->subject, &chain->issuer)) {
       return cur;
     }
@@ -145,11 +146,42 @@ static X509 *find_anchor(X509 *ca_store, X509 *chain) {
 
   return NULL;
 }
+#else
 
-int X509_verify(X509 *ca_store, X509 *chain) {
+static enum pem_filter_result pem_issuer_filter(const DER *obj, int type,
+                                                void *arg) {
+  enum pem_filter_result res = PEM_FILTER_NO;
+  struct vec *issuer = (struct vec *) arg;
+  if (type != PEM_SIG_CERT) return PEM_FILTER_NO;
+  X509 *new = X509_new(obj->der, obj->der_len);
+  if (new != NULL && x509_issued_by(&new->subject, issuer)) {
+    res = PEM_FILTER_YES_AND_STOP;
+#if DEBUG_VERIFY
+    dprintf(("found trust anchor\n"));
+#endif
+  }
+  X509_free(new);
+  return res;
+}
+
+static X509 *find_anchor(SSL_CTX *ctx, X509 *chain) {
+  PEM *p = pem_load(ctx->ca_file, pem_issuer_filter, &chain->issuer);
+  if (p != NULL && p->num_obj == 1) {
+    X509 *new = X509_new(p->obj->der, p->obj->der_len);
+    if (new != NULL && x509_issued_by(&new->subject, &chain->issuer)) {
+      return new;
+    }
+    X509_free(new);
+  }
+  return NULL;
+}
+#endif
+
+int X509_verify(SSL_CTX *ctx, X509 *chain) {
+  int res;
   X509 *anchor;
 
-  anchor = find_anchor(ca_store, chain);
+  anchor = find_anchor(ctx, chain);
   if (NULL == anchor) {
     dprintf(("vrfy: Cannot find trust anchor\n"));
     return 0;
@@ -160,5 +192,9 @@ int X509_verify(X509 *ca_store, X509 *chain) {
   hex_dump(anchor->subject.ptr, anchor->subject.len, 0);
 #endif
 
-  return do_verify(anchor, chain);
+  res = do_verify(anchor, chain);
+#ifdef KR_NO_LOAD_CA_STORE
+  X509_free(anchor);
+#endif
+  return res;
 }

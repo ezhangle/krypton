@@ -336,7 +336,7 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
   }
 
   if (ssl->ctx->vrfy_mode) {
-    if (!X509_verify(ssl->ctx->ca_store, chain)) {
+    if (!X509_verify(ssl->ctx, chain)) {
       err = ALERT_BAD_CERT;
       goto err;
     }
