@@ -166,6 +166,7 @@ struct ssl_st {
   /* for handling appdata recvs */
   unsigned int copied;
   struct vec extra_appdata;
+  uint8_t *appdata_eom;
 
   uint8_t state;
 

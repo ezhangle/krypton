@@ -169,10 +169,12 @@ static X509 *find_anchor(SSL_CTX *ctx, X509 *chain) {
   if (p != NULL && p->num_obj == 1) {
     X509 *new = X509_new(p->obj->der, p->obj->der_len);
     if (new != NULL && x509_issued_by(&new->subject, &chain->issuer)) {
+      pem_free(p);
       return new;
     }
     X509_free(new);
   }
+  pem_free(p);
   return NULL;
 }
 #endif

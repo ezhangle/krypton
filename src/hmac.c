@@ -1,4 +1,25 @@
 /*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+NS_INTERNAL int kr_hmac_len(kr_cs_id cs) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+      return MD5_SIZE;
+    case TLS_RSA_WITH_RC4_128_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+      return SHA1_SIZE;
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      return SHA256_SIZE;
+  }
+  return -1;
+}
+
+/*
  * Generic HMAC implementation, takes a vector hash function as an argument.
  * NOTE: does not handle keys larger than the block size.
  */
@@ -40,19 +61,23 @@ static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
                         const uint8_t *msgs[], const size_t *msg_lens,
                         uint8_t *digest) {
   kr_hash_func_t hf = NULL;
-  size_t mac_len = tls_mac_len(ssl->cur);
+  size_t mac_len = kr_hmac_len(ssl->cur->cipher_suite);
   const uint8_t *key =
       (cs == KR_CLIENT_MAC ? ssl->cur->keys : ssl->cur->keys + mac_len);
-  switch (ssl->cur->cipher_suite) {
+  switch ((kr_cs_id) ssl->cur->cipher_suite) {
+#if ALLOW_NULL_CIPHERS
     case TLS_RSA_WITH_NULL_MD5:
+#endif
     case TLS_RSA_WITH_RC4_128_MD5:
       hf = kr_hash_md5_v;
       break;
     case TLS_RSA_WITH_RC4_128_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
       hf = kr_hash_sha1_v;
       break;
-    default:
-      abort();
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      hf = kr_hash_sha256_v;
+      break;
   }
   kr_hmac_v(hf, key, mac_len, num_msgs, msgs, msg_lens, digest, mac_len);
 }

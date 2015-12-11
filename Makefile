@@ -4,12 +4,18 @@
 SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c \
           src/md5.c src/sha1.c src/sha256.c src/hmac.c \
           src/meth.c src/pem.c src/prf.c src/random.c \
-          src/rc4.c src/rsa.c src/ssl.c src/tls.c src/tls_cl.c \
-          src/tls_recv.c src/tls_sv.c src/x509.c src/x509_verify.c
-HEADERS = src/ktypes.h src/kexterns.h src/crypto.h src/bigint_impl.h \
-          src/bigint.h src/tlsproto.h src/tls.h src/ber.h src/pem.h src/x509.h
+          src/aes.c src/rc4.c src/cipher.c src/rsa.c src/ssl.c \
+          src/tls.c src/tls_cl.c src/tls_recv.c src/tls_sv.c \
+          src/x509.c src/x509_verify.c
+HEADERS = src/ktypes.h src/tlsproto.h src/kexterns.h src/crypto.h src/bigint_impl.h \
+          src/bigint.h src/tls.h src/ber.h src/pem.h src/x509.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c
-CFLAGS := -O2 -W -Wall -g -Wno-unused-parameter $(CFLAGS_EXTRA)
+CFLAGS := -O2 -W -Wall -Werror -g $(CFLAGS_EXTRA)
+
+ifdef ASAN
+CC = clang-3.6
+CFLAGS += -O0 -fsanitize=address -fcolor-diagnostics
+endif
 
 CLANG_FORMAT := clang-format
 
@@ -24,12 +30,7 @@ all: tests
 
 krypton.c: $(HEADERS) $(SOURCES) Makefile
 	@echo "AMALGAMATING\tkrypton.c"
-	@cp krypton.h $@; \
-	 for f in $(HEADERS) $(SOURCES); do \
-		 echo >> $@; \
-	   echo "/* === `basename $$f` === */" >> $@; \
-		 sed -E "/#include .*(ssl.h|`echo $(HEADERS) | sed -e 's,src/,,g' -e 's, ,|,g'`)/d" $$f >> $@; \
-	 done
+	@../tools/amalgam --srcdir src krypton.h $(HEADERS) $(SOURCES) > $@
 
 tests: openssl-tests krypton-tests
 

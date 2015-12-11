@@ -8,27 +8,29 @@
 /* TLS1.2 Pseudo-Random-Function */
 NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
                      size_t seed_len, uint8_t *out, size_t olen) {
-  uint8_t A1[128];
-  const uint8_t *A1_ptr = &A1[0];
-  size_t A1_len = SHA256_SIZE + seed_len;
+  uint8_t A_i[SHA256_SIZE], tmp[SHA256_SIZE];
+  const uint8_t *msgs[2];
+  size_t msgl[2];
 
-  assert(A1_len < sizeof(A1)); /* TODO(lsm): fix this */
+  /* Compute A1 */
+  msgs[0] = seed;
+  msgl[0] = seed_len;
 
-  kr_hmac_sha256_v(sec, sec_len, 1, &seed, &seed_len, A1);
-  memcpy(A1 + SHA256_SIZE, seed, seed_len);
+  kr_hmac_sha256_v(sec, sec_len, 1, msgs, msgl, A_i);
+
+  msgs[0] = A_i;
+  msgl[0] = sizeof(A_i);
+  msgs[1] = seed;
+  msgl[1] = seed_len;
 
   for (;;) {
-    if (olen >= SHA256_SIZE) {
-      size_t l = SHA256_SIZE;
-      kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &A1_len, out);
-      out += SHA256_SIZE;
-      olen -= SHA256_SIZE;
-      if (olen) kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &l, A1);
-    } else {
-      uint8_t tmp[SHA256_SIZE];
-      kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &A1_len, tmp);
-      memcpy(out, tmp, olen);
-      break;
-    }
+    size_t l = olen > SHA256_SIZE ? SHA256_SIZE : olen;
+    kr_hmac_sha256_v(sec, sec_len, 2, msgs, msgl, tmp);
+    memcpy(out, tmp, l);
+    out += l;
+    olen -= l;
+    if (olen == 0) break;
+    kr_hmac_sha256_v(sec, sec_len, 1, msgs, msgl, tmp);
+    memcpy(A_i, tmp, SHA256_SIZE);
   }
 }

@@ -1,3 +1,7 @@
+#ifdef NS_MODULE_LINES
+#line 1 "src/krypton.h"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -68,8 +72,10 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type);
 void SSL_CTX_free(SSL_CTX *);
 
 #endif /* _KRYPTON_H */
-
-/* === ktypes.h === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/ktypes.h"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -238,6 +244,7 @@ struct ssl_st {
   /* for handling appdata recvs */
   unsigned int copied;
   struct vec extra_appdata;
+  uint8_t *appdata_eom;
 
   uint8_t state;
 
@@ -262,384 +269,22 @@ void hex_dump(const void *ptr, size_t len, size_t llen);
 
 typedef struct _bigint bigint; /**< An alias for _bigint */
 
+/* Amalgamated: #include "crypto.h" */
+/* Amalgamated: #include "bigint.h" */
+/* Amalgamated: #include "bigint_impl.h" */
+/* Amalgamated: #include "pem.h" */
+/* Amalgamated: #include "ber.h" */
+/* Amalgamated: #include "../openssl/ssl.h" */
+/* Amalgamated: #include "tlsproto.h" */
+/* Amalgamated: #include "tls.h" */
+/* Amalgamated: #include "ber.h" */
+/* Amalgamated: #include "x509.h" */
 
 #endif /* _KTYPES_H */
-
-/* === kexterns.h === */
-#ifndef _KEXTERNS_H
-#define _KEXTERNS_H
-
-#ifdef KR_EXT_IO
-extern ssize_t kr_send(int fd, const void *buf, size_t len, int flags);
-extern ssize_t kr_recv(int fd, void *buf, size_t len, int flags);
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/tlsproto.h"
+/**/
 #endif
-#ifdef KR_EXT_RANDOM
-extern int kr_get_random(uint8_t *out, size_t len);
-#endif
-#ifdef KR_EXT_MD5
-extern void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
-                          const size_t *msg_lens, uint8_t *digest);
-#endif
-#ifdef KR_EXT_SHA1
-extern void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
-                           const size_t *msg_lens, uint8_t *digest);
-#endif
-#ifdef KR_EXT_SHA256
-extern void kr_hash_sha256_v(size_t num_msgs, const uint8_t *msgs[],
-                             const size_t *msg_lens, uint8_t *digest);
-#endif
-
-/* Some defaults. */
-
-#if !defined(KR_EXT_IO) && (defined(_POSIX_VERSION) || defined(WIN32))
-#define kr_send send
-#define kr_recv recv
-#if defined(_POSIX_VERSION)
-#include <sys/socket.h>
-#endif
-#endif
-
-#if !defined(KR_EXT_RANDOM)
-#if defined(_POSIX_VERSION)
-#define KR_RANDOM_SOURCE_FILE "/dev/urandom"
-#else
-#define KR_USE_RAND
-#endif
-#endif
-
-#endif /* _KEXTERNS_H */
-
-/* === crypto.h === */
-/*
- * Copyright (c) 2015 Cesanta Software Limited
- * All rights reserved
- */
-
-#ifndef _CRYPTO_H
-#define _CRYPTO_H
-
-NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
-
-/* axTLS crypto functions, see C files for copyright info */
-typedef struct _SHA256_CTX SHA256_CTX;
-
-NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
-                     size_t seed_len, uint8_t *out, size_t olen);
-
-/* SHA256 */
-#define SHA256_SIZE 32
-#define SHA256_BLOCK_LENGTH 64
-struct _SHA256_CTX {
-  uint32_t state[8];
-  uint64_t bitcount;
-  uint8_t buffer[SHA256_BLOCK_LENGTH];
-};
-
-NS_INTERNAL void SHA256_Init(SHA256_CTX *c);
-NS_INTERNAL void SHA256_Update(SHA256_CTX *, const uint8_t *input, size_t len);
-NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
-
-#define SHA1_SIZE 20
-#define MD5_SIZE 16
-
-/* RC4 */
-#define RC4_KEY_SIZE 16
-typedef struct {
-  uint8_t x, y;
-  uint8_t m[256];
-} RC4_CTX;
-
-#define MAX_DIGEST_SIZE SHA256_SIZE
-#define MAX_KEY_SIZE RC4_KEY_SIZE
-
-NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
-NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
-                           int length);
-
-/* RSA */
-NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
-                                  int mod_len, const uint8_t *pub_exp,
-                                  int pub_len, const uint8_t *priv_exp,
-                                  int priv_len, const uint8_t *p, int p_len,
-                                  const uint8_t *q, int q_len,
-                                  const uint8_t *dP, int dP_len,
-                                  const uint8_t *dQ, int dQ_len,
-                                  const uint8_t *qInv, int qInv_len);
-NS_INTERNAL void RSA_pub_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
-                                 int mod_len, const uint8_t *pub_exp,
-                                 int pub_len);
-NS_INTERNAL void RSA_free(RSA_CTX *ctx);
-NS_INTERNAL int RSA_decrypt(const RSA_CTX *ctx, const uint8_t *in_data,
-                            uint8_t *out_data, int out_len, int is_decryption);
-NS_INTERNAL bigint *RSA_private(const RSA_CTX *c, bigint *bi_msg);
-NS_INTERNAL int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data,
-                            uint16_t in_len, uint8_t *out_data, int is_signing);
-NS_INTERNAL bigint *RSA_public(const RSA_CTX *c, bigint *bi_msg);
-NS_INTERNAL int RSA_block_size(RSA_CTX *ctx);
-#if defined(CONFIG_SSL_CERT_VERIFICATION) || \
-    defined(CONFIG_SSL_GENERATE_X509_CERT)
-NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx, const uint8_t *sig,
-                                    int sig_len, bigint *modulus,
-                                    bigint *pub_exp);
-NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
-#endif
-
-/* Faster modular arithmetic, bigger code */
-#define CONFIG_BIGINT_BARRETT 1
-
-/* faster multiplies, bigger code, only worth it for bigger keys or systems
- * with very slow multiplys. Not worth it on x86.
-*/
-/* #define CONFIG_BIGINT_KARATSUBA 1 */
-#define MUL_KARATSUBA_THRESH 20
-#define SQU_KARATSUBA_THRESH 40
-
-/* cs = 0 -> client MAC, cs = 1 -> server MAC. */
-#define KR_CLIENT_MAC 0
-#define KR_SERVER_MAC 1
-static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
-                        const uint8_t *msgs[], const size_t *msg_lens,
-                        uint8_t *digest);
-
-typedef void (*kr_hash_func_t)(size_t, const uint8_t **, const size_t *,
-                               uint8_t *);
-static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
-                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
-                      const size_t *msg_lens, uint8_t *digest,
-                      size_t digest_len);
-#endif /* _CRYPTO_H */
-
-/* === bigint_impl.h === */
-/*
- * Copyright (c) 2007, Cameron Rich
- *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors
- *   may be used to endorse or promote products derived from this software
- *   without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-#ifndef BIGINT_IMPL_HEADER
-#define BIGINT_IMPL_HEADER
-
-/* Maintain a number of precomputed variables when doing reduction */
-#define BIGINT_M_OFFSET 0 /**< Normal modulo offset. */
-#define BIGINT_P_OFFSET 1 /**< p modulo offset. */
-#define BIGINT_Q_OFFSET 2 /**< q module offset. */
-#define BIGINT_NUM_MODS 3 /**< The number of modulus constants used. */
-
-/* Architecture specific functions for big ints */
-#if defined(CONFIG_INTEGER_8BIT)
-#define COMP_RADIX 256U     /**< Max component + 1 */
-#define COMP_MAX 0xFFFFU    /**< (Max dbl comp -1) */
-#define COMP_BIT_SIZE 8     /**< Number of bits in a component. */
-#define COMP_BYTE_SIZE 1    /**< Number of bytes in a component. */
-#define COMP_NUM_NIBBLES 2  /**< Used For diagnostics only. */
-typedef uint8_t comp;       /**< A single precision component. */
-typedef uint16_t long_comp; /**< A double precision component. */
-typedef int16_t slong_comp; /**< A signed double precision component. */
-#elif defined(CONFIG_INTEGER_16BIT)
-#define COMP_RADIX 65536U    /**< Max component + 1 */
-#define COMP_MAX 0xFFFFFFFFU /**< (Max dbl comp -1) */
-#define COMP_BIT_SIZE 16     /**< Number of bits in a component. */
-#define COMP_BYTE_SIZE 2     /**< Number of bytes in a component. */
-#define COMP_NUM_NIBBLES 4   /**< Used For diagnostics only. */
-typedef uint16_t comp;            /**< A single precision component. */
-typedef uint32_t long_comp;       /**< A double precision component. */
-typedef int32_t slong_comp;       /**< A signed double precision component. */
-#else                        /* regular 32 bit */
-#ifdef WIN32
-#define COMP_RADIX 4294967296i64
-#define COMP_MAX 0xFFFFFFFFFFFFFFFFui64
-#else
-#define COMP_RADIX 4294967296ULL       /**< Max component + 1 */
-#define COMP_MAX 0xFFFFFFFFFFFFFFFFULL /**< (Max dbl comp -1) */
-#endif
-#define COMP_BIT_SIZE 32   /**< Number of bits in a component. */
-#define COMP_BYTE_SIZE 4   /**< Number of bytes in a component. */
-#define COMP_NUM_NIBBLES 8 /**< Used For diagnostics only. */
-typedef uint32_t comp;      /**< A single precision component. */
-typedef uint64_t long_comp; /**< A double precision component. */
-typedef int64_t slong_comp; /**< A signed double precision component. */
-#endif
-
-/**
- * @struct  _bigint
- * @brief A big integer basic object
- */
-struct _bigint {
-  struct _bigint *next; /**< The next bigint in the cache. */
-  short size;           /**< The number of components in this bigint. */
-  short max_comps;      /**< The heapsize allocated for this bigint */
-  int refs;             /**< An internal reference count. */
-  comp *comps;          /**< A ptr to the actual component data */
-};
-
-/**
- * Maintains the state of the cache, and a number of variables used in
- * reduction.
- */
-struct _BI_CTX /**< A big integer "session" context. */
-    {
-  bigint *active_list;             /**< Bigints currently used. */
-  bigint *free_list;               /**< Bigints not used. */
-  bigint *bi_radix;                /**< The radix used. */
-  bigint *bi_mod[BIGINT_NUM_MODS]; /**< modulus */
-
-#if defined(CONFIG_BIGINT_MONTGOMERY)
-  bigint *bi_RR_mod_m[BIGINT_NUM_MODS]; /**< R^2 mod m */
-  bigint *bi_R_mod_m[BIGINT_NUM_MODS];  /**< R mod m */
-  comp N0_dash[BIGINT_NUM_MODS];
-#elif defined(CONFIG_BIGINT_BARRETT)
-  bigint *bi_mu[BIGINT_NUM_MODS]; /**< Storage for mu */
-#endif
-  bigint *bi_normalised_mod[BIGINT_NUM_MODS]; /**< Normalised mod storage. */
-  bigint **g;                                 /**< Used by sliding-window. */
-  int window;       /**< The size of the sliding window */
-  int active_count; /**< Number of active bigints. */
-  int free_count;   /**< Number of free bigints. */
-
-#ifdef CONFIG_BIGINT_MONTGOMERY
-  uint8_t use_classical; /**< Use classical reduction. */
-#endif
-  uint8_t mod_offset; /**< The mod offset we are using */
-};
-typedef struct _BI_CTX BI_CTX;
-
-#ifndef WIN32
-#define max(a, b)                                             \
-  ((a) > (b) ? (a) : (b)) /**< Find the maximum of 2 numbers. \
-                             */
-#define min(a, b)                                             \
-  ((a) < (b) ? (a) : (b)) /**< Find the minimum of 2 numbers. \
-                             */
-#endif
-
-#define PERMANENT 0x7FFF55AA /**< A magic number for permanents. */
-
-#endif
-
-/* === bigint.h === */
-/*
- * Copyright (c) 2007, Cameron Rich
- *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- * * Neither the name of the axTLS project nor the names of its contributors
- *   may be used to endorse or promote products derived from this software
- *   without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-#ifndef BIGINT_HEADER
-#define BIGINT_HEADER
-
-NS_INTERNAL BI_CTX *bi_initialize(void);
-NS_INTERNAL void bi_terminate(BI_CTX *ctx);
-NS_INTERNAL void bi_permanent(bigint *bi);
-NS_INTERNAL void bi_depermanent(bigint *bi);
-NS_INTERNAL void bi_clear_cache(BI_CTX *ctx);
-NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi);
-NS_INTERNAL bigint *bi_copy(bigint *bi);
-NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi);
-NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *bi, uint8_t *data, int size);
-NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int len);
-NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i);
-
-/* the functions that actually do something interesting */
-NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib);
-NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia, bigint *bib,
-                                int *is_negative);
-NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *bia, bigint *bim,
-                              int is_mod);
-NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib);
-NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp);
-#if 0
-NS_INTERNAL bigint *bi_mod_power2(BI_CTX *ctx, bigint *bi,
-			bigint *bim, bigint *biexp);
-#endif
-NS_INTERNAL int bi_compare(bigint *bia, bigint *bib);
-NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset);
-NS_INTERNAL void bi_free_mod(BI_CTX *ctx, int mod_offset);
-
-#ifdef CONFIG_SSL_FULL_MODE
-NS_INTERNAL void bi_print(const char *label, bigint *bi);
-NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data);
-#endif
-
-/**
- * @def bi_mod
- * Find the residue of B. bi_set_mod() must be called before hand.
- */
-#define bi_mod(A, B) bi_divide(A, B, ctx->bi_mod[ctx->mod_offset], 1)
-
-/**
- * bi_residue() is technically the same as bi_mod(), but it uses the
- * appropriate reduction technique (which is bi_mod() when doing classical
- * reduction).
- */
-#if defined(CONFIG_BIGINT_MONTGOMERY)
-#define bi_residue(A, B) bi_mont(A, B)
-NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy);
-#elif defined(CONFIG_BIGINT_BARRETT)
-#define bi_residue(A, B) bi_barrett(A, B)
-NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi);
-#else /* if defined(CONFIG_BIGINT_CLASSICAL) */
-#define bi_residue(A, B) bi_mod(A, B)
-#endif
-
-#ifdef CONFIG_BIGINT_SQUARE
-NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bi);
-#else
-#define bi_square(A, B) bi_multiply(A, bi_copy(B), B)
-#endif
-
-NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
-                           bigint *p, bigint *q, bigint *qInv);
-
-#endif
-
-/* === tlsproto.h === */
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -652,7 +297,7 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
 #define ALLOW_NULL_CIPHERS 0
 
 /* just count non-NULL ciphers */
-#define NUM_CIPHER_SUITES 2
+#define NUM_CIPHER_SUITES 4
 
 #define NUM_COMPRESSORS 1
 
@@ -805,16 +450,421 @@ struct tls_alert {
 
 /* http://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-4
  */
-#define TLS_RSA_WITH_NULL_MD5 0x0001
-#define TLS_RSA_WITH_RC4_128_MD5 0x0004
-#define TLS_RSA_WITH_RC4_128_SHA 0x0005
+
+typedef enum {
+#if ALLOW_NULL_CIPHERS
+  TLS_RSA_WITH_NULL_MD5 = 0x0001,
+#endif
+  TLS_RSA_WITH_RC4_128_MD5 = 0x0004,
+  TLS_RSA_WITH_RC4_128_SHA = 0x0005,
+  TLS_RSA_WITH_AES_128_CBC_SHA = 0x002f,
+  TLS_RSA_WITH_AES_128_CBC_SHA256 = 0x003c,
+} kr_cs_id;
+
 #define TLS_EMPTY_RENEGOTIATION_INFO_SCSV 0x00ff
 
 #define COMPRESSOR_NULL 0x00
 
 #endif /* _TLSPROTO_H */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/kexterns.h"
+/**/
+#endif
+#ifndef _KEXTERNS_H
+#define _KEXTERNS_H
 
-/* === tls.h === */
+#ifdef KR_EXT_IO
+extern ssize_t kr_send(int fd, const void *buf, size_t len, int flags);
+extern ssize_t kr_recv(int fd, void *buf, size_t len, int flags);
+#endif
+#ifdef KR_EXT_RANDOM
+extern int kr_get_random(uint8_t *out, size_t len);
+#endif
+#ifdef KR_EXT_MD5
+extern void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
+                          const size_t *msg_lens, uint8_t *digest);
+#endif
+#ifdef KR_EXT_SHA1
+extern void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
+                           const size_t *msg_lens, uint8_t *digest);
+#endif
+#ifdef KR_EXT_SHA256
+extern void kr_hash_sha256_v(size_t num_msgs, const uint8_t *msgs[],
+                             const size_t *msg_lens, uint8_t *digest);
+#endif
+
+/* Some defaults. */
+
+#if !defined(KR_EXT_IO) && (defined(_POSIX_VERSION) || defined(WIN32))
+#define kr_send send
+#define kr_recv recv
+#if defined(_POSIX_VERSION)
+#include <sys/socket.h>
+#endif
+#endif
+
+#if !defined(KR_EXT_RANDOM)
+#if defined(_POSIX_VERSION)
+#define KR_RANDOM_SOURCE_FILE "/dev/urandom"
+#else
+#define KR_USE_RAND
+#endif
+#endif
+
+#endif /* _KEXTERNS_H */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/crypto.h"
+/**/
+#endif
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+#ifndef _CRYPTO_H
+#define _CRYPTO_H
+
+NS_INTERNAL int get_random_nonzero(uint8_t *out, size_t len);
+
+/* axTLS crypto functions, see C files for copyright info */
+typedef struct _SHA256_CTX SHA256_CTX;
+
+NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
+                     size_t seed_len, uint8_t *out, size_t olen);
+
+/* SHA256 */
+#define SHA256_SIZE 32
+#define SHA256_BLOCK_LENGTH 64
+struct _SHA256_CTX {
+  uint32_t state[8];
+  uint64_t bitcount;
+  uint8_t buffer[SHA256_BLOCK_LENGTH];
+};
+
+NS_INTERNAL void SHA256_Init(SHA256_CTX *c);
+NS_INTERNAL void SHA256_Update(SHA256_CTX *, const uint8_t *input, size_t len);
+NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
+
+#define SHA1_SIZE 20
+#define MD5_SIZE 16
+#define MAX_DIGEST_SIZE SHA256_SIZE
+
+#define AES_IV_SIZE 16
+#define MAX_IV_SIZE AES_IV_SIZE
+
+#define RC4_KEY_SIZE 16
+#define AES128_KEY_SIZE 16
+#define AES256_KEY_SIZE 32
+#define MAX_KEY_SIZE AES256_KEY_SIZE
+
+/* RSA */
+NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
+                                  int mod_len, const uint8_t *pub_exp,
+                                  int pub_len, const uint8_t *priv_exp,
+                                  int priv_len, const uint8_t *p, int p_len,
+                                  const uint8_t *q, int q_len,
+                                  const uint8_t *dP, int dP_len,
+                                  const uint8_t *dQ, int dQ_len,
+                                  const uint8_t *qInv, int qInv_len);
+NS_INTERNAL void RSA_pub_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
+                                 int mod_len, const uint8_t *pub_exp,
+                                 int pub_len);
+NS_INTERNAL void RSA_free(RSA_CTX *ctx);
+NS_INTERNAL int RSA_decrypt(const RSA_CTX *ctx, const uint8_t *in_data,
+                            uint8_t *out_data, int out_len, int is_decryption);
+NS_INTERNAL bigint *RSA_private(const RSA_CTX *c, bigint *bi_msg);
+NS_INTERNAL int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data,
+                            uint16_t in_len, uint8_t *out_data, int is_signing);
+NS_INTERNAL bigint *RSA_public(const RSA_CTX *c, bigint *bi_msg);
+NS_INTERNAL int RSA_block_size(RSA_CTX *ctx);
+#if defined(CONFIG_SSL_CERT_VERIFICATION) || \
+    defined(CONFIG_SSL_GENERATE_X509_CERT)
+NS_INTERNAL bigint *RSA_sign_verify(BI_CTX *ctx, const uint8_t *sig,
+                                    int sig_len, bigint *modulus,
+                                    bigint *pub_exp);
+NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
+#endif
+
+/* Faster modular arithmetic, bigger code */
+#define CONFIG_BIGINT_BARRETT 1
+
+/* faster multiplies, bigger code, only worth it for bigger keys or systems
+ * with very slow multiplys. Not worth it on x86.
+*/
+/* #define CONFIG_BIGINT_KARATSUBA 1 */
+#define MUL_KARATSUBA_THRESH 20
+#define SQU_KARATSUBA_THRESH 40
+
+NS_INTERNAL int kr_hmac_len(kr_cs_id cs);
+
+/* cs = 0 -> client MAC, cs = 1 -> server MAC. */
+#define KR_CLIENT_MAC 0
+#define KR_SERVER_MAC 1
+static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                        const uint8_t *msgs[], const size_t *msg_lens,
+                        uint8_t *digest);
+
+typedef void (*kr_hash_func_t)(size_t, const uint8_t **, const size_t *,
+                               uint8_t *);
+static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
+                      const size_t *msg_lens, uint8_t *digest,
+                      size_t digest_len);
+
+typedef struct {
+  uint8_t block_len;
+  uint8_t key_len;
+  uint8_t iv_len;
+} kr_cipher_info;
+
+NS_INTERNAL const kr_cipher_info *kr_cipher_get_info(kr_cs_id cs);
+NS_INTERNAL void *kr_cipher_setup(kr_cs_id cs, int decrypt, const uint8_t *key,
+                                  const uint8_t *iv);
+NS_INTERNAL void kr_cipher_ctx_free(kr_cs_id cs, void *ctx);
+NS_INTERNAL void kr_cipher_set_iv(kr_cs_id cs, void *ctx, const uint8_t *iv);
+NS_INTERNAL void kr_cipher_encrypt(kr_cs_id cs, void *ctx, const uint8_t *msg,
+                                   int len, uint8_t *out);
+NS_INTERNAL void kr_cipher_decrypt(kr_cs_id cs, void *ctx, const uint8_t *msg,
+                                   int len, uint8_t *out);
+#endif /* _CRYPTO_H */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/bigint_impl.h"
+/**/
+#endif
+/*
+ * Copyright (c) 2007, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef BIGINT_IMPL_HEADER
+#define BIGINT_IMPL_HEADER
+
+/* Maintain a number of precomputed variables when doing reduction */
+#define BIGINT_M_OFFSET 0 /**< Normal modulo offset. */
+#define BIGINT_P_OFFSET 1 /**< p modulo offset. */
+#define BIGINT_Q_OFFSET 2 /**< q module offset. */
+#define BIGINT_NUM_MODS 3 /**< The number of modulus constants used. */
+
+/* Architecture specific functions for big ints */
+#if defined(CONFIG_INTEGER_8BIT)
+#define COMP_RADIX 256U     /**< Max component + 1 */
+#define COMP_MAX 0xFFFFU    /**< (Max dbl comp -1) */
+#define COMP_BIT_SIZE 8     /**< Number of bits in a component. */
+#define COMP_BYTE_SIZE 1    /**< Number of bytes in a component. */
+#define COMP_NUM_NIBBLES 2  /**< Used For diagnostics only. */
+typedef uint8_t comp;       /**< A single precision component. */
+typedef uint16_t long_comp; /**< A double precision component. */
+typedef int16_t slong_comp; /**< A signed double precision component. */
+#elif defined(CONFIG_INTEGER_16BIT)
+#define COMP_RADIX 65536U    /**< Max component + 1 */
+#define COMP_MAX 0xFFFFFFFFU /**< (Max dbl comp -1) */
+#define COMP_BIT_SIZE 16     /**< Number of bits in a component. */
+#define COMP_BYTE_SIZE 2     /**< Number of bytes in a component. */
+#define COMP_NUM_NIBBLES 4   /**< Used For diagnostics only. */
+typedef uint16_t comp;            /**< A single precision component. */
+typedef uint32_t long_comp;       /**< A double precision component. */
+typedef int32_t slong_comp;       /**< A signed double precision component. */
+#else                        /* regular 32 bit */
+#ifdef WIN32
+#define COMP_RADIX 4294967296i64
+#define COMP_MAX 0xFFFFFFFFFFFFFFFFui64
+#else
+#define COMP_RADIX 4294967296ULL       /**< Max component + 1 */
+#define COMP_MAX 0xFFFFFFFFFFFFFFFFULL /**< (Max dbl comp -1) */
+#endif
+#define COMP_BIT_SIZE 32   /**< Number of bits in a component. */
+#define COMP_BYTE_SIZE 4   /**< Number of bytes in a component. */
+#define COMP_NUM_NIBBLES 8 /**< Used For diagnostics only. */
+typedef uint32_t comp;      /**< A single precision component. */
+typedef uint64_t long_comp; /**< A double precision component. */
+typedef int64_t slong_comp; /**< A signed double precision component. */
+#endif
+
+/**
+ * @struct  _bigint
+ * @brief A big integer basic object
+ */
+struct _bigint {
+  struct _bigint *next; /**< The next bigint in the cache. */
+  short size;           /**< The number of components in this bigint. */
+  short max_comps;      /**< The heapsize allocated for this bigint */
+  int refs;             /**< An internal reference count. */
+  comp *comps;          /**< A ptr to the actual component data */
+};
+
+/**
+ * Maintains the state of the cache, and a number of variables used in
+ * reduction.
+ */
+struct _BI_CTX /**< A big integer "session" context. */
+    {
+  bigint *active_list;             /**< Bigints currently used. */
+  bigint *free_list;               /**< Bigints not used. */
+  bigint *bi_radix;                /**< The radix used. */
+  bigint *bi_mod[BIGINT_NUM_MODS]; /**< modulus */
+
+#if defined(CONFIG_BIGINT_MONTGOMERY)
+  bigint *bi_RR_mod_m[BIGINT_NUM_MODS]; /**< R^2 mod m */
+  bigint *bi_R_mod_m[BIGINT_NUM_MODS];  /**< R mod m */
+  comp N0_dash[BIGINT_NUM_MODS];
+#elif defined(CONFIG_BIGINT_BARRETT)
+  bigint *bi_mu[BIGINT_NUM_MODS]; /**< Storage for mu */
+#endif
+  bigint *bi_normalised_mod[BIGINT_NUM_MODS]; /**< Normalised mod storage. */
+  bigint **g;                                 /**< Used by sliding-window. */
+  int window;       /**< The size of the sliding window */
+  int active_count; /**< Number of active bigints. */
+  int free_count;   /**< Number of free bigints. */
+
+#ifdef CONFIG_BIGINT_MONTGOMERY
+  uint8_t use_classical; /**< Use classical reduction. */
+#endif
+  uint8_t mod_offset; /**< The mod offset we are using */
+};
+typedef struct _BI_CTX BI_CTX;
+
+#ifndef WIN32
+#define max(a, b)                                             \
+  ((a) > (b) ? (a) : (b)) /**< Find the maximum of 2 numbers. \
+                             */
+#define min(a, b)                                             \
+  ((a) < (b) ? (a) : (b)) /**< Find the minimum of 2 numbers. \
+                             */
+#endif
+
+#define PERMANENT 0x7FFF55AA /**< A magic number for permanents. */
+
+#endif
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/bigint.h"
+/**/
+#endif
+/*
+ * Copyright (c) 2007, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef BIGINT_HEADER
+#define BIGINT_HEADER
+
+NS_INTERNAL BI_CTX *bi_initialize(void);
+NS_INTERNAL void bi_terminate(BI_CTX *ctx);
+NS_INTERNAL void bi_permanent(bigint *bi);
+NS_INTERNAL void bi_depermanent(bigint *bi);
+NS_INTERNAL void bi_clear_cache(BI_CTX *ctx);
+NS_INTERNAL void bi_free(BI_CTX *ctx, bigint *bi);
+NS_INTERNAL bigint *bi_copy(bigint *bi);
+NS_INTERNAL bigint *bi_clone(BI_CTX *ctx, const bigint *bi);
+NS_INTERNAL void bi_export(BI_CTX *ctx, bigint *bi, uint8_t *data, int size);
+NS_INTERNAL bigint *bi_import(BI_CTX *ctx, const uint8_t *data, int len);
+NS_INTERNAL bigint *int_to_bi(BI_CTX *ctx, comp i);
+
+/* the functions that actually do something interesting */
+NS_INTERNAL bigint *bi_add(BI_CTX *ctx, bigint *bia, bigint *bib);
+NS_INTERNAL bigint *bi_subtract(BI_CTX *ctx, bigint *bia, bigint *bib,
+                                int *is_negative);
+NS_INTERNAL bigint *bi_divide(BI_CTX *ctx, bigint *bia, bigint *bim,
+                              int is_mod);
+NS_INTERNAL bigint *bi_multiply(BI_CTX *ctx, bigint *bia, bigint *bib);
+NS_INTERNAL bigint *bi_mod_power(BI_CTX *ctx, bigint *bi, bigint *biexp);
+#if 0
+NS_INTERNAL bigint *bi_mod_power2(BI_CTX *ctx, bigint *bi,
+			bigint *bim, bigint *biexp);
+#endif
+NS_INTERNAL int bi_compare(bigint *bia, bigint *bib);
+NS_INTERNAL void bi_set_mod(BI_CTX *ctx, bigint *bim, int mod_offset);
+NS_INTERNAL void bi_free_mod(BI_CTX *ctx, int mod_offset);
+
+#ifdef CONFIG_SSL_FULL_MODE
+NS_INTERNAL void bi_print(const char *label, bigint *bi);
+NS_INTERNAL bigint *bi_str_import(BI_CTX *ctx, const char *data);
+#endif
+
+/**
+ * @def bi_mod
+ * Find the residue of B. bi_set_mod() must be called before hand.
+ */
+#define bi_mod(A, B) bi_divide(A, B, ctx->bi_mod[ctx->mod_offset], 1)
+
+/**
+ * bi_residue() is technically the same as bi_mod(), but it uses the
+ * appropriate reduction technique (which is bi_mod() when doing classical
+ * reduction).
+ */
+#if defined(CONFIG_BIGINT_MONTGOMERY)
+#define bi_residue(A, B) bi_mont(A, B)
+NS_INTERNAL bigint *bi_mont(BI_CTX *ctx, bigint *bixy);
+#elif defined(CONFIG_BIGINT_BARRETT)
+#define bi_residue(A, B) bi_barrett(A, B)
+NS_INTERNAL bigint *bi_barrett(BI_CTX *ctx, bigint *bi);
+#else /* if defined(CONFIG_BIGINT_CLASSICAL) */
+#define bi_residue(A, B) bi_mod(A, B)
+#endif
+
+#ifdef CONFIG_BIGINT_SQUARE
+NS_INTERNAL bigint *bi_square(BI_CTX *ctx, bigint *bi);
+#else
+#define bi_square(A, B) bi_multiply(A, bi_copy(B), B)
+#endif
+
+NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
+                           bigint *p, bigint *q, bigint *qInv);
+
+#endif
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/tls.h"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -830,7 +880,7 @@ typedef struct tls_security {
    * client_write_key
    * server_write_key
   */
-  uint8_t keys[MAX_DIGEST_SIZE * 2 + MAX_KEY_SIZE * 2];
+  uint8_t keys[MAX_DIGEST_SIZE * 2 + MAX_KEY_SIZE * 2 + MAX_IV_SIZE * 2];
 
   uint64_t client_write_seq;
   uint64_t server_write_seq;
@@ -849,8 +899,8 @@ typedef struct tls_security {
   struct tls_random cl_rnd;
   struct tls_random sv_rnd;
 
-  RC4_CTX server_write_ctx;
-  RC4_CTX client_write_ctx;
+  void *server_write_ctx;
+  void *client_write_ctx;
 
   SHA256_CTX handshakes_hash;
 } * tls_sec_t;
@@ -860,13 +910,12 @@ NS_INTERNAL void tls_free_security(tls_sec_t sec);
 
 /* generic */
 NS_INTERNAL int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
-NS_INTERNAL void tls_generate_keys(tls_sec_t sec);
+NS_INTERNAL void tls_generate_keys(tls_sec_t sec, int is_server);
 NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len);
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
-NS_INTERNAL size_t tls_mac_len(tls_sec_t sec);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);
@@ -889,8 +938,10 @@ NS_INTERNAL void tls_compute_master_secret(tls_sec_t sec,
                                            struct tls_premaster_secret *pre);
 
 #endif /* _TLS_H */
-
-/* === ber.h === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/ber.h"
+/**/
+#endif
 /*
  * Copyright (c) 2010 Gianni Tedesco <gianni@scaramanga.co.uk>
  * Released under the MIT license.
@@ -929,8 +980,10 @@ int ber_dumpf(FILE *f, const uint8_t *ptr, size_t len);
 #endif
 
 #endif /* _GBER_H */
-
-/* === pem.h === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/pem.h"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -972,8 +1025,10 @@ NS_INTERNAL int b64_decode(const uint8_t *buf, size_t len, uint8_t *out,
                            size_t *obytes);
 
 #endif /* _PEM_H */
-
-/* === x509.h === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/x509.h"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
@@ -1017,13 +1072,16 @@ NS_INTERNAL void X509_free(X509 *cert);
 NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
 
 #endif /* _X509_H */
-
-/* === b64.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/b64.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 static int decode(uint8_t in, uint8_t *out) {
   if (in >= 'A' && in <= 'Z') {
@@ -1153,13 +1211,16 @@ int main(int argc, char **argv) {
   return 0;
 }
 #endif
-
-/* === ber.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/ber.c"
+/**/
+#endif
 /*
  * Copyright (c) 2010 Gianni Tedesco <gianni@scaramanga.co.uk>
  * Released under the MIT license.
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 #if KRYPTON_DEBUG
 static void hex_dumpf_r(FILE *f, const uint8_t *tmp, size_t len, size_t llen,
@@ -1319,8 +1380,10 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
   if (NULL == ptr || ptr + tag->ber_len > end) return NULL;
   return ptr;
 }
-
-/* === bigint.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/bigint.c"
+/**/
+#endif
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -1383,6 +1446,7 @@ NS_INTERNAL const uint8_t *ber_decode_tag(struct gber_tag *tag,
  * @{
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 #define V1 v->comps[v->size - 1]                     /**< v1 for division */
 #define V2 v->comps[v->size - 2]                     /**< v2 for division */
@@ -2694,13 +2758,21 @@ NS_INTERNAL bigint *bi_crt(BI_CTX *ctx, bigint *bi, bigint *dP, bigint *dQ,
   return bi_add(ctx, m2, bi_multiply(ctx, q, h));
 }
 /** @} */
-
-/* === ctx.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/ctx.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "../openssl/ssl.h" */
+/* Amalgamated: #include "ktypes.h" */
+/* Amalgamated: #include "crypto.h" */
+/* Amalgamated: #include "ber.h" */
+/* Amalgamated: #include "x509.h" */
+/* Amalgamated: #include "pem.h" */
 
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth) {
   SSL_CTX *ctx;
@@ -2745,6 +2817,9 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
 #ifdef KR_NO_LOAD_CA_STORE
 static enum pem_filter_result pem_no_filter(const DER *obj, int type,
                                             void *arg) {
+  (void) obj;
+  (void) type;
+  (void) arg;
   return PEM_FILTER_NO;
 }
 #endif
@@ -2959,13 +3034,17 @@ void SSL_CTX_free(SSL_CTX *ctx) {
     free(ctx);
   }
 }
-
-/* === hexdump.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/hexdump.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "../openssl/ssl.h" */
+/* Amalgamated: #include "ktypes.h" */
 #include <ctype.h>
 
 #if KRYPTON_DEBUG
@@ -3007,8 +3086,10 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
   hex_dumpf(stdout, ptr, len, llen);
 }
 #endif
-
-/* === md5.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/md5.c"
+/**/
+#endif
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -3045,6 +3126,7 @@ void hex_dump(const void *ptr, size_t len, size_t llen) {
 
 #ifndef KR_EXT_MD5
 
+/* Amalgamated: #include "ktypes.h" */
 
 typedef struct {
   uint32_t state[4];  /* state (ABCD) */
@@ -3311,8 +3393,10 @@ static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
   kr_md5_final(digest, &md5);
 }
 #endif /* !KR_EXT_MD5 */
-
-/* === sha1.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/sha1.c"
+/**/
+#endif
 /*
  * SHA1 routine optimized to do word accesses rather than byte accesses,
  * and to avoid unnecessary copies into the context array.
@@ -3322,6 +3406,7 @@ static void kr_hash_md5_v(size_t num_msgs, const uint8_t *msgs[],
  */
 #ifndef KR_EXT_SHA1
 
+/* Amalgamated: #include "ktypes.h" */
 
 typedef struct {
   uint64_t size;
@@ -3568,8 +3653,10 @@ static void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
   SHA1_Final(digest, &sha1);
 }
 #endif /* !KR_EXT_SHA1 */
-
-/* === sha256.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/sha256.c"
+/**/
+#endif
 /*
  * FILE:	sha2.c
  * AUTHOR:	Aaron D. Gifford - http://www.aarongifford.com/
@@ -3603,6 +3690,7 @@ static void kr_hash_sha1_v(size_t num_msgs, const uint8_t *msgs[],
  *
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 #ifndef KR_EXT_SHA256
 
@@ -4194,8 +4282,31 @@ static void kr_hmac_sha256_v(const uint8_t *key, size_t key_len,
   kr_hmac_v(kr_hash_sha256_v, key, key_len, num_msgs, msgs, msg_lens, digest,
             SHA256_SIZE);
 }
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/hmac.c"
+/**/
+#endif
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
 
-/* === hmac.c === */
+NS_INTERNAL int kr_hmac_len(kr_cs_id cs) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+      return MD5_SIZE;
+    case TLS_RSA_WITH_RC4_128_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+      return SHA1_SIZE;
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      return SHA256_SIZE;
+  }
+  return -1;
+}
+
 /*
  * Generic HMAC implementation, takes a vector hash function as an argument.
  * NOTE: does not handle keys larger than the block size.
@@ -4238,29 +4349,37 @@ static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
                         const uint8_t *msgs[], const size_t *msg_lens,
                         uint8_t *digest) {
   kr_hash_func_t hf = NULL;
-  size_t mac_len = tls_mac_len(ssl->cur);
+  size_t mac_len = kr_hmac_len(ssl->cur->cipher_suite);
   const uint8_t *key =
       (cs == KR_CLIENT_MAC ? ssl->cur->keys : ssl->cur->keys + mac_len);
-  switch (ssl->cur->cipher_suite) {
+  switch ((kr_cs_id) ssl->cur->cipher_suite) {
+#if ALLOW_NULL_CIPHERS
     case TLS_RSA_WITH_NULL_MD5:
+#endif
     case TLS_RSA_WITH_RC4_128_MD5:
       hf = kr_hash_md5_v;
       break;
     case TLS_RSA_WITH_RC4_128_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
       hf = kr_hash_sha1_v;
       break;
-    default:
-      abort();
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      hf = kr_hash_sha256_v;
+      break;
   }
   kr_hmac_v(hf, key, mac_len, num_msgs, msgs, msg_lens, digest, mac_len);
 }
-
-/* === meth.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/meth.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "../openssl/ssl.h" */
+/* Amalgamated: #include "ktypes.h" */
 
 const SSL_METHOD meth = {0, 0};
 const SSL_METHOD sv_meth = {0, 1};
@@ -4284,13 +4403,16 @@ const SSL_METHOD *SSLv23_server_method(void) {
 const SSL_METHOD *SSLv23_client_method(void) {
   return &cl_meth;
 }
-
-/* === pem.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/pem.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 #define DER_INCREMENT 1024
 #define OBJ_INCREMENT 4
@@ -4503,48 +4625,56 @@ void pem_free(PEM *p) {
     free(p);
   }
 }
-
-/* === prf.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/prf.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 /* TLS1.2 Pseudo-Random-Function */
 NS_INTERNAL void prf(const uint8_t *sec, size_t sec_len, const uint8_t *seed,
                      size_t seed_len, uint8_t *out, size_t olen) {
-  uint8_t A1[128];
-  const uint8_t *A1_ptr = &A1[0];
-  size_t A1_len = SHA256_SIZE + seed_len;
+  uint8_t A_i[SHA256_SIZE], tmp[SHA256_SIZE];
+  const uint8_t *msgs[2];
+  size_t msgl[2];
 
-  assert(A1_len < sizeof(A1)); /* TODO(lsm): fix this */
+  /* Compute A1 */
+  msgs[0] = seed;
+  msgl[0] = seed_len;
 
-  kr_hmac_sha256_v(sec, sec_len, 1, &seed, &seed_len, A1);
-  memcpy(A1 + SHA256_SIZE, seed, seed_len);
+  kr_hmac_sha256_v(sec, sec_len, 1, msgs, msgl, A_i);
+
+  msgs[0] = A_i;
+  msgl[0] = sizeof(A_i);
+  msgs[1] = seed;
+  msgl[1] = seed_len;
 
   for (;;) {
-    if (olen >= SHA256_SIZE) {
-      size_t l = SHA256_SIZE;
-      kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &A1_len, out);
-      out += SHA256_SIZE;
-      olen -= SHA256_SIZE;
-      if (olen) kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &l, A1);
-    } else {
-      uint8_t tmp[SHA256_SIZE];
-      kr_hmac_sha256_v(sec, sec_len, 1, &A1_ptr, &A1_len, tmp);
-      memcpy(out, tmp, olen);
-      break;
-    }
+    size_t l = olen > SHA256_SIZE ? SHA256_SIZE : olen;
+    kr_hmac_sha256_v(sec, sec_len, 2, msgs, msgl, tmp);
+    memcpy(out, tmp, l);
+    out += l;
+    olen -= l;
+    if (olen == 0) break;
+    kr_hmac_sha256_v(sec, sec_len, 1, msgs, msgl, tmp);
+    memcpy(A_i, tmp, SHA256_SIZE);
   }
 }
-
-/* === random.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/random.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 #ifdef KR_RANDOM_SOURCE_FILE
 int kr_get_random(uint8_t *out, size_t len) {
@@ -4591,8 +4721,419 @@ int get_random_nonzero(uint8_t *out, size_t len) {
 
   return 1;
 }
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/aes.c"
+/**/
+#endif
+/*
+ * Copyright (c) 2007, Cameron Rich
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * * Neither the name of the axTLS project nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software
+ *   without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
-/* === rc4.c === */
+/**
+ * AES implementation - this is a small code version. There are much faster
+ * versions around but they are much larger in size (i.e. they use large
+ * submix tables).
+ */
+
+/* Amalgamated: #include "ktypes.h" */
+
+#define AES_BLOCK_SIZE 16
+
+#ifndef KR_EXT_AES
+
+#include <string.h>
+
+#define AES_MAX_ROUNDS 14
+
+typedef struct aes_key_st {
+  uint16_t rounds;
+  uint16_t key_size;
+  uint32_t ks[(AES_MAX_ROUNDS + 1) * 8];
+  uint8_t iv[AES_IV_SIZE];
+} AES_CTX;
+
+typedef enum { AES_MODE_128, AES_MODE_256 } AES_MODE;
+
+#define rot1(x) (((x) << 24) | ((x) >> 8))
+#define rot2(x) (((x) << 16) | ((x) >> 16))
+#define rot3(x) (((x) << 8) | ((x) >> 24))
+
+/*
+ * This cute trick does 4 'mul by two' at once.  Stolen from
+ * Dr B. R. Gladman <brg@gladman.uk.net> but I'm sure the u-(u>>7) is
+ * a standard graphics trick
+ * The key to this is that we need to xor with 0x1b if the top bit is set.
+ * a 1xxx xxxx   0xxx 0xxx First we mask the 7bit,
+ * b 1000 0000   0000 0000 then we shift right by 7 putting the 7bit in 0bit,
+ * c 0000 0001   0000 0000 we then subtract (c) from (b)
+ * d 0111 1111   0000 0000 and now we and with our mask
+ * e 0001 1011   0000 0000
+ */
+#define mt 0x80808080
+#define ml 0x7f7f7f7f
+#define mh 0xfefefefe
+#define mm 0x1b1b1b1b
+#define mul2(x, t) \
+  ((t) = ((x) &mt), ((((x) + (x)) & mh) ^ (((t) - ((t) >> 7)) & mm)))
+
+#define inv_mix_col(x, f2, f4, f8, f9)                                         \
+  ((f2) = mul2(x, f2), (f4) = mul2(f2, f4), (f8) = mul2(f4, f8),               \
+   (f9) = (x) ^ (f8), (f8) = ((f2) ^ (f4) ^ (f8)), (f2) ^= (f9), (f4) ^= (f9), \
+   (f8) ^= rot3(f2), (f8) ^= rot2(f4), (f8) ^ rot1(f9))
+
+/*
+ * AES S-box
+ */
+static const uint8_t aes_sbox[256] = {
+    0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B,
+    0xFE, 0xD7, 0xAB, 0x76, 0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0,
+    0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0, 0xB7, 0xFD, 0x93, 0x26,
+    0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
+    0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A, 0x07, 0x12, 0x80, 0xE2,
+    0xEB, 0x27, 0xB2, 0x75, 0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0,
+    0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 0x84, 0x53, 0xD1, 0x00, 0xED,
+    0x20, 0xFC, 0xB1, 0x5B, 0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 0xCF,
+    0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85, 0x45, 0xF9, 0x02, 0x7F,
+    0x50, 0x3C, 0x9F, 0xA8, 0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5,
+    0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 0xD2, 0xCD, 0x0C, 0x13, 0xEC,
+    0x5F, 0x97, 0x44, 0x17, 0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 0x73,
+    0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88, 0x46, 0xEE, 0xB8, 0x14,
+    0xDE, 0x5E, 0x0B, 0xDB, 0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C,
+    0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 0x79, 0xE7, 0xC8, 0x37, 0x6D,
+    0x8D, 0xD5, 0x4E, 0xA9, 0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 0x08,
+    0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6, 0xE8, 0xDD, 0x74, 0x1F,
+    0x4B, 0xBD, 0x8B, 0x8A, 0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E,
+    0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9E, 0xE1, 0xF8, 0x98, 0x11,
+    0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
+    0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F,
+    0xB0, 0x54, 0xBB, 0x16,
+};
+
+/*
+ * AES is-box
+ */
+static const uint8_t aes_isbox[256] = {
+    0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e,
+    0x81, 0xf3, 0xd7, 0xfb, 0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87,
+    0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb, 0x54, 0x7b, 0x94, 0x32,
+    0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
+    0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49,
+    0x6d, 0x8b, 0xd1, 0x25, 0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16,
+    0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92, 0x6c, 0x70, 0x48, 0x50,
+    0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84,
+    0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05,
+    0xb8, 0xb3, 0x45, 0x06, 0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02,
+    0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b, 0x3a, 0x91, 0x11, 0x41,
+    0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73,
+    0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8,
+    0x1c, 0x75, 0xdf, 0x6e, 0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89,
+    0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b, 0xfc, 0x56, 0x3e, 0x4b,
+    0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4,
+    0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59,
+    0x27, 0x80, 0xec, 0x5f, 0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d,
+    0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef, 0xa0, 0xe0, 0x3b, 0x4d,
+    0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
+    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63,
+    0x55, 0x21, 0x0c, 0x7d};
+
+static const unsigned char Rcon[30] = {
+    0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36,
+    0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6,
+    0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91,
+};
+
+/* ----- static functions ----- */
+static void AES_encrypt(const AES_CTX *ctx, uint32_t *data);
+static void AES_decrypt(const AES_CTX *ctx, uint32_t *data);
+
+/* Perform doubling in Galois Field GF(2^8) using the irreducible polynomial
+   x^8+x^4+x^3+x+1 */
+static unsigned char AES_xtime(uint32_t x) {
+  return (x & 0x80) ? (x << 1) ^ 0x1b : x << 1;
+}
+
+/**
+ * Set up AES with the key/iv and cipher size.
+ */
+void AES_set_key(AES_CTX *ctx, const uint8_t *key, const uint8_t *iv,
+                 AES_MODE mode) {
+  int i, ii;
+  uint32_t *W, tmp, tmp2;
+  const unsigned char *ip;
+  int words;
+
+  switch (mode) {
+    case AES_MODE_128:
+      i = 10;
+      words = 4;
+      break;
+
+    case AES_MODE_256:
+      i = 14;
+      words = 8;
+      break;
+
+    default: /* fail silently */
+      return;
+  }
+
+  ctx->rounds = i;
+  ctx->key_size = words;
+  W = ctx->ks;
+  for (i = 0; i < words; i += 2) {
+    W[i + 0] = ((uint32_t) key[0] << 24) | ((uint32_t) key[1] << 16) |
+               ((uint32_t) key[2] << 8) | ((uint32_t) key[3]);
+    W[i + 1] = ((uint32_t) key[4] << 24) | ((uint32_t) key[5] << 16) |
+               ((uint32_t) key[6] << 8) | ((uint32_t) key[7]);
+    key += 8;
+  }
+
+  ip = Rcon;
+  ii = 4 * (ctx->rounds + 1);
+  for (i = words; i < ii; i++) {
+    tmp = W[i - 1];
+
+    if ((i % words) == 0) {
+      tmp2 = (uint32_t) aes_sbox[(tmp) &0xff] << 8;
+      tmp2 |= (uint32_t) aes_sbox[(tmp >> 8) & 0xff] << 16;
+      tmp2 |= (uint32_t) aes_sbox[(tmp >> 16) & 0xff] << 24;
+      tmp2 |= (uint32_t) aes_sbox[(tmp >> 24)];
+      tmp = tmp2 ^ (((unsigned int) *ip) << 24);
+      ip++;
+    }
+
+    if ((words == 8) && ((i % words) == 4)) {
+      tmp2 = (uint32_t) aes_sbox[(tmp) &0xff];
+      tmp2 |= (uint32_t) aes_sbox[(tmp >> 8) & 0xff] << 8;
+      tmp2 |= (uint32_t) aes_sbox[(tmp >> 16) & 0xff] << 16;
+      tmp2 |= (uint32_t) aes_sbox[(tmp >> 24)] << 24;
+      tmp = tmp2;
+    }
+
+    W[i] = W[i - words] ^ tmp;
+  }
+
+  /* copy the iv across */
+  memcpy(ctx->iv, iv, 16);
+}
+
+/**
+ * Change a key for decryption.
+ */
+void AES_convert_key(AES_CTX *ctx) {
+  int i;
+  uint32_t *k, w, t1, t2, t3, t4;
+
+  k = ctx->ks;
+  k += 4;
+
+  for (i = ctx->rounds * 4; i > 4; i--) {
+    w = *k;
+    w = inv_mix_col(w, t1, t2, t3, t4);
+    *k++ = w;
+  }
+}
+
+/**
+ * Encrypt a byte sequence (with a block size 16) using the AES cipher.
+ */
+void AES_cbc_encrypt(AES_CTX *ctx, const uint8_t *msg, uint8_t *out,
+                     int length) {
+  int i;
+  uint32_t tin[4], tout[4], iv[4];
+
+  memcpy(iv, ctx->iv, AES_IV_SIZE);
+  for (i = 0; i < 4; i++) tout[i] = be32toh(iv[i]);
+
+  for (length -= AES_BLOCK_SIZE; length >= 0; length -= AES_BLOCK_SIZE) {
+    uint32_t msg_32[4];
+    uint32_t out_32[4];
+    memcpy(msg_32, msg, AES_BLOCK_SIZE);
+    msg += AES_BLOCK_SIZE;
+
+    for (i = 0; i < 4; i++) tin[i] = be32toh(msg_32[i]) ^ tout[i];
+
+    AES_encrypt(ctx, tin);
+
+    for (i = 0; i < 4; i++) {
+      tout[i] = tin[i];
+      out_32[i] = htobe32(tout[i]);
+    }
+
+    memcpy(out, out_32, AES_BLOCK_SIZE);
+    out += AES_BLOCK_SIZE;
+  }
+
+  for (i = 0; i < 4; i++) iv[i] = htobe32(tout[i]);
+  memcpy(ctx->iv, iv, AES_IV_SIZE);
+}
+
+/**
+ * Decrypt a byte sequence (with a block size 16) using the AES cipher.
+ */
+void AES_cbc_decrypt(AES_CTX *ctx, const uint8_t *msg, uint8_t *out,
+                     int length) {
+  int i;
+  uint32_t tin[4], xor[4], tout[4], data[4], iv[4];
+
+  memcpy(iv, ctx->iv, AES_IV_SIZE);
+  for (i = 0; i < 4; i++) xor[i] = be32toh(iv[i]);
+
+  for (length -= 16; length >= 0; length -= 16) {
+    uint32_t msg_32[4];
+    uint32_t out_32[4];
+    memcpy(msg_32, msg, AES_BLOCK_SIZE);
+    msg += AES_BLOCK_SIZE;
+
+    for (i = 0; i < 4; i++) {
+      tin[i] = be32toh(msg_32[i]);
+      data[i] = tin[i];
+    }
+
+    AES_decrypt(ctx, data);
+
+    for (i = 0; i < 4; i++) {
+      tout[i] = data[i] ^ xor[i];
+      xor[i] = tin[i];
+      out_32[i] = htobe32(tout[i]);
+    }
+
+    memcpy(out, out_32, AES_BLOCK_SIZE);
+    out += AES_BLOCK_SIZE;
+  }
+
+  for (i = 0; i < 4; i++) iv[i] = htobe32 (xor[i]);
+  memcpy(ctx->iv, iv, AES_IV_SIZE);
+}
+
+/**
+ * Encrypt a single block (16 bytes) of data
+ */
+static void AES_encrypt(const AES_CTX *ctx, uint32_t *data) {
+  /* To make this code smaller, generate the sbox entries on the fly.
+   * This will have a really heavy effect upon performance.
+   */
+  uint32_t tmp[4];
+  uint32_t tmp1, old_a0, a0, a1, a2, a3, row;
+  int curr_rnd;
+  int rounds = ctx->rounds;
+  const uint32_t *k = ctx->ks;
+
+  /* Pre-round key addition */
+  for (row = 0; row < 4; row++) data[row] ^= *(k++);
+
+  /* Encrypt one block. */
+  for (curr_rnd = 0; curr_rnd < rounds; curr_rnd++) {
+    /* Perform ByteSub and ShiftRow operations together */
+    for (row = 0; row < 4; row++) {
+      a0 = (uint32_t) aes_sbox[(data[row % 4] >> 24) & 0xFF];
+      a1 = (uint32_t) aes_sbox[(data[(row + 1) % 4] >> 16) & 0xFF];
+      a2 = (uint32_t) aes_sbox[(data[(row + 2) % 4] >> 8) & 0xFF];
+      a3 = (uint32_t) aes_sbox[(data[(row + 3) % 4]) & 0xFF];
+
+      /* Perform MixColumn iff not last round */
+      if (curr_rnd < (rounds - 1)) {
+        tmp1 = a0 ^ a1 ^ a2 ^ a3;
+        old_a0 = a0;
+        a0 ^= tmp1 ^ AES_xtime(a0 ^ a1);
+        a1 ^= tmp1 ^ AES_xtime(a1 ^ a2);
+        a2 ^= tmp1 ^ AES_xtime(a2 ^ a3);
+        a3 ^= tmp1 ^ AES_xtime(a3 ^ old_a0);
+      }
+
+      tmp[row] = ((a0 << 24) | (a1 << 16) | (a2 << 8) | a3);
+    }
+
+    /* KeyAddition - note that it is vital that this loop is separate from
+       the MixColumn operation, which must be atomic...*/
+    for (row = 0; row < 4; row++) data[row] = tmp[row] ^ *(k++);
+  }
+}
+
+/**
+ * Decrypt a single block (16 bytes) of data
+ */
+static void AES_decrypt(const AES_CTX *ctx, uint32_t *data) {
+  uint32_t tmp[4];
+  uint32_t xt0, xt1, xt2, xt3, xt4, xt5, xt6;
+  uint32_t a0, a1, a2, a3, row;
+  int curr_rnd;
+  int rounds = ctx->rounds;
+  const uint32_t *k = ctx->ks + ((rounds + 1) * 4);
+
+  /* pre-round key addition */
+  for (row = 4; row > 0; row--) data[row - 1] ^= *(--k);
+
+  /* Decrypt one block */
+  for (curr_rnd = 0; curr_rnd < rounds; curr_rnd++) {
+    /* Perform ByteSub and ShiftRow operations together */
+    for (row = 4; row > 0; row--) {
+      a0 = aes_isbox[(data[(row + 3) % 4] >> 24) & 0xFF];
+      a1 = aes_isbox[(data[(row + 2) % 4] >> 16) & 0xFF];
+      a2 = aes_isbox[(data[(row + 1) % 4] >> 8) & 0xFF];
+      a3 = aes_isbox[(data[row % 4]) & 0xFF];
+
+      /* Perform MixColumn iff not last round */
+      if (curr_rnd < (rounds - 1)) {
+        /* The MDS cofefficients (0x09, 0x0B, 0x0D, 0x0E)
+           are quite large compared to encryption; this
+           operation slows decryption down noticeably. */
+        xt0 = AES_xtime(a0 ^ a1);
+        xt1 = AES_xtime(a1 ^ a2);
+        xt2 = AES_xtime(a2 ^ a3);
+        xt3 = AES_xtime(a3 ^ a0);
+        xt4 = AES_xtime(xt0 ^ xt1);
+        xt5 = AES_xtime(xt1 ^ xt2);
+        xt6 = AES_xtime(xt4 ^ xt5);
+
+        xt0 ^= a1 ^ a2 ^ a3 ^ xt4 ^ xt6;
+        xt1 ^= a0 ^ a2 ^ a3 ^ xt5 ^ xt6;
+        xt2 ^= a0 ^ a1 ^ a3 ^ xt4 ^ xt6;
+        xt3 ^= a0 ^ a1 ^ a2 ^ xt5 ^ xt6;
+        tmp[row - 1] = ((xt0 << 24) | (xt1 << 16) | (xt2 << 8) | xt3);
+      } else
+        tmp[row - 1] = ((a0 << 24) | (a1 << 16) | (a2 << 8) | a3);
+    }
+
+    for (row = 4; row > 0; row--) data[row - 1] = tmp[row - 1] ^ *(--k);
+  }
+}
+
+NS_INTERNAL void *kr_aes_ctx_new() {
+  return calloc(1, sizeof(AES_CTX));
+}
+
+#endif
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/rc4.c"
+/**/
+#endif
 /*
  * Copyright (c) 2007, Cameron Rich
  *
@@ -4628,11 +5169,17 @@ int get_random_nonzero(uint8_t *out, size_t len) {
  * Originally written by Christophe Devine.
  */
 
+/* Amalgamated: #include "ktypes.h" */
+
+typedef struct {
+  uint8_t x, y;
+  uint8_t m[256];
+} kr_rc4_ctx;
 
 /**
  * Get ready for an encrypt/decrypt operation
  */
-void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length) {
+void kr_rc4_setup(kr_rc4_ctx *ctx, const uint8_t *key, int length) {
   int i, j = 0, k = 0, a;
   uint8_t *m;
 
@@ -4657,7 +5204,8 @@ void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length) {
  * this is a stream cipher).
  * NOTE: *msg and *out must be the same pointer (performance tweak)
  */
-void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
+void kr_rc4_crypt(kr_rc4_ctx *ctx, const uint8_t *msg, uint8_t *out,
+                  int length) {
   int i;
   uint8_t *m, x, y, a, b;
 
@@ -4678,7 +5226,142 @@ void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
   ctx->y = y;
 }
 
-/* === rsa.c === */
+NS_INTERNAL void *kr_rc4_ctx_new() {
+  return calloc(1, sizeof(kr_rc4_ctx));
+}
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/cipher.c"
+/**/
+#endif
+/*
+ * Copyright (c) 2015 Cesanta Software Limited
+ * All rights reserved
+ */
+
+/* Amalgamated: #include "ktypes.h" */
+
+#if ALLOW_NULL_CIPHERS
+static const kr_cipher_info null_cs_info = {1, 0, 0};
+#endif
+static const kr_cipher_info rc4_cs_info = {1, RC4_KEY_SIZE, 0};
+static const kr_cipher_info aes128_cs_info = {16, AES128_KEY_SIZE, 16};
+
+NS_INTERNAL const kr_cipher_info *kr_cipher_get_info(kr_cs_id cs) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+      return NULL;
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
+      return &rc4_cs_info;
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      return &aes128_cs_info;
+  }
+  return NULL;
+}
+
+NS_INTERNAL void *kr_cipher_setup(kr_cs_id cs, int decrypt, const uint8_t *key,
+                                  const uint8_t *iv) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+      return NULL;
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA: {
+      kr_rc4_ctx *ctx = kr_rc4_ctx_new();
+      kr_rc4_setup(ctx, key, RC4_KEY_SIZE);
+      return ctx;
+    }
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256: {
+      AES_CTX *ctx = kr_aes_ctx_new();
+      AES_set_key(ctx, key, iv, AES_MODE_128);
+      if (decrypt) AES_convert_key(ctx);
+      return ctx;
+    }
+  }
+  dprintf(("unsupported cipher suite: %d\n", cs));
+  abort();
+  return NULL;
+}
+
+NS_INTERNAL void kr_cipher_set_iv(kr_cs_id cs, void *ctx, const uint8_t *iv) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
+      return;
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      memcpy(((AES_CTX *) ctx)->iv, iv, AES_IV_SIZE);
+      return;
+  }
+}
+
+NS_INTERNAL void kr_cipher_encrypt(kr_cs_id cs, void *ctx, const uint8_t *msg,
+                                   int len, uint8_t *out) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+      memmove(out, msg, len);
+      return;
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
+      kr_rc4_crypt((kr_rc4_ctx *) ctx, msg, out, len);
+      return;
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      AES_cbc_encrypt((AES_CTX *) ctx, msg, out, len);
+      return;
+  }
+  abort();
+}
+
+NS_INTERNAL void kr_cipher_decrypt(kr_cs_id cs, void *ctx, const uint8_t *msg,
+                                   int len, uint8_t *out) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+      memmove(out, msg, len);
+      return;
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
+      kr_rc4_crypt((kr_rc4_ctx *) ctx, msg, out, len);
+      return;
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      AES_cbc_decrypt((AES_CTX *) ctx, msg, out, len);
+      return;
+  }
+  abort();
+}
+
+NS_INTERNAL void kr_cipher_ctx_free(kr_cs_id cs, void *ctx) {
+  switch (cs) {
+#if ALLOW_NULL_CIPHERS
+    case TLS_RSA_WITH_NULL_MD5:
+      return;
+#endif
+    case TLS_RSA_WITH_RC4_128_MD5:
+    case TLS_RSA_WITH_RC4_128_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      free(ctx);
+      return;
+  }
+  /* Do not panic, we may not have negotiated a cipher at all. */
+}
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/rsa.c"
+/**/
+#endif
 /*
  * Copyright (c) 2007-2014, Cameron Rich
  *
@@ -4716,6 +5399,7 @@ void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
 
 #define CONFIG_SSL_CERT_VERIFICATION 1
 
+/* Amalgamated: #include "ktypes.h" */
 
 struct _RSA_CTX {
   bigint *m;    /* modulus */
@@ -4939,13 +5623,16 @@ int RSA_encrypt(const RSA_CTX *ctx, const uint8_t *in_data, uint16_t in_len,
   bi_clear_cache(ctx->bi_ctx);
   return byte_size;
 }
-
-/* === ssl.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/ssl.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -5293,8 +5980,7 @@ int SSL_read(SSL *ssl, void *buf, int num) {
     ssl->extra_appdata.len -= rlen;
     ssl->extra_appdata.ptr += rlen;
     if (ssl->extra_appdata.len == 0) {
-      size_t shift_len =
-          (ssl->extra_appdata.ptr - ssl->rx_buf) + tls_mac_len(ssl->cur);
+      size_t shift_len = (ssl->appdata_eom - ssl->rx_buf);
       ssl->rx_len -= shift_len;
       dprintf(("extra data consumed, shift %d, %d left\n", (int) shift_len,
                (int) ssl->rx_len));
@@ -5332,14 +6018,14 @@ int SSL_read(SSL *ssl, void *buf, int num) {
 
 int SSL_write(SSL *ssl, const void *buf, int num) {
   int res = num;
+  if (num == 0 && ssl->tx_len > 0) {
+    if (!do_send(ssl)) return -1;
+    ssl_err(ssl, ssl->fatal ? SSL_ERROR_SSL : SSL_ERROR_NONE);
+    return 0;
+  }
   if (ssl->fatal) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return -1;
-  }
-  if (num == 0 && ssl->tx_len > 0) {
-    if (!do_send(ssl)) return -1;
-    ssl_err(ssl, SSL_ERROR_NONE);
-    return 0;
   }
   if (ssl->close_notify || ssl->state == STATE_CLOSING) {
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);
@@ -5440,13 +6126,16 @@ void ssl_err(SSL *ssl, int err) {
   }
   ssl->err = err;
 }
-
-/* === tls.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/tls.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 NS_INTERNAL tls_sec_t tls_new_security(void) {
   struct tls_security *sec;
@@ -5462,6 +6151,8 @@ NS_INTERNAL tls_sec_t tls_new_security(void) {
 NS_INTERNAL void tls_free_security(tls_sec_t sec) {
   if (sec) {
     RSA_free(sec->svr_key);
+    kr_cipher_ctx_free(sec->cipher_suite, sec->server_write_ctx);
+    kr_cipher_ctx_free(sec->cipher_suite, sec->client_write_ctx);
     free(sec);
   }
 }
@@ -5554,8 +6245,10 @@ NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
       vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
+NS_INTERNAL void tls_generate_keys(tls_sec_t sec, int is_server) {
   uint8_t buf[13 + sizeof(sec->cl_rnd) + sizeof(sec->sv_rnd)];
+  int mac_len = kr_hmac_len(sec->cipher_suite);
+  const kr_cipher_info *ci = kr_cipher_get_info(sec->cipher_suite);
 
   memcpy(buf, "key expansion", 13);
   memcpy(buf + 13, &sec->sv_rnd, sizeof(sec->sv_rnd));
@@ -5564,8 +6257,12 @@ NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf),
       sec->keys, sizeof(sec->keys));
 
-  RC4_setup(&sec->client_write_ctx, sec->keys + 2 * tls_mac_len(sec), 16);
-  RC4_setup(&sec->server_write_ctx, sec->keys + 2 * tls_mac_len(sec) + 16, 16);
+  sec->client_write_ctx =
+      kr_cipher_setup(sec->cipher_suite, is_server, sec->keys + 2 * mac_len,
+                      sec->keys + 2 * mac_len + 2 * ci->key_len);
+  sec->server_write_ctx = kr_cipher_setup(
+      sec->cipher_suite, !is_server, sec->keys + 2 * mac_len + ci->key_len,
+      sec->keys + 2 * mac_len + 2 * ci->key_len + ci->iv_len);
 }
 
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
@@ -5591,30 +6288,54 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
   return 1;
 }
 
-NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
+NS_INTERNAL int tls_send_enc(SSL *ssl, uint8_t type, const void *buf,
+                             size_t len) {
   struct tls_hdr hdr;
-  struct tls_hmac_hdr phdr;
-  const uint8_t *msgs[2];
-  size_t msgl[2];
-  uint8_t digest[MAX_DIGEST_SIZE];
-  size_t buf_ofs;
-  size_t mac_len = ssl->tx_enc ? tls_mac_len(ssl->cur) : 0;
-  size_t max = (1 << 14) - mac_len;
+  int hdr_offset, enc_offset, enc_len;
 
-  if (len > max) {
-    len = max;
+  int mac_len = kr_hmac_len(ssl->cur->cipher_suite);
+  const kr_cipher_info *ci = kr_cipher_get_info(ssl->cur->cipher_suite);
+  int is_cbc =
+      (ci->block_len > 0); /* Only CBC mode for block ciphers for now. */
+  size_t max = (1 << 14) - mac_len - (is_cbc ? ci->iv_len + ci->block_len : 0);
+  uint8_t pad_len = 0;
+  void *cctx =
+      ssl->is_server ? ssl->cur->server_write_ctx : ssl->cur->client_write_ctx;
+
+  if (len > max) len = max;
+
+  /* Header */
+  if (is_cbc) {
+    pad_len = ci->block_len - ((len + mac_len + 1) % ci->block_len);
   }
 
   hdr.type = type;
   hdr.vers = htobe16(0x0303);
-  hdr.len = htobe16(len + mac_len);
+  hdr.len = 0; /* will fill in at the end. */
 
+  hdr_offset = ssl->tx_len;
   if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
 
-  buf_ofs = ssl->tx_len;
-  if (!tls_tx_push(ssl, buf, len)) return 0;
+  /* Explicit IV for CBC mode. */
+  if (is_cbc) {
+    uint8_t iv[MAX_KEY_SIZE];
+    /* Seed with system PRNG and mix in our state. */
+    kr_get_random(iv, ci->iv_len);
+    prf(iv, ci->iv_len, (uint8_t *) ssl, sizeof(*ssl), iv, ci->iv_len);
+    kr_cipher_set_iv(ssl->cur->cipher_suite, cctx, iv);
+    if (!tls_tx_push(ssl, iv, ci->iv_len)) return 0;
+    hdr.len += ci->iv_len;
+  }
 
-  if (ssl->tx_enc) {
+  enc_offset = ssl->tx_len;
+  if (!tls_tx_push(ssl, buf, len)) return 0;
+  enc_len = len;
+
+  { /* MAC */
+    struct tls_hmac_hdr phdr;
+    const uint8_t *msgs[2];
+    size_t msgl[2];
+    uint8_t digest[MAX_DIGEST_SIZE];
     if (ssl->is_server) {
       phdr.seq = htobe64(ssl->cur->server_write_seq);
     } else {
@@ -5632,34 +6353,53 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
                 msgl, digest);
 
     if (!tls_tx_push(ssl, digest, mac_len)) return 0;
+    enc_len += mac_len;
+  }
 
-    if (ssl->is_server) {
-      ssl->cur->server_write_seq++;
-    } else {
-      ssl->cur->client_write_seq++;
+  /* Padding for CBC mode. */
+  if (is_cbc) {
+    int i;
+    dprintf(("len %d block_len %d pad_len %d\n", (int) len, (int) ci->block_len,
+             (int) pad_len));
+    for (i = 0; i < pad_len; i++) {
+      if (!tls_tx_push(ssl, &pad_len, 1)) return 0;
     }
+    if (!tls_tx_push(ssl, &pad_len, 1)) return 0;
+    enc_len += pad_len + 1;
+  }
 
-    switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-      case TLS_RSA_WITH_NULL_MD5:
-        break;
-#endif
-      case TLS_RSA_WITH_RC4_128_MD5:
-      case TLS_RSA_WITH_RC4_128_SHA:
-        if (ssl->is_server) {
-          RC4_crypt(&ssl->cur->server_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        } else {
-          RC4_crypt(&ssl->cur->client_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        }
-        break;
-      default:
-        abort();
-    }
+  /* Encryption. */
+  kr_cipher_encrypt(ssl->cur->cipher_suite, cctx, ssl->tx_buf + enc_offset,
+                    enc_len, ssl->tx_buf + enc_offset);
+
+  hdr.len = htobe16(hdr.len + enc_len);
+  memcpy(ssl->tx_buf + hdr_offset, &hdr, sizeof(hdr));
+
+  if (ssl->is_server) {
+    ssl->cur->server_write_seq++;
+  } else {
+    ssl->cur->client_write_seq++;
   }
 
   return len;
+}
+
+NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
+  if (ssl->tx_enc) {
+    return tls_send_enc(ssl, type, buf, len);
+  } else {
+    struct tls_hdr hdr;
+    size_t max = (1 << 14);
+    if (len > max) len = max;
+    hdr.type = type;
+    hdr.vers = htobe16(0x0303);
+    hdr.len = htobe16(len);
+
+    if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
+    if (!tls_tx_push(ssl, buf, len)) return 0;
+
+    return len;
+  }
 }
 
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
@@ -5671,7 +6411,10 @@ NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   struct tls_alert alert;
   if (ssl->fatal) return 1;
-  if (level == ALERT_LEVEL_FATAL) ssl->fatal = 1;
+  if (level == ALERT_LEVEL_FATAL) {
+    ssl->fatal = 1;
+    ssl->tx_len = 0; /* Flush send buffer, leave an alert. */
+  }
   alert.level = level;
   alert.desc = desc;
   return tls_send(ssl, TLS_ALERT, &alert, sizeof(alert));
@@ -5680,30 +6423,24 @@ NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
 NS_INTERNAL int tls_close_notify(SSL *ssl) {
   return tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_CLOSE_NOTIFY);
 }
-
-NS_INTERNAL size_t tls_mac_len(tls_sec_t sec) {
-  switch (sec->cipher_suite) {
-    case TLS_RSA_WITH_NULL_MD5:
-    case TLS_RSA_WITH_RC4_128_MD5:
-      return MD5_SIZE;
-    case TLS_RSA_WITH_RC4_128_SHA:
-      return SHA1_SIZE;
-  }
-  abort();
-  /* not reached */
-  return MAX_DIGEST_SIZE;
-}
-
-/* === tls_cl.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/tls_cl.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "../openssl/ssl.h" */
+/* Amalgamated: #include "ktypes.h" */
+/* Amalgamated: #include "tls.h" */
+/* Amalgamated: #include "tlsproto.h" */
 
 #include <time.h>
 
 NS_INTERNAL int tls_cl_hello(SSL *ssl) {
+  int i = 0;
   struct tls_cl_hello hello;
 
   /* hello */
@@ -5717,21 +6454,24 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
     return 0;
   }
   hello.sess_id_len = 0;
-  hello.cipher_suites_len =
-      htobe16((NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1) * 2);
 #if ALLOW_NULL_CIPHERS
   /* if we allow them, it's for testing reasons, so NULL comes first */
-  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_NULL_MD5);
-  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
-  hello.cipher_suite[2] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
-  hello.cipher_suite[3] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_NULL_MD5);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA256);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[i++] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #else
-  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
-  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
-  hello.cipher_suite[2] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA256);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[i++] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #endif
+  hello.cipher_suites_len = htobe16(i * 2);
   hello.num_compressors = 1;
-  hello.compressor[0] = 0;
+  hello.compressor[0] = COMPRESSOR_NULL;
   hello.ext_len = htobe16(sizeof(hello.ext_reneg));
 
   hello.ext_reneg.type = htobe16(EXT_RENEG_INFO);
@@ -5768,7 +6508,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
     return 0;
   }
   tls_compute_master_secret(ssl->nxt, &in);
-  tls_generate_keys(ssl->nxt);
+  tls_generate_keys(ssl->nxt, ssl->is_server);
   dprintf((" + master secret computed\n"));
 
   if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *) &in, sizeof(in), buf + 6, 0) <=
@@ -5810,25 +6550,19 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
 
   return 1;
 }
-
-/* === tls_recv.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/tls_recv.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 static int check_cipher(uint16_t suite) {
-  switch (suite) {
-#if ALLOW_NULL_CIPHERS
-    case TLS_RSA_WITH_NULL_MD5:
-#endif
-    case TLS_RSA_WITH_RC4_128_MD5:
-    case TLS_RSA_WITH_RC4_128_SHA:
-      return 1;
-    default:
-      return 0;
-  }
+  return kr_cipher_get_info(suite) != NULL && kr_hmac_len(suite) >= 0;
 }
 
 static int check_compressor(uint8_t compressor) {
@@ -5840,20 +6574,19 @@ static int check_compressor(uint8_t compressor) {
   }
 }
 
-static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
+static void cipher_suite_negotiate(SSL *ssl, kr_cs_id cs) {
   if (ssl->nxt->cipher_negotiated) return;
-  switch (suite) {
+  switch (cs) {
 #if ALLOW_NULL_CIPHERS
     case TLS_RSA_WITH_NULL_MD5:
 #endif
     case TLS_RSA_WITH_RC4_128_MD5:
     case TLS_RSA_WITH_RC4_128_SHA:
-      break;
-    default:
-      return;
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      ssl->nxt->cipher_suite = cs;
+      ssl->nxt->cipher_negotiated = 1;
   }
-  ssl->nxt->cipher_suite = suite;
-  ssl->nxt->cipher_negotiated = 1;
 }
 
 static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
@@ -5919,6 +6652,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
       && proto != 0x0301 /* TLS v1.0 */
       && proto != 0x0300 /* SSL 3.0 */
       ) {
+    dprintf(("bad prot version: %04x\n", proto));
     goto bad_vers;
   }
 
@@ -5966,51 +6700,56 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     buf += num_compressions;
   }
 
-  if (buf + 2 > end) goto err;
-  ext_len = kr_load_be16(buf);
-  buf += 2;
-  if (buf + ext_len < end) end = buf + ext_len;
+  dprintf(("num_ciphers %d num_compressions %d\n", (int) num_ciphers,
+           (int) num_compressions));
 
-  while (buf + 4 <= end) {
-    /* const uint8_t *ext_end; */
-    uint16_t ext_type;
-    uint16_t ext_len;
-
-    ext_type = kr_load_be16(buf);
-    buf += 2;
+  /* Extensions, if any. */
+  if (buf + 2 < end) {
     ext_len = kr_load_be16(buf);
     buf += 2;
+    if (buf + ext_len < end) end = buf + ext_len;
 
-    if (buf + ext_len > end) goto err;
+    while (buf + 4 <= end) {
+      /* const uint8_t *ext_end; */
+      uint16_t ext_type;
+      uint16_t ext_len;
 
-    /* ext_end = buf + ext_len; */
+      ext_type = kr_load_be16(buf);
+      buf += 2;
+      ext_len = kr_load_be16(buf);
+      buf += 2;
 
-    switch (ext_type) {
-      case EXT_SERVER_NAME:
-        dprintf((" + EXT: server name\n"));
-        break;
-      case EXT_SESSION_TICKET:
-        dprintf((" + EXT: session ticket\n"));
-        break;
-      case EXT_HEARTBEAT:
-        dprintf((" + EXT: heartbeat\n"));
-        break;
-      case EXT_SIG_ALGOS:
-        /* XXX: spec requires care to be taken of this */
-        dprintf((" + EXT: signature algorithms\n"));
-        break;
-      case EXT_NPN:
-        dprintf((" + EXT: npn\n"));
-        break;
-      case EXT_RENEG_INFO:
-        dprintf((" + EXT: reneg info\n"));
-        break;
-      default:
-        dprintf((" + EXT: %.4x len=%u\n", ext_type, ext_len));
-        break;
+      if (buf + ext_len > end) goto err;
+
+      /* ext_end = buf + ext_len; */
+
+      switch (ext_type) {
+        case EXT_SERVER_NAME:
+          dprintf((" + EXT: server name\n"));
+          break;
+        case EXT_SESSION_TICKET:
+          dprintf((" + EXT: session ticket\n"));
+          break;
+        case EXT_HEARTBEAT:
+          dprintf((" + EXT: heartbeat\n"));
+          break;
+        case EXT_SIG_ALGOS:
+          /* XXX: spec requires care to be taken of this */
+          dprintf((" + EXT: signature algorithms\n"));
+          break;
+        case EXT_NPN:
+          dprintf((" + EXT: npn\n"));
+          break;
+        case EXT_RENEG_INFO:
+          dprintf((" + EXT: reneg info\n"));
+          break;
+        default:
+          dprintf((" + EXT: %.4x len=%u\n", ext_type, ext_len));
+          break;
+      }
+
+      buf += ext_len;
     }
-
-    buf += ext_len;
   }
 
   if (ssl->is_server) {
@@ -6365,7 +7104,7 @@ static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
   (void) end;
   (void) buf;
   if (ssl->is_server) {
-    tls_generate_keys(ssl->nxt);
+    tls_generate_keys(ssl->nxt, ssl->is_server);
     if (ssl->nxt) {
       if (ssl->cur) {
         free(ssl->cur);
@@ -6448,8 +7187,14 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   const uint8_t *msgs[2];
   size_t msgl[2];
   const uint8_t *mac;
-  size_t len = end - buf;
-  size_t mac_len = tls_mac_len(ssl->cur);
+  int len = be16toh(hdr->len);
+  int mac_len = kr_hmac_len(ssl->cur->cipher_suite);
+  const kr_cipher_info *ci = kr_cipher_get_info(ssl->cur->cipher_suite);
+  int is_cbc =
+      (ci->block_len > 0); /* Only CBC mode for block ciphers for now. */
+  void *cctx =
+      ssl->is_server ? ssl->cur->client_write_ctx : ssl->cur->server_write_ctx;
+  int alert = -1;
 
   if (!ssl->rx_enc) {
     out->ptr = buf;
@@ -6457,31 +7202,49 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     return 1;
   }
 
-  if (len < mac_len) {
-    dprintf(("No room for MAC\n"));
+  if (len > end - buf ||
+      (ci->block_len > 0 && (end - buf) % ci->block_len != 0)) {
+    dprintf(("Bad record length (%d)\n", (int) (end - buf)));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
     return 0;
   }
 
-  switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-    case TLS_RSA_WITH_NULL_MD5:
-      break;
-#endif
-    case TLS_RSA_WITH_RC4_128_MD5:
-    case TLS_RSA_WITH_RC4_128_SHA:
-      if (ssl->is_server) {
-        RC4_crypt(&ssl->cur->client_write_ctx, buf, buf, len);
-      } else {
-        RC4_crypt(&ssl->cur->server_write_ctx, buf, buf, len);
-      }
-      break;
-    default:
-      abort();
+  if (len < mac_len + (is_cbc ? ci->iv_len : 0)) {
+    dprintf(("No room for IV/MAC\n"));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
+    return 0;
   }
 
-  out->ptr = buf;
-  out->len = len - mac_len;
+  if (is_cbc) {
+    kr_cipher_set_iv(ssl->cur->cipher_suite, cctx, buf);
+    buf += ci->iv_len;
+    len -= ci->iv_len;
+  }
 
+  kr_cipher_decrypt(ssl->cur->cipher_suite, cctx, buf, len, buf);
+
+  out->ptr = buf;
+  out->len = len;
+
+  if (is_cbc) {
+    uint8_t pad_len = out->ptr[--out->len];
+    uint8_t i, pad_ok = 0;
+    if (pad_len < ci->block_len && pad_len < out->len) {
+      pad_ok = 1;
+      for (i = 1; i <= pad_len; i++) {
+        if (buf[len - i] != pad_len) pad_ok = 0;
+      }
+    }
+    if (!pad_ok) {
+      dprintf(("bad pad %d %d\n", pad_ok, (int) pad_len));
+      alert = ALERT_BAD_RECORD_MAC;
+    } else {
+      dprintf(("pad ok %d\n", (int) pad_len));
+      out->len -= pad_len;
+    }
+  }
+
+  out->len -= mac_len;
   mac = out->ptr + out->len;
 
   if (ssl->is_server) {
@@ -6493,14 +7256,6 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   phdr.vers = hdr->vers;
   phdr.len = htobe16(out->len);
 
-  /*
-   * MAC(MAC_write_key, seq_num +
-   *      TLSCompressed.type +
-   *      TLSCompressed.version +
-   *      TLSCompressed.length +
-   *      TLSCompressed.fragment);
-   */
-
   msgs[0] = (uint8_t *) &phdr;
   msgl[0] = sizeof(phdr);
   msgs[1] = out->ptr;
@@ -6510,8 +7265,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
 
   if (memcmp(digest, mac, mac_len)) {
     dprintf(("Bad MAC %d\n", (int) out->len));
-    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
-    return 0;
+    alert = ALERT_BAD_RECORD_MAC;
   } else {
     dprintf(("MAC ok %d\n", (int) out->len));
   }
@@ -6520,6 +7274,11 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     ssl->cur->client_write_seq++;
   } else {
     ssl->cur->server_write_seq++;
+  }
+
+  if (alert >= 0) {
+    tls_alert(ssl, ALERT_LEVEL_FATAL, alert);
+    return 0;
   }
   return 1;
 }
@@ -6548,6 +7307,10 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     hdr = (struct tls_hdr *) buf;
     buf2 = buf + sizeof(*hdr);
 
+#if KRYPTON_DEBUG
+    hex_dump(buf, sizeof(*hdr), 0);
+#endif
+
     /* check known ssl/tls versions */
     if (hdr->vers != htobe16(0x0303)    /* TLS v1.2 */
         && hdr->vers != htobe16(0x0302) /* TLS v1.1 */
@@ -6555,8 +7318,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         && hdr->vers != htobe16(0x0300) /* SSL 3.0 */
         ) {
       dprintf(("bad framing version: 0x%.4x\n", be16toh(hdr->vers)));
-      tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_PROTOCOL_VERSION);
-      goto out;
+      ssl->rx_len = 0;
+      return 0;
     }
 
     msg_end = buf2 + be16toh(hdr->len);
@@ -6586,6 +7349,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         break;
       case TLS_APP_DATA:
         iret = handle_appdata(ssl, &v, out, out_len);
+        ssl->appdata_eom = msg_end;
         break;
       default:
         dprintf(("unknown header type 0x%.2x\n", hdr->type));
@@ -6620,13 +7384,20 @@ out:
 
   return ret;
 }
-
-/* === tls_sv.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/tls_sv.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "../openssl/ssl.h" */
+/* Amalgamated: #include "ktypes.h" */
+/* Amalgamated: #include "tls.h" */
+/* Amalgamated: #include "tlsproto.h" */
+/* Amalgamated: #include "pem.h" */
 
 #include <time.h>
 
@@ -6725,13 +7496,20 @@ NS_INTERNAL int tls_sv_finish(SSL *ssl) {
 
   return tls_send(ssl, TLS_HANDSHAKE, &finished, sizeof(finished));
 }
-
-/* === x509.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/x509.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "../openssl/ssl.h" */
+/* Amalgamated: #include "ktypes.h" */
+/* Amalgamated: #include "crypto.h" */
+/* Amalgamated: #include "x509.h" */
+/* Amalgamated: #include "ber.h" */
 
 static int parse_enc_alg(X509 *cert, const uint8_t *ptr, size_t len) {
   static const char *const rsaEncrypt = "\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01";
@@ -7076,13 +7854,16 @@ void X509_free(X509 *cert) {
     free(cert);
   }
 }
-
-/* === x509_verify.c === */
+#ifdef NS_MODULE_LINES
+#line 1 "src/src/x509_verify.c"
+/**/
+#endif
 /*
  * Copyright (c) 2015 Cesanta Software Limited
  * All rights reserved
  */
 
+/* Amalgamated: #include "ktypes.h" */
 
 static int get_sig_digest(RSA_CTX *rsa, struct vec *sig, uint8_t *digest,
                           size_t *dlen) {
@@ -7248,10 +8029,12 @@ static X509 *find_anchor(SSL_CTX *ctx, X509 *chain) {
   if (p != NULL && p->num_obj == 1) {
     X509 *new = X509_new(p->obj->der, p->obj->der_len);
     if (new != NULL && x509_issued_by(&new->subject, &chain->issuer)) {
+      pem_free(p);
       return new;
     }
     X509_free(new);
   }
+  pem_free(p);
   return NULL;
 }
 #endif

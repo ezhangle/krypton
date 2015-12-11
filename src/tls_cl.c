@@ -11,6 +11,7 @@
 #include <time.h>
 
 NS_INTERNAL int tls_cl_hello(SSL *ssl) {
+  int i = 0;
   struct tls_cl_hello hello;
 
   /* hello */
@@ -24,21 +25,24 @@ NS_INTERNAL int tls_cl_hello(SSL *ssl) {
     return 0;
   }
   hello.sess_id_len = 0;
-  hello.cipher_suites_len =
-      htobe16((NUM_CIPHER_SUITES + ALLOW_NULL_CIPHERS + 1) * 2);
 #if ALLOW_NULL_CIPHERS
   /* if we allow them, it's for testing reasons, so NULL comes first */
-  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_NULL_MD5);
-  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
-  hello.cipher_suite[2] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
-  hello.cipher_suite[3] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_NULL_MD5);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA256);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[i++] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #else
-  hello.cipher_suite[0] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
-  hello.cipher_suite[1] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
-  hello.cipher_suite[2] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA256);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_AES_128_CBC_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_SHA);
+  hello.cipher_suite[i++] = htobe16(TLS_RSA_WITH_RC4_128_MD5);
+  hello.cipher_suite[i++] = htobe16(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
 #endif
+  hello.cipher_suites_len = htobe16(i * 2);
   hello.num_compressors = 1;
-  hello.compressor[0] = 0;
+  hello.compressor[0] = COMPRESSOR_NULL;
   hello.ext_len = htobe16(sizeof(hello.ext_reneg));
 
   hello.ext_reneg.type = htobe16(EXT_RENEG_INFO);
@@ -75,7 +79,7 @@ NS_INTERNAL int tls_cl_finish(SSL *ssl) {
     return 0;
   }
   tls_compute_master_secret(ssl->nxt, &in);
-  tls_generate_keys(ssl->nxt);
+  tls_generate_keys(ssl->nxt, ssl->is_server);
   dprintf((" + master secret computed\n"));
 
   if (RSA_encrypt(ssl->nxt->svr_key, (uint8_t *) &in, sizeof(in), buf + 6, 0) <=

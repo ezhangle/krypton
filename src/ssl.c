@@ -351,8 +351,7 @@ int SSL_read(SSL *ssl, void *buf, int num) {
     ssl->extra_appdata.len -= rlen;
     ssl->extra_appdata.ptr += rlen;
     if (ssl->extra_appdata.len == 0) {
-      size_t shift_len =
-          (ssl->extra_appdata.ptr - ssl->rx_buf) + tls_mac_len(ssl->cur);
+      size_t shift_len = (ssl->appdata_eom - ssl->rx_buf);
       ssl->rx_len -= shift_len;
       dprintf(("extra data consumed, shift %d, %d left\n", (int) shift_len,
                (int) ssl->rx_len));
@@ -390,14 +389,14 @@ int SSL_read(SSL *ssl, void *buf, int num) {
 
 int SSL_write(SSL *ssl, const void *buf, int num) {
   int res = num;
+  if (num == 0 && ssl->tx_len > 0) {
+    if (!do_send(ssl)) return -1;
+    ssl_err(ssl, ssl->fatal ? SSL_ERROR_SSL : SSL_ERROR_NONE);
+    return 0;
+  }
   if (ssl->fatal) {
     ssl_err(ssl, SSL_ERROR_SSL);
     return -1;
-  }
-  if (num == 0 && ssl->tx_len > 0) {
-    if (!do_send(ssl)) return -1;
-    ssl_err(ssl, SSL_ERROR_NONE);
-    return 0;
   }
   if (ssl->close_notify || ssl->state == STATE_CLOSING) {
     ssl_err(ssl, SSL_ERROR_ZERO_RETURN);

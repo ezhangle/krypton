@@ -53,6 +53,9 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
 #ifdef KR_NO_LOAD_CA_STORE
 static enum pem_filter_result pem_no_filter(const DER *obj, int type,
                                             void *arg) {
+  (void) obj;
+  (void) type;
+  (void) arg;
   return PEM_FILTER_NO;
 }
 #endif

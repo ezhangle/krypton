@@ -35,10 +35,15 @@
 
 #include "ktypes.h"
 
+typedef struct {
+  uint8_t x, y;
+  uint8_t m[256];
+} kr_rc4_ctx;
+
 /**
  * Get ready for an encrypt/decrypt operation
  */
-void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length) {
+void kr_rc4_setup(kr_rc4_ctx *ctx, const uint8_t *key, int length) {
   int i, j = 0, k = 0, a;
   uint8_t *m;
 
@@ -63,7 +68,8 @@ void RC4_setup(RC4_CTX *ctx, const uint8_t *key, int length) {
  * this is a stream cipher).
  * NOTE: *msg and *out must be the same pointer (performance tweak)
  */
-void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
+void kr_rc4_crypt(kr_rc4_ctx *ctx, const uint8_t *msg, uint8_t *out,
+                  int length) {
   int i;
   uint8_t *m, x, y, a, b;
 
@@ -82,4 +88,8 @@ void RC4_crypt(RC4_CTX *ctx, const uint8_t *msg, uint8_t *out, int length) {
 
   ctx->x = x;
   ctx->y = y;
+}
+
+NS_INTERNAL void *kr_rc4_ctx_new() {
+  return calloc(1, sizeof(kr_rc4_ctx));
 }

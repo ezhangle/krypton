@@ -13,7 +13,7 @@ typedef struct tls_security {
    * client_write_key
    * server_write_key
   */
-  uint8_t keys[MAX_DIGEST_SIZE * 2 + MAX_KEY_SIZE * 2];
+  uint8_t keys[MAX_DIGEST_SIZE * 2 + MAX_KEY_SIZE * 2 + MAX_IV_SIZE * 2];
 
   uint64_t client_write_seq;
   uint64_t server_write_seq;
@@ -32,8 +32,8 @@ typedef struct tls_security {
   struct tls_random cl_rnd;
   struct tls_random sv_rnd;
 
-  RC4_CTX server_write_ctx;
-  RC4_CTX client_write_ctx;
+  void *server_write_ctx;
+  void *client_write_ctx;
 
   SHA256_CTX handshakes_hash;
 } * tls_sec_t;
@@ -43,13 +43,12 @@ NS_INTERNAL void tls_free_security(tls_sec_t sec);
 
 /* generic */
 NS_INTERNAL int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len);
-NS_INTERNAL void tls_generate_keys(tls_sec_t sec);
+NS_INTERNAL void tls_generate_keys(tls_sec_t sec, int is_server);
 NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len);
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len);
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz);
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc);
 NS_INTERNAL int tls_close_notify(SSL *ssl);
-NS_INTERNAL size_t tls_mac_len(tls_sec_t sec);
 
 /* client */
 NS_INTERNAL int tls_cl_finish(SSL *ssl);

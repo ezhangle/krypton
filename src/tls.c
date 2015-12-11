@@ -19,6 +19,8 @@ NS_INTERNAL tls_sec_t tls_new_security(void) {
 NS_INTERNAL void tls_free_security(tls_sec_t sec) {
   if (sec) {
     RSA_free(sec->svr_key);
+    kr_cipher_ctx_free(sec->cipher_suite, sec->server_write_ctx);
+    kr_cipher_ctx_free(sec->cipher_suite, sec->client_write_ctx);
     free(sec);
   }
 }
@@ -111,8 +113,10 @@ NS_INTERNAL void tls_generate_client_finished(tls_sec_t sec, uint8_t *vrfy,
       vrfy_len);
 }
 
-NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
+NS_INTERNAL void tls_generate_keys(tls_sec_t sec, int is_server) {
   uint8_t buf[13 + sizeof(sec->cl_rnd) + sizeof(sec->sv_rnd)];
+  int mac_len = kr_hmac_len(sec->cipher_suite);
+  const kr_cipher_info *ci = kr_cipher_get_info(sec->cipher_suite);
 
   memcpy(buf, "key expansion", 13);
   memcpy(buf + 13, &sec->sv_rnd, sizeof(sec->sv_rnd));
@@ -121,8 +125,12 @@ NS_INTERNAL void tls_generate_keys(tls_sec_t sec) {
   prf(sec->master_secret, sizeof(sec->master_secret), buf, sizeof(buf),
       sec->keys, sizeof(sec->keys));
 
-  RC4_setup(&sec->client_write_ctx, sec->keys + 2 * tls_mac_len(sec), 16);
-  RC4_setup(&sec->server_write_ctx, sec->keys + 2 * tls_mac_len(sec) + 16, 16);
+  sec->client_write_ctx =
+      kr_cipher_setup(sec->cipher_suite, is_server, sec->keys + 2 * mac_len,
+                      sec->keys + 2 * mac_len + 2 * ci->key_len);
+  sec->server_write_ctx = kr_cipher_setup(
+      sec->cipher_suite, !is_server, sec->keys + 2 * mac_len + ci->key_len,
+      sec->keys + 2 * mac_len + 2 * ci->key_len + ci->iv_len);
 }
 
 NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
@@ -148,30 +156,54 @@ NS_INTERNAL int tls_tx_push(SSL *ssl, const void *data, size_t len) {
   return 1;
 }
 
-NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
+NS_INTERNAL int tls_send_enc(SSL *ssl, uint8_t type, const void *buf,
+                             size_t len) {
   struct tls_hdr hdr;
-  struct tls_hmac_hdr phdr;
-  const uint8_t *msgs[2];
-  size_t msgl[2];
-  uint8_t digest[MAX_DIGEST_SIZE];
-  size_t buf_ofs;
-  size_t mac_len = ssl->tx_enc ? tls_mac_len(ssl->cur) : 0;
-  size_t max = (1 << 14) - mac_len;
+  int hdr_offset, enc_offset, enc_len;
 
-  if (len > max) {
-    len = max;
+  int mac_len = kr_hmac_len(ssl->cur->cipher_suite);
+  const kr_cipher_info *ci = kr_cipher_get_info(ssl->cur->cipher_suite);
+  int is_cbc =
+      (ci->block_len > 0); /* Only CBC mode for block ciphers for now. */
+  size_t max = (1 << 14) - mac_len - (is_cbc ? ci->iv_len + ci->block_len : 0);
+  uint8_t pad_len = 0;
+  void *cctx =
+      ssl->is_server ? ssl->cur->server_write_ctx : ssl->cur->client_write_ctx;
+
+  if (len > max) len = max;
+
+  /* Header */
+  if (is_cbc) {
+    pad_len = ci->block_len - ((len + mac_len + 1) % ci->block_len);
   }
 
   hdr.type = type;
   hdr.vers = htobe16(0x0303);
-  hdr.len = htobe16(len + mac_len);
+  hdr.len = 0; /* will fill in at the end. */
 
+  hdr_offset = ssl->tx_len;
   if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
 
-  buf_ofs = ssl->tx_len;
-  if (!tls_tx_push(ssl, buf, len)) return 0;
+  /* Explicit IV for CBC mode. */
+  if (is_cbc) {
+    uint8_t iv[MAX_KEY_SIZE];
+    /* Seed with system PRNG and mix in our state. */
+    kr_get_random(iv, ci->iv_len);
+    prf(iv, ci->iv_len, (uint8_t *) ssl, sizeof(*ssl), iv, ci->iv_len);
+    kr_cipher_set_iv(ssl->cur->cipher_suite, cctx, iv);
+    if (!tls_tx_push(ssl, iv, ci->iv_len)) return 0;
+    hdr.len += ci->iv_len;
+  }
 
-  if (ssl->tx_enc) {
+  enc_offset = ssl->tx_len;
+  if (!tls_tx_push(ssl, buf, len)) return 0;
+  enc_len = len;
+
+  { /* MAC */
+    struct tls_hmac_hdr phdr;
+    const uint8_t *msgs[2];
+    size_t msgl[2];
+    uint8_t digest[MAX_DIGEST_SIZE];
     if (ssl->is_server) {
       phdr.seq = htobe64(ssl->cur->server_write_seq);
     } else {
@@ -189,34 +221,53 @@ NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
                 msgl, digest);
 
     if (!tls_tx_push(ssl, digest, mac_len)) return 0;
+    enc_len += mac_len;
+  }
 
-    if (ssl->is_server) {
-      ssl->cur->server_write_seq++;
-    } else {
-      ssl->cur->client_write_seq++;
+  /* Padding for CBC mode. */
+  if (is_cbc) {
+    int i;
+    dprintf(("len %d block_len %d pad_len %d\n", (int) len, (int) ci->block_len,
+             (int) pad_len));
+    for (i = 0; i < pad_len; i++) {
+      if (!tls_tx_push(ssl, &pad_len, 1)) return 0;
     }
+    if (!tls_tx_push(ssl, &pad_len, 1)) return 0;
+    enc_len += pad_len + 1;
+  }
 
-    switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-      case TLS_RSA_WITH_NULL_MD5:
-        break;
-#endif
-      case TLS_RSA_WITH_RC4_128_MD5:
-      case TLS_RSA_WITH_RC4_128_SHA:
-        if (ssl->is_server) {
-          RC4_crypt(&ssl->cur->server_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        } else {
-          RC4_crypt(&ssl->cur->client_write_ctx, ssl->tx_buf + buf_ofs,
-                    ssl->tx_buf + buf_ofs, len + mac_len);
-        }
-        break;
-      default:
-        abort();
-    }
+  /* Encryption. */
+  kr_cipher_encrypt(ssl->cur->cipher_suite, cctx, ssl->tx_buf + enc_offset,
+                    enc_len, ssl->tx_buf + enc_offset);
+
+  hdr.len = htobe16(hdr.len + enc_len);
+  memcpy(ssl->tx_buf + hdr_offset, &hdr, sizeof(hdr));
+
+  if (ssl->is_server) {
+    ssl->cur->server_write_seq++;
+  } else {
+    ssl->cur->client_write_seq++;
   }
 
   return len;
+}
+
+NS_INTERNAL int tls_send(SSL *ssl, uint8_t type, const void *buf, size_t len) {
+  if (ssl->tx_enc) {
+    return tls_send_enc(ssl, type, buf, len);
+  } else {
+    struct tls_hdr hdr;
+    size_t max = (1 << 14);
+    if (len > max) len = max;
+    hdr.type = type;
+    hdr.vers = htobe16(0x0303);
+    hdr.len = htobe16(len);
+
+    if (!tls_tx_push(ssl, &hdr, sizeof(hdr))) return 0;
+    if (!tls_tx_push(ssl, buf, len)) return 0;
+
+    return len;
+  }
 }
 
 NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
@@ -228,7 +279,10 @@ NS_INTERNAL ssize_t tls_write(SSL *ssl, const uint8_t *buf, size_t sz) {
 NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
   struct tls_alert alert;
   if (ssl->fatal) return 1;
-  if (level == ALERT_LEVEL_FATAL) ssl->fatal = 1;
+  if (level == ALERT_LEVEL_FATAL) {
+    ssl->fatal = 1;
+    ssl->tx_len = 0; /* Flush send buffer, leave an alert. */
+  }
   alert.level = level;
   alert.desc = desc;
   return tls_send(ssl, TLS_ALERT, &alert, sizeof(alert));
@@ -236,17 +290,4 @@ NS_INTERNAL int tls_alert(SSL *ssl, uint8_t level, uint8_t desc) {
 
 NS_INTERNAL int tls_close_notify(SSL *ssl) {
   return tls_alert(ssl, ALERT_LEVEL_WARNING, ALERT_CLOSE_NOTIFY);
-}
-
-NS_INTERNAL size_t tls_mac_len(tls_sec_t sec) {
-  switch (sec->cipher_suite) {
-    case TLS_RSA_WITH_NULL_MD5:
-    case TLS_RSA_WITH_RC4_128_MD5:
-      return MD5_SIZE;
-    case TLS_RSA_WITH_RC4_128_SHA:
-      return SHA1_SIZE;
-  }
-  abort();
-  /* not reached */
-  return MAX_DIGEST_SIZE;
 }

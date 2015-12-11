@@ -6,16 +6,7 @@
 #include "ktypes.h"
 
 static int check_cipher(uint16_t suite) {
-  switch (suite) {
-#if ALLOW_NULL_CIPHERS
-    case TLS_RSA_WITH_NULL_MD5:
-#endif
-    case TLS_RSA_WITH_RC4_128_MD5:
-    case TLS_RSA_WITH_RC4_128_SHA:
-      return 1;
-    default:
-      return 0;
-  }
+  return kr_cipher_get_info(suite) != NULL && kr_hmac_len(suite) >= 0;
 }
 
 static int check_compressor(uint8_t compressor) {
@@ -27,20 +18,19 @@ static int check_compressor(uint8_t compressor) {
   }
 }
 
-static void cipher_suite_negotiate(SSL *ssl, uint16_t suite) {
+static void cipher_suite_negotiate(SSL *ssl, kr_cs_id cs) {
   if (ssl->nxt->cipher_negotiated) return;
-  switch (suite) {
+  switch (cs) {
 #if ALLOW_NULL_CIPHERS
     case TLS_RSA_WITH_NULL_MD5:
 #endif
     case TLS_RSA_WITH_RC4_128_MD5:
     case TLS_RSA_WITH_RC4_128_SHA:
-      break;
-    default:
-      return;
+    case TLS_RSA_WITH_AES_128_CBC_SHA:
+    case TLS_RSA_WITH_AES_128_CBC_SHA256:
+      ssl->nxt->cipher_suite = cs;
+      ssl->nxt->cipher_negotiated = 1;
   }
-  ssl->nxt->cipher_suite = suite;
-  ssl->nxt->cipher_negotiated = 1;
 }
 
 static void compressor_negotiate(SSL *ssl, uint8_t compressor) {
@@ -106,6 +96,7 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
       && proto != 0x0301 /* TLS v1.0 */
       && proto != 0x0300 /* SSL 3.0 */
       ) {
+    dprintf(("bad prot version: %04x\n", proto));
     goto bad_vers;
   }
 
@@ -153,51 +144,56 @@ static int handle_hello(SSL *ssl, const struct tls_hdr *hdr, const uint8_t *buf,
     buf += num_compressions;
   }
 
-  if (buf + 2 > end) goto err;
-  ext_len = kr_load_be16(buf);
-  buf += 2;
-  if (buf + ext_len < end) end = buf + ext_len;
+  dprintf(("num_ciphers %d num_compressions %d\n", (int) num_ciphers,
+           (int) num_compressions));
 
-  while (buf + 4 <= end) {
-    /* const uint8_t *ext_end; */
-    uint16_t ext_type;
-    uint16_t ext_len;
-
-    ext_type = kr_load_be16(buf);
-    buf += 2;
+  /* Extensions, if any. */
+  if (buf + 2 < end) {
     ext_len = kr_load_be16(buf);
     buf += 2;
+    if (buf + ext_len < end) end = buf + ext_len;
 
-    if (buf + ext_len > end) goto err;
+    while (buf + 4 <= end) {
+      /* const uint8_t *ext_end; */
+      uint16_t ext_type;
+      uint16_t ext_len;
 
-    /* ext_end = buf + ext_len; */
+      ext_type = kr_load_be16(buf);
+      buf += 2;
+      ext_len = kr_load_be16(buf);
+      buf += 2;
 
-    switch (ext_type) {
-      case EXT_SERVER_NAME:
-        dprintf((" + EXT: server name\n"));
-        break;
-      case EXT_SESSION_TICKET:
-        dprintf((" + EXT: session ticket\n"));
-        break;
-      case EXT_HEARTBEAT:
-        dprintf((" + EXT: heartbeat\n"));
-        break;
-      case EXT_SIG_ALGOS:
-        /* XXX: spec requires care to be taken of this */
-        dprintf((" + EXT: signature algorithms\n"));
-        break;
-      case EXT_NPN:
-        dprintf((" + EXT: npn\n"));
-        break;
-      case EXT_RENEG_INFO:
-        dprintf((" + EXT: reneg info\n"));
-        break;
-      default:
-        dprintf((" + EXT: %.4x len=%u\n", ext_type, ext_len));
-        break;
+      if (buf + ext_len > end) goto err;
+
+      /* ext_end = buf + ext_len; */
+
+      switch (ext_type) {
+        case EXT_SERVER_NAME:
+          dprintf((" + EXT: server name\n"));
+          break;
+        case EXT_SESSION_TICKET:
+          dprintf((" + EXT: session ticket\n"));
+          break;
+        case EXT_HEARTBEAT:
+          dprintf((" + EXT: heartbeat\n"));
+          break;
+        case EXT_SIG_ALGOS:
+          /* XXX: spec requires care to be taken of this */
+          dprintf((" + EXT: signature algorithms\n"));
+          break;
+        case EXT_NPN:
+          dprintf((" + EXT: npn\n"));
+          break;
+        case EXT_RENEG_INFO:
+          dprintf((" + EXT: reneg info\n"));
+          break;
+        default:
+          dprintf((" + EXT: %.4x len=%u\n", ext_type, ext_len));
+          break;
+      }
+
+      buf += ext_len;
     }
-
-    buf += ext_len;
   }
 
   if (ssl->is_server) {
@@ -552,7 +548,7 @@ static int handle_change_cipher(SSL *ssl, const struct tls_hdr *hdr,
   (void) end;
   (void) buf;
   if (ssl->is_server) {
-    tls_generate_keys(ssl->nxt);
+    tls_generate_keys(ssl->nxt, ssl->is_server);
     if (ssl->nxt) {
       if (ssl->cur) {
         free(ssl->cur);
@@ -635,8 +631,14 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   const uint8_t *msgs[2];
   size_t msgl[2];
   const uint8_t *mac;
-  size_t len = end - buf;
-  size_t mac_len = tls_mac_len(ssl->cur);
+  int len = be16toh(hdr->len);
+  int mac_len = kr_hmac_len(ssl->cur->cipher_suite);
+  const kr_cipher_info *ci = kr_cipher_get_info(ssl->cur->cipher_suite);
+  int is_cbc =
+      (ci->block_len > 0); /* Only CBC mode for block ciphers for now. */
+  void *cctx =
+      ssl->is_server ? ssl->cur->client_write_ctx : ssl->cur->server_write_ctx;
+  int alert = -1;
 
   if (!ssl->rx_enc) {
     out->ptr = buf;
@@ -644,31 +646,49 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     return 1;
   }
 
-  if (len < mac_len) {
-    dprintf(("No room for MAC\n"));
+  if (len > end - buf ||
+      (ci->block_len > 0 && (end - buf) % ci->block_len != 0)) {
+    dprintf(("Bad record length (%d)\n", (int) (end - buf)));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
     return 0;
   }
 
-  switch (ssl->cur->cipher_suite) {
-#if ALLOW_NULL_CIPHERS
-    case TLS_RSA_WITH_NULL_MD5:
-      break;
-#endif
-    case TLS_RSA_WITH_RC4_128_MD5:
-    case TLS_RSA_WITH_RC4_128_SHA:
-      if (ssl->is_server) {
-        RC4_crypt(&ssl->cur->client_write_ctx, buf, buf, len);
-      } else {
-        RC4_crypt(&ssl->cur->server_write_ctx, buf, buf, len);
-      }
-      break;
-    default:
-      abort();
+  if (len < mac_len + (is_cbc ? ci->iv_len : 0)) {
+    dprintf(("No room for IV/MAC\n"));
+    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_DECRYPT_ERROR);
+    return 0;
   }
 
-  out->ptr = buf;
-  out->len = len - mac_len;
+  if (is_cbc) {
+    kr_cipher_set_iv(ssl->cur->cipher_suite, cctx, buf);
+    buf += ci->iv_len;
+    len -= ci->iv_len;
+  }
 
+  kr_cipher_decrypt(ssl->cur->cipher_suite, cctx, buf, len, buf);
+
+  out->ptr = buf;
+  out->len = len;
+
+  if (is_cbc) {
+    uint8_t pad_len = out->ptr[--out->len];
+    uint8_t i, pad_ok = 0;
+    if (pad_len < ci->block_len && pad_len < out->len) {
+      pad_ok = 1;
+      for (i = 1; i <= pad_len; i++) {
+        if (buf[len - i] != pad_len) pad_ok = 0;
+      }
+    }
+    if (!pad_ok) {
+      dprintf(("bad pad %d %d\n", pad_ok, (int) pad_len));
+      alert = ALERT_BAD_RECORD_MAC;
+    } else {
+      dprintf(("pad ok %d\n", (int) pad_len));
+      out->len -= pad_len;
+    }
+  }
+
+  out->len -= mac_len;
   mac = out->ptr + out->len;
 
   if (ssl->is_server) {
@@ -680,14 +700,6 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
   phdr.vers = hdr->vers;
   phdr.len = htobe16(out->len);
 
-  /*
-   * MAC(MAC_write_key, seq_num +
-   *      TLSCompressed.type +
-   *      TLSCompressed.version +
-   *      TLSCompressed.length +
-   *      TLSCompressed.fragment);
-   */
-
   msgs[0] = (uint8_t *) &phdr;
   msgl[0] = sizeof(phdr);
   msgs[1] = out->ptr;
@@ -697,8 +709,7 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
 
   if (memcmp(digest, mac, mac_len)) {
     dprintf(("Bad MAC %d\n", (int) out->len));
-    tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_BAD_RECORD_MAC);
-    return 0;
+    alert = ALERT_BAD_RECORD_MAC;
   } else {
     dprintf(("MAC ok %d\n", (int) out->len));
   }
@@ -707,6 +718,11 @@ static int decrypt_and_vrfy(SSL *ssl, const struct tls_hdr *hdr, uint8_t *buf,
     ssl->cur->client_write_seq++;
   } else {
     ssl->cur->server_write_seq++;
+  }
+
+  if (alert >= 0) {
+    tls_alert(ssl, ALERT_LEVEL_FATAL, alert);
+    return 0;
   }
   return 1;
 }
@@ -735,6 +751,10 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
     hdr = (struct tls_hdr *) buf;
     buf2 = buf + sizeof(*hdr);
 
+#if KRYPTON_DEBUG
+    hex_dump(buf, sizeof(*hdr), 0);
+#endif
+
     /* check known ssl/tls versions */
     if (hdr->vers != htobe16(0x0303)    /* TLS v1.2 */
         && hdr->vers != htobe16(0x0302) /* TLS v1.1 */
@@ -742,8 +762,8 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         && hdr->vers != htobe16(0x0300) /* SSL 3.0 */
         ) {
       dprintf(("bad framing version: 0x%.4x\n", be16toh(hdr->vers)));
-      tls_alert(ssl, ALERT_LEVEL_FATAL, ALERT_PROTOCOL_VERSION);
-      goto out;
+      ssl->rx_len = 0;
+      return 0;
     }
 
     msg_end = buf2 + be16toh(hdr->len);
@@ -773,6 +793,7 @@ int tls_handle_recv(SSL *ssl, uint8_t *out, size_t out_len) {
         break;
       case TLS_APP_DATA:
         iret = handle_appdata(ssl, &v, out, out_len);
+        ssl->appdata_eom = msg_end;
         break;
       default:
         dprintf(("unknown header type 0x%.2x\n", hdr->type));

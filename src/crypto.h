@@ -29,20 +29,15 @@ NS_INTERNAL void SHA256_Final(uint8_t digest[32], SHA256_CTX *);
 
 #define SHA1_SIZE 20
 #define MD5_SIZE 16
-
-/* RC4 */
-#define RC4_KEY_SIZE 16
-typedef struct {
-  uint8_t x, y;
-  uint8_t m[256];
-} RC4_CTX;
-
 #define MAX_DIGEST_SIZE SHA256_SIZE
-#define MAX_KEY_SIZE RC4_KEY_SIZE
 
-NS_INTERNAL void RC4_setup(RC4_CTX *s, const uint8_t *key, int length);
-NS_INTERNAL void RC4_crypt(RC4_CTX *s, const uint8_t *msg, uint8_t *data,
-                           int length);
+#define AES_IV_SIZE 16
+#define MAX_IV_SIZE AES_IV_SIZE
+
+#define RC4_KEY_SIZE 16
+#define AES128_KEY_SIZE 16
+#define AES256_KEY_SIZE 32
+#define MAX_KEY_SIZE AES256_KEY_SIZE
 
 /* RSA */
 NS_INTERNAL void RSA_priv_key_new(RSA_CTX **rsa_ctx, const uint8_t *modulus,
@@ -82,6 +77,8 @@ NS_INTERNAL void RSA_print(const RSA_CTX *ctx);
 #define MUL_KARATSUBA_THRESH 20
 #define SQU_KARATSUBA_THRESH 40
 
+NS_INTERNAL int kr_hmac_len(kr_cs_id cs);
+
 /* cs = 0 -> client MAC, cs = 1 -> server MAC. */
 #define KR_CLIENT_MAC 0
 #define KR_SERVER_MAC 1
@@ -95,4 +92,20 @@ static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
                       size_t key_len, size_t num_msgs, const uint8_t *msgs[],
                       const size_t *msg_lens, uint8_t *digest,
                       size_t digest_len);
+
+typedef struct {
+  uint8_t block_len;
+  uint8_t key_len;
+  uint8_t iv_len;
+} kr_cipher_info;
+
+NS_INTERNAL const kr_cipher_info *kr_cipher_get_info(kr_cs_id cs);
+NS_INTERNAL void *kr_cipher_setup(kr_cs_id cs, int decrypt, const uint8_t *key,
+                                  const uint8_t *iv);
+NS_INTERNAL void kr_cipher_ctx_free(kr_cs_id cs, void *ctx);
+NS_INTERNAL void kr_cipher_set_iv(kr_cs_id cs, void *ctx, const uint8_t *iv);
+NS_INTERNAL void kr_cipher_encrypt(kr_cs_id cs, void *ctx, const uint8_t *msg,
+                                   int len, uint8_t *out);
+NS_INTERNAL void kr_cipher_decrypt(kr_cs_id cs, void *ctx, const uint8_t *msg,
+                                   int len, uint8_t *out);
 #endif /* _CRYPTO_H */

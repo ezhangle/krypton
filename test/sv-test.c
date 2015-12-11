@@ -27,6 +27,8 @@ static SSL_CTX *setup_ctx(const char *cert_file, const char *key_file,
                           const char *cipher) {
   SSL_CTX *ctx;
 
+  (void) cipher;
+
   ctx = SSL_CTX_new(SSLv23_server_method());
   if (NULL == ctx) goto out;
 

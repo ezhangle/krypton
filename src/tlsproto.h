@@ -10,7 +10,7 @@
 #define ALLOW_NULL_CIPHERS 0
 
 /* just count non-NULL ciphers */
-#define NUM_CIPHER_SUITES 2
+#define NUM_CIPHER_SUITES 4
 
 #define NUM_COMPRESSORS 1
 
@@ -163,9 +163,17 @@ struct tls_alert {
 
 /* http://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-4
  */
-#define TLS_RSA_WITH_NULL_MD5 0x0001
-#define TLS_RSA_WITH_RC4_128_MD5 0x0004
-#define TLS_RSA_WITH_RC4_128_SHA 0x0005
+
+typedef enum {
+#if ALLOW_NULL_CIPHERS
+  TLS_RSA_WITH_NULL_MD5 = 0x0001,
+#endif
+  TLS_RSA_WITH_RC4_128_MD5 = 0x0004,
+  TLS_RSA_WITH_RC4_128_SHA = 0x0005,
+  TLS_RSA_WITH_AES_128_CBC_SHA = 0x002f,
+  TLS_RSA_WITH_AES_128_CBC_SHA256 = 0x003c,
+} kr_cs_id;
+
 #define TLS_EMPTY_RENEGOTIATION_INFO_SCSV 0x00ff
 
 #define COMPRESSOR_NULL 0x00
