@@ -23,6 +23,8 @@ static const char *test_match_domain_name(void) {
   ASSERT_EQ(kr_match_domain_name(s_vec("a.b"), s_vec("A.b")), 1);
   ASSERT_EQ(kr_match_domain_name(s_vec("*.b"), s_vec("a.b")), 1);
   ASSERT_EQ(kr_match_domain_name(s_vec("*.d"), s_vec("a.bc.d")), 1);
+
+  ASSERT_EQ(kr_match_domain_name(s_vec("a"), s_vec("b")), 0);
   /* No partial glob matches. */
   ASSERT_EQ(kr_match_domain_name(s_vec("b*.d"), s_vec("bc.d")), 0);
   ASSERT_EQ(kr_match_domain_name(s_vec("aa.b"), s_vec("a.b")), 0);

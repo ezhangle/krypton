@@ -7930,10 +7930,14 @@ NS_INTERNAL int kr_match_domain_name(struct ro_vec pat, struct ro_vec dom) {
        * behavior. */
       return 1;
     }
-    if (pl.len != dl.len ||
-        strncasecmp((const char *) pl.ptr, (const char *) dl.ptr, pl.len) !=
-            0) {
-      break;
+    if (pl.len == dl.len) {
+      /* No strncasecmp on W***ows... */
+      size_t i;
+      for (i = 0; i < pl.len; i++) {
+        if (tolower(pl.ptr[i]) != tolower(dl.ptr[i])) return 0;
+      }
+    } else {
+      return 0;
     }
     pat.len -= pl.len;
     if (pat.len > 0 && pat.ptr[pat.len - 1] == '.') pat.len--;
