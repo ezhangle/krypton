@@ -299,6 +299,7 @@ int main(int argc, char **argv) {
     addr = TEST_ADDR;
   }
   SSL_library_init();
+  usleep(100000);
   if (!do_test(addr, ca_file, cipher)) return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }

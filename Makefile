@@ -10,12 +10,6 @@ SOURCES = src/b64.c src/ber.c src/bigint.c src/ctx.c src/hexdump.c \
 HEADERS = src/ktypes.h src/tlsproto.h src/kexterns.h src/crypto.h src/bigint_impl.h \
           src/bigint.h src/tls.h src/ber.h src/pem.h src/x509.h
 TEST_SOURCES = test/sv-test.c test/cl-test.c
-CFLAGS := -O2 -W -Wall -Werror -g $(CFLAGS_EXTRA)
-
-ifdef ASAN
-CC = clang-3.6
-CFLAGS += -O0 -fsanitize=address -fcolor-diagnostics
-endif
 
 CLANG_FORMAT := clang-format
 
@@ -31,37 +25,6 @@ all: tests
 krypton.c: $(HEADERS) $(SOURCES) Makefile
 	@echo "AMALGAMATING\tkrypton.c"
 	@../tools/amalgam --srcdir src krypton.h $(HEADERS) $(SOURCES) > $@
-
-tests: openssl-tests krypton-tests unit-test
-
-krypton-tests: sv-test-krypton cl-test-krypton
-
-openssl-tests: sv-test-openssl cl-test-openssl
-
-sv-test-openssl: test/sv-test.c
-	$(CC) $(CFLAGS) -o sv-test-openssl $^ -lssl -lcrypto
-
-cl-test-openssl: test/cl-test.c
-	$(CC) $(CFLAGS) -o cl-test-openssl $^ -lssl -lcrypto
-
-%-test-krypton: CFLAGS += -DUSE_KRYPTON=1 -I.
-
-sv-test-krypton: test/sv-test.c krypton.c
-	$(CC) $(CFLAGS) -o sv-test-krypton $^
-
-cl-test-krypton: test/cl-test.c krypton.c
-	$(CC) $(CFLAGS) -o cl-test-krypton $^
-
-unit-test: test/unit-test.c krypton.c ../common/test_util.c
-	$(CC) $(CFLAGS) -DNS_INTERNAL= -I. -Isrc -o unit-test $^
-
-win-test: krypton.c
-ifndef VC6_DIR
-	$(error Please set VC6_DIR)
-endif
-	Include=$(VC6_DIR)/include Lib=$(VC6_DIR)/lib \
-	wine $(VC6_DIR)/bin/cl \
-		krypton.c test/win-test.c
 
 format: krypton.c
 	@$(CLANG_FORMAT) -i src/*.[ch] test/*.[ch]
