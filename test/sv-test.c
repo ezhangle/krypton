@@ -165,6 +165,8 @@ static int test_content(SSL *ssl) {
   ret = do_write(ssl, str2, strlen(str2));
   if (ret < 0 || (size_t) ret != strlen(str2)) return 0;
 
+  usleep(100000);
+
   return 1;
 }
 
@@ -243,6 +245,7 @@ shutdown:
   if (do_shutdown(ssl) > 0 && ret) {
     printf("SUCCESS\n");
   } else {
+    printf("shutdown failed\n");
     ret = 0;
   }
 out_close_cl:
@@ -268,6 +271,9 @@ int main(int argc, char **argv) {
     }
   }
   SSL_library_init();
-  if (!do_test("server.crt", "server.key", cipher)) return EXIT_FAILURE;
+  if (!do_test("server.crt", "server.key", cipher)) {
+    fprintf(stderr, "sv-test failure\n");
+    return EXIT_FAILURE;
+  }
   return EXIT_SUCCESS;
 }
