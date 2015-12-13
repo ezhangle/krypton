@@ -58,6 +58,8 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
                         int (*verify_callback)(int, X509_STORE_CTX *));
 int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
                                   const char *CAPath);
+/* Krypton-specific. */
+int SSL_CTX_kr_set_verify_name(SSL_CTX *ctx, const char *name);
 
 /* for the server */
 #define SSL_FILETYPE_PEM 1

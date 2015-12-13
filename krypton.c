@@ -62,6 +62,8 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
                         int (*verify_callback)(int, X509_STORE_CTX *));
 int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
                                   const char *CAPath);
+/* Krypton-specific. */
+int SSL_CTX_kr_set_verify_name(SSL_CTX *ctx, const char *name);
 
 /* for the server */
 #define SSL_FILETYPE_PEM 1
@@ -88,7 +90,7 @@ void SSL_CTX_free(SSL_CTX *);
 #define _GNU_SOURCE
 #undef WIN32_LEAN_AND_MEAN  // Let windows.h always include winsock2.h
 
-#ifndef NOT_AMALGAMATED
+#ifndef NS_INTERNAL
 #define NS_INTERNAL static
 #else
 #define NS_INTERNAL
@@ -208,6 +210,7 @@ struct ssl_ctx_st {
   uint8_t mode;
   uint8_t vrfy_mode;
   struct ssl_method_st meth;
+  char *verify_name;
 };
 
 #define STATE_INITIAL 0
@@ -269,13 +272,13 @@ void hex_dump(const void *ptr, size_t len, size_t llen);
 
 typedef struct _bigint bigint; /**< An alias for _bigint */
 
+/* Amalgamated: #include "tlsproto.h" */
 /* Amalgamated: #include "crypto.h" */
-/* Amalgamated: #include "bigint.h" */
 /* Amalgamated: #include "bigint_impl.h" */
+/* Amalgamated: #include "bigint.h" */
 /* Amalgamated: #include "pem.h" */
 /* Amalgamated: #include "ber.h" */
 /* Amalgamated: #include "../openssl/ssl.h" */
-/* Amalgamated: #include "tlsproto.h" */
 /* Amalgamated: #include "tls.h" */
 /* Amalgamated: #include "ber.h" */
 /* Amalgamated: #include "x509.h" */
@@ -600,16 +603,16 @@ NS_INTERNAL int kr_hmac_len(kr_cs_id cs);
 /* cs = 0 -> client MAC, cs = 1 -> server MAC. */
 #define KR_CLIENT_MAC 0
 #define KR_SERVER_MAC 1
-static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
-                        const uint8_t *msgs[], const size_t *msg_lens,
-                        uint8_t *digest);
+NS_INTERNAL void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                             const uint8_t *msgs[], const size_t *msg_lens,
+                             uint8_t *digest);
 
 typedef void (*kr_hash_func_t)(size_t, const uint8_t **, const size_t *,
                                uint8_t *);
-static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
-                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
-                      const size_t *msg_lens, uint8_t *digest,
-                      size_t digest_len);
+NS_INTERNAL void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                           size_t key_len, size_t num_msgs,
+                           const uint8_t *msgs[], const size_t *msg_lens,
+                           uint8_t *digest, size_t digest_len);
 
 typedef struct {
   uint8_t block_len;
@@ -1051,6 +1054,7 @@ struct X509_st {
   struct vec issuer;
   struct vec subject;
   struct vec sig;
+  struct vec alt_names; /* encoded */
 
   uint8_t enc_alg;
 
@@ -1070,6 +1074,9 @@ NS_INTERNAL int X509_verify(SSL_CTX *ctx, X509 *chain);
 NS_INTERNAL void X509_free(X509 *cert);
 
 NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
+NS_INTERNAL int X509_verify_name(X509 *cert, const char *name);
+
+NS_INTERNAL int kr_match_domain_name(struct ro_vec pat, struct ro_vec dom);
 
 #endif /* _X509_H */
 #ifdef NS_MODULE_LINES
@@ -2814,6 +2821,12 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
   ctx->vrfy_mode = mode;
 }
 
+int SSL_CTX_kr_set_verify_name(SSL_CTX *ctx, const char *name) {
+  free(ctx->verify_name);
+  ctx->verify_name = strdup(name);
+  return ctx->verify_name != NULL;
+}
+
 #ifdef KR_NO_LOAD_CA_STORE
 static enum pem_filter_result pem_no_filter(const DER *obj, int type,
                                             void *arg) {
@@ -3023,16 +3036,16 @@ out:
 }
 
 void SSL_CTX_free(SSL_CTX *ctx) {
-  if (ctx) {
+  if (ctx == NULL) return;
 #ifndef KR_NO_LOAD_CA_STORE
-    X509_free(ctx->ca_store);
+  X509_free(ctx->ca_store);
 #else
-    free(ctx->ca_file);
+  free(ctx->ca_file);
 #endif
-    pem_free(ctx->pem_cert);
-    RSA_free(ctx->rsa_privkey);
-    free(ctx);
-  }
+  pem_free(ctx->pem_cert);
+  RSA_free(ctx->rsa_privkey);
+  free(ctx->verify_name);
+  free(ctx);
 }
 #ifdef NS_MODULE_LINES
 #line 1 "src/src/hexdump.c"
@@ -4311,10 +4324,10 @@ NS_INTERNAL int kr_hmac_len(kr_cs_id cs) {
  * Generic HMAC implementation, takes a vector hash function as an argument.
  * NOTE: does not handle keys larger than the block size.
  */
-static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
-                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
-                      const size_t *msg_lens, uint8_t *digest,
-                      size_t digest_len) {
+NS_INTERNAL void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                           size_t key_len, size_t num_msgs,
+                           const uint8_t *msgs[], const size_t *msg_lens,
+                           uint8_t *digest, size_t digest_len) {
   uint8_t k_pad[64];
   const uint8_t **k_msgs =
       (const uint8_t **) calloc(num_msgs + 2, sizeof(uint8_t *));
@@ -4345,9 +4358,9 @@ static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
   free(k_msgs);
 }
 
-static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
-                        const uint8_t *msgs[], const size_t *msg_lens,
-                        uint8_t *digest) {
+NS_INTERNAL void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                             const uint8_t *msgs[], const size_t *msg_lens,
+                             uint8_t *digest) {
   kr_hash_func_t hf = NULL;
   size_t mac_len = kr_hmac_len(ssl->cur->cipher_suite);
   const uint8_t *key =
@@ -6887,6 +6900,14 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
     ssl->state = STATE_SV_CERT_RCVD;
   }
 
+  if (ssl->ctx->verify_name != NULL) {
+    if (!X509_verify_name(final, ssl->ctx->verify_name)) {
+      dprintf(("cert is not valid for %s\n", ssl->ctx->verify_name));
+      err = ALERT_BAD_CERT;
+      goto err;
+    }
+  }
+
   if (ssl->ctx->vrfy_mode) {
     if (!X509_verify(ssl->ctx, chain)) {
       err = ALERT_BAD_CERT;
@@ -6901,7 +6922,9 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
 
   X509_free(chain);
   return 1;
+
 err:
+  ssl->nxt->svr_key = NULL;
   X509_free(chain);
   tls_alert(ssl, ALERT_LEVEL_FATAL, err);
   return 0;
@@ -7606,23 +7629,52 @@ static int parse_pubkey_info(X509 *cert, const uint8_t *ptr, size_t len) {
   return 1;
 }
 
+static int kr_id_ce(const uint8_t *oid, size_t oid_len) {
+  return (oid_len == 3 && oid[0] == 0x55 && oid[1] == 0x1d) ? oid[2] : -1;
+}
+
 static int decode_extension(X509 *cert, const uint8_t *oid, size_t oid_len,
                             const uint8_t critical, const uint8_t *val,
                             size_t val_len) {
-  static const char *const oidBasicConstraints = "\x55\x1d\x13";
   struct gber_tag tag;
 
-  (void) critical;
-  /* TODO: handle all critical extensions. */
+  switch (kr_id_ce(oid, oid_len)) {
+    case 15: { /* keyUsage */
+      /* TODO(rojer): handle this. */
+      return 1;
+    }
 
-  if (oid_len != 3 || memcmp(oid, oidBasicConstraints, oid_len)) return 1;
+    case 17: { /* subjectAltName */
+      struct gber_tag tag;
+      const uint8_t *ptr = val, *end = val + val_len;
+      ptr = ber_decode_tag(&tag, ptr, end - ptr);
+      if (ptr == NULL) return 0;
+      if (tag.ber_tag != 0x30) return 0; /* Sequence. */
+      cert->alt_names.ptr = realloc(cert->alt_names.ptr, tag.ber_len);
+      if (cert->alt_names.ptr == NULL) return 0;
+      memcpy(cert->alt_names.ptr, ptr, tag.ber_len);
+      cert->alt_names.len = tag.ber_len;
+      return 1;
+    }
 
-  /* encapsulated value */
-  val = ber_decode_tag(&tag, val, val_len);
-  if (NULL == val) return 0;
-  val_len = tag.ber_len;
+    case 19: { /* basicConstraints */
+      /* encapsulated value */
+      val = ber_decode_tag(&tag, val, val_len);
+      if (NULL == val) return 0;
+      val_len = tag.ber_len;
 
-  if (val_len && val[0]) cert->is_ca = 1;
+      if (val_len && val[0]) cert->is_ca = 1;
+      return 1;
+    }
+  }
+
+  if (critical) {
+    dprintf(("unhandled critical extension\n"));
+#ifdef KRYPTON_DEBUG
+    hex_dump(oid, oid_len, 0);
+#endif
+    return 0;
+  }
 
   return 1;
 }
@@ -7700,7 +7752,10 @@ ext:
     val = ptr;
     val_len = tag.ber_len;
 
-    if (!decode_extension(cert, oid, oid_len, critical, val, val_len)) return 0;
+    if (!decode_extension(cert, oid, oid_len, critical, val, val_len)) {
+      dprintf(("failed to decode extension\n"));
+      return 0;
+    }
 
     ptr = ext_end;
   }
@@ -7845,14 +7900,76 @@ bad_cert:
 }
 
 void X509_free(X509 *cert) {
-  if (cert) {
-    free(cert->issuer.ptr);
-    free(cert->subject.ptr);
-    free(cert->sig.ptr);
-    X509_free(cert->next);
-    RSA_free(cert->pub_key);
-    free(cert);
+  if (cert == NULL) return;
+  free(cert->issuer.ptr);
+  free(cert->subject.ptr);
+  free(cert->sig.ptr);
+  free(cert->alt_names.ptr);
+  X509_free(cert->next);
+  RSA_free(cert->pub_key);
+  free(cert);
+}
+
+static void kr_get_next_label(struct ro_vec d, struct ro_vec *l) {
+  const uint8_t *p = d.ptr + d.len - 1;
+  l->ptr = p;
+  l->len = 0;
+  while (p >= d.ptr && *p != '.') {
+    l->ptr = p--;
+    l->len++;
   }
+}
+
+NS_INTERNAL int kr_match_domain_name(struct ro_vec pat, struct ro_vec dom) {
+  struct ro_vec pl, dl;
+  kr_get_next_label(pat, &pl);
+  kr_get_next_label(dom, &dl);
+  while (pl.len != 0 && dl.len != 0) {
+    if (pl.len == 1 && *pl.ptr == '*') {
+      /* Wildcard matching is underspecified. But this seems to be common
+       * behavior. */
+      return 1;
+    }
+    if (pl.len != dl.len ||
+        strncasecmp((const char *) pl.ptr, (const char *) dl.ptr, pl.len) !=
+            0) {
+      break;
+    }
+    pat.len -= pl.len;
+    if (pat.len > 0 && pat.ptr[pat.len - 1] == '.') pat.len--;
+    dom.len -= dl.len;
+    if (dom.len > 0 && dom.ptr[dom.len - 1] == '.') dom.len--;
+    kr_get_next_label(pat, &pl);
+    kr_get_next_label(dom, &dl);
+  }
+  return (pl.len == 0 && dl.len == 0);
+}
+
+NS_INTERNAL int X509_verify_name(X509 *cert, const char *name) {
+  struct ro_vec n;
+  n.ptr = (const uint8_t *) name;
+  n.len = strlen(name);
+  if (cert->alt_names.len > 0) {
+    struct gber_tag tag;
+    const uint8_t *ptr = cert->alt_names.ptr;
+    const uint8_t *end = cert->alt_names.ptr + cert->alt_names.len;
+    while (ptr < end) {
+      ptr = ber_decode_tag(&tag, ptr, end - ptr);
+      if (ptr == NULL) return 0;
+      if ((tag.ber_tag & 0x1f) == 2) { /* dNSName */
+        struct ro_vec an;
+        an.ptr = ptr;
+        an.len = tag.ber_len;
+        dprintf(("alt name: %.*s\n", (int) an.len, an.ptr));
+        if (kr_match_domain_name(n, an)) {
+          dprintf(("name %s matched %.*s\n", name, (int) an.len, an.ptr));
+          return 1;
+        }
+      }
+      ptr += tag.ber_len;
+    }
+  }
+  return 0;
 }
 #ifdef NS_MODULE_LINES
 #line 1 "src/src/x509_verify.c"

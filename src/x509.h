@@ -20,6 +20,7 @@ struct X509_st {
   struct vec issuer;
   struct vec subject;
   struct vec sig;
+  struct vec alt_names; /* encoded */
 
   uint8_t enc_alg;
 
@@ -39,5 +40,8 @@ NS_INTERNAL int X509_verify(SSL_CTX *ctx, X509 *chain);
 NS_INTERNAL void X509_free(X509 *cert);
 
 NS_INTERNAL int x509_issued_by(struct vec *issuer, struct vec *subject);
+NS_INTERNAL int X509_verify_name(X509 *cert, const char *name);
+
+NS_INTERNAL int kr_match_domain_name(struct ro_vec pat, struct ro_vec dom);
 
 #endif /* _X509_H */

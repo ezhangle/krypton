@@ -82,16 +82,16 @@ NS_INTERNAL int kr_hmac_len(kr_cs_id cs);
 /* cs = 0 -> client MAC, cs = 1 -> server MAC. */
 #define KR_CLIENT_MAC 0
 #define KR_SERVER_MAC 1
-static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
-                        const uint8_t *msgs[], const size_t *msg_lens,
-                        uint8_t *digest);
+NS_INTERNAL void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                             const uint8_t *msgs[], const size_t *msg_lens,
+                             uint8_t *digest);
 
 typedef void (*kr_hash_func_t)(size_t, const uint8_t **, const size_t *,
                                uint8_t *);
-static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
-                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
-                      const size_t *msg_lens, uint8_t *digest,
-                      size_t digest_len);
+NS_INTERNAL void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                           size_t key_len, size_t num_msgs,
+                           const uint8_t *msgs[], const size_t *msg_lens,
+                           uint8_t *digest, size_t digest_len);
 
 typedef struct {
   uint8_t block_len;

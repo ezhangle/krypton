@@ -10,7 +10,7 @@
 #define _GNU_SOURCE
 #undef WIN32_LEAN_AND_MEAN  // Let windows.h always include winsock2.h
 
-#ifndef NOT_AMALGAMATED
+#ifndef NS_INTERNAL
 #define NS_INTERNAL static
 #else
 #define NS_INTERNAL
@@ -130,6 +130,7 @@ struct ssl_ctx_st {
   uint8_t mode;
   uint8_t vrfy_mode;
   struct ssl_method_st meth;
+  char *verify_name;
 };
 
 #define STATE_INITIAL 0
@@ -191,13 +192,13 @@ void hex_dump(const void *ptr, size_t len, size_t llen);
 
 typedef struct _bigint bigint; /**< An alias for _bigint */
 
+#include "tlsproto.h"
 #include "crypto.h"
-#include "bigint.h"
 #include "bigint_impl.h"
+#include "bigint.h"
 #include "pem.h"
 #include "ber.h"
 #include "../openssl/ssl.h"
-#include "tlsproto.h"
 #include "tls.h"
 #include "ber.h"
 #include "x509.h"

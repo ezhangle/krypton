@@ -50,6 +50,12 @@ void SSL_CTX_set_verify(SSL_CTX *ctx, int mode,
   ctx->vrfy_mode = mode;
 }
 
+int SSL_CTX_kr_set_verify_name(SSL_CTX *ctx, const char *name) {
+  free(ctx->verify_name);
+  ctx->verify_name = strdup(name);
+  return ctx->verify_name != NULL;
+}
+
 #ifdef KR_NO_LOAD_CA_STORE
 static enum pem_filter_result pem_no_filter(const DER *obj, int type,
                                             void *arg) {
@@ -259,14 +265,14 @@ out:
 }
 
 void SSL_CTX_free(SSL_CTX *ctx) {
-  if (ctx) {
+  if (ctx == NULL) return;
 #ifndef KR_NO_LOAD_CA_STORE
-    X509_free(ctx->ca_store);
+  X509_free(ctx->ca_store);
 #else
-    free(ctx->ca_file);
+  free(ctx->ca_file);
 #endif
-    pem_free(ctx->pem_cert);
-    RSA_free(ctx->rsa_privkey);
-    free(ctx);
-  }
+  pem_free(ctx->pem_cert);
+  RSA_free(ctx->rsa_privkey);
+  free(ctx->verify_name);
+  free(ctx);
 }

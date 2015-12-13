@@ -25,6 +25,8 @@
 #define TEST_ADDR "localhost:4343"
 #define DEFAULT_PORT "443"
 
+static int s_verify_server_name = 0;
+
 static SSL_CTX *setup_ctx(const char *cert_chain, const char *cipher) {
   SSL_CTX *ctx;
 
@@ -215,6 +217,12 @@ static int do_test(const char *caddr, const char *cert_chain,
   ctx = setup_ctx(cert_chain, cipher);
   if (NULL == ctx) goto out;
 
+  if (s_verify_server_name) {
+#if USE_KRYPTON
+    if (!SSL_CTX_kr_set_verify_name(ctx, addr)) goto out_ctx;
+#endif
+  }
+
   ssl = SSL_new(ctx);
   if (NULL == ssl) goto out_ctx;
 
@@ -271,10 +279,17 @@ out:
 int main(int argc, char **argv) {
   int opt;
   const char *addr = NULL, *cipher = NULL;
-  while ((opt = getopt(argc, argv, "c:")) != -1) {
+  const char *ca_file = "ca.crt";
+  while ((opt = getopt(argc, argv, "a:c:n")) != -1) {
     switch (opt) {
+      case 'a':
+        ca_file = optarg;
+        break;
       case 'c':
         cipher = optarg;
+        break;
+      case 'n':
+        s_verify_server_name = 1;
         break;
     }
   }
@@ -284,6 +299,6 @@ int main(int argc, char **argv) {
     addr = TEST_ADDR;
   }
   SSL_library_init();
-  if (!do_test(addr, "ca.crt", cipher)) return EXIT_FAILURE;
+  if (!do_test(addr, ca_file, cipher)) return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }

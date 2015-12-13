@@ -32,25 +32,28 @@ krypton.c: $(HEADERS) $(SOURCES) Makefile
 	@echo "AMALGAMATING\tkrypton.c"
 	@../tools/amalgam --srcdir src krypton.h $(HEADERS) $(SOURCES) > $@
 
-tests: openssl-tests krypton-tests
+tests: openssl-tests krypton-tests unit-test
 
 krypton-tests: sv-test-krypton cl-test-krypton
 
 openssl-tests: sv-test-openssl cl-test-openssl
 
 sv-test-openssl: test/sv-test.c
-	$(CC) $(CFLAGS) -o sv-test-openssl test/sv-test.c -lssl -lcrypto
+	$(CC) $(CFLAGS) -o sv-test-openssl $^ -lssl -lcrypto
 
 cl-test-openssl: test/cl-test.c
-	$(CC) $(CFLAGS) -o cl-test-openssl test/cl-test.c -lssl -lcrypto
+	$(CC) $(CFLAGS) -o cl-test-openssl $^ -lssl -lcrypto
 
 %-test-krypton: CFLAGS += -DUSE_KRYPTON=1 -I.
 
 sv-test-krypton: test/sv-test.c krypton.c
-	$(CC) $(CFLAGS) -o sv-test-krypton test/sv-test.c krypton.c
+	$(CC) $(CFLAGS) -o sv-test-krypton $^
 
 cl-test-krypton: test/cl-test.c krypton.c
-	$(CC) $(CFLAGS) -o cl-test-krypton test/cl-test.c krypton.c
+	$(CC) $(CFLAGS) -o cl-test-krypton $^
+
+unit-test: test/unit-test.c krypton.c ../common/test_util.c
+	$(CC) $(CFLAGS) -DNS_INTERNAL= -I. -Isrc -o unit-test $^
 
 win-test: krypton.c
 ifndef VC6_DIR

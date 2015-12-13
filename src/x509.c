@@ -104,23 +104,52 @@ static int parse_pubkey_info(X509 *cert, const uint8_t *ptr, size_t len) {
   return 1;
 }
 
+static int kr_id_ce(const uint8_t *oid, size_t oid_len) {
+  return (oid_len == 3 && oid[0] == 0x55 && oid[1] == 0x1d) ? oid[2] : -1;
+}
+
 static int decode_extension(X509 *cert, const uint8_t *oid, size_t oid_len,
                             const uint8_t critical, const uint8_t *val,
                             size_t val_len) {
-  static const char *const oidBasicConstraints = "\x55\x1d\x13";
   struct gber_tag tag;
 
-  (void) critical;
-  /* TODO: handle all critical extensions. */
+  switch (kr_id_ce(oid, oid_len)) {
+    case 15: { /* keyUsage */
+      /* TODO(rojer): handle this. */
+      return 1;
+    }
 
-  if (oid_len != 3 || memcmp(oid, oidBasicConstraints, oid_len)) return 1;
+    case 17: { /* subjectAltName */
+      struct gber_tag tag;
+      const uint8_t *ptr = val, *end = val + val_len;
+      ptr = ber_decode_tag(&tag, ptr, end - ptr);
+      if (ptr == NULL) return 0;
+      if (tag.ber_tag != 0x30) return 0; /* Sequence. */
+      cert->alt_names.ptr = realloc(cert->alt_names.ptr, tag.ber_len);
+      if (cert->alt_names.ptr == NULL) return 0;
+      memcpy(cert->alt_names.ptr, ptr, tag.ber_len);
+      cert->alt_names.len = tag.ber_len;
+      return 1;
+    }
 
-  /* encapsulated value */
-  val = ber_decode_tag(&tag, val, val_len);
-  if (NULL == val) return 0;
-  val_len = tag.ber_len;
+    case 19: { /* basicConstraints */
+      /* encapsulated value */
+      val = ber_decode_tag(&tag, val, val_len);
+      if (NULL == val) return 0;
+      val_len = tag.ber_len;
 
-  if (val_len && val[0]) cert->is_ca = 1;
+      if (val_len && val[0]) cert->is_ca = 1;
+      return 1;
+    }
+  }
+
+  if (critical) {
+    dprintf(("unhandled critical extension\n"));
+#ifdef KRYPTON_DEBUG
+    hex_dump(oid, oid_len, 0);
+#endif
+    return 0;
+  }
 
   return 1;
 }
@@ -198,7 +227,10 @@ ext:
     val = ptr;
     val_len = tag.ber_len;
 
-    if (!decode_extension(cert, oid, oid_len, critical, val, val_len)) return 0;
+    if (!decode_extension(cert, oid, oid_len, critical, val, val_len)) {
+      dprintf(("failed to decode extension\n"));
+      return 0;
+    }
 
     ptr = ext_end;
   }
@@ -343,12 +375,74 @@ bad_cert:
 }
 
 void X509_free(X509 *cert) {
-  if (cert) {
-    free(cert->issuer.ptr);
-    free(cert->subject.ptr);
-    free(cert->sig.ptr);
-    X509_free(cert->next);
-    RSA_free(cert->pub_key);
-    free(cert);
+  if (cert == NULL) return;
+  free(cert->issuer.ptr);
+  free(cert->subject.ptr);
+  free(cert->sig.ptr);
+  free(cert->alt_names.ptr);
+  X509_free(cert->next);
+  RSA_free(cert->pub_key);
+  free(cert);
+}
+
+static void kr_get_next_label(struct ro_vec d, struct ro_vec *l) {
+  const uint8_t *p = d.ptr + d.len - 1;
+  l->ptr = p;
+  l->len = 0;
+  while (p >= d.ptr && *p != '.') {
+    l->ptr = p--;
+    l->len++;
   }
+}
+
+NS_INTERNAL int kr_match_domain_name(struct ro_vec pat, struct ro_vec dom) {
+  struct ro_vec pl, dl;
+  kr_get_next_label(pat, &pl);
+  kr_get_next_label(dom, &dl);
+  while (pl.len != 0 && dl.len != 0) {
+    if (pl.len == 1 && *pl.ptr == '*') {
+      /* Wildcard matching is underspecified. But this seems to be common
+       * behavior. */
+      return 1;
+    }
+    if (pl.len != dl.len ||
+        strncasecmp((const char *) pl.ptr, (const char *) dl.ptr, pl.len) !=
+            0) {
+      break;
+    }
+    pat.len -= pl.len;
+    if (pat.len > 0 && pat.ptr[pat.len - 1] == '.') pat.len--;
+    dom.len -= dl.len;
+    if (dom.len > 0 && dom.ptr[dom.len - 1] == '.') dom.len--;
+    kr_get_next_label(pat, &pl);
+    kr_get_next_label(dom, &dl);
+  }
+  return (pl.len == 0 && dl.len == 0);
+}
+
+NS_INTERNAL int X509_verify_name(X509 *cert, const char *name) {
+  struct ro_vec n;
+  n.ptr = (const uint8_t *) name;
+  n.len = strlen(name);
+  if (cert->alt_names.len > 0) {
+    struct gber_tag tag;
+    const uint8_t *ptr = cert->alt_names.ptr;
+    const uint8_t *end = cert->alt_names.ptr + cert->alt_names.len;
+    while (ptr < end) {
+      ptr = ber_decode_tag(&tag, ptr, end - ptr);
+      if (ptr == NULL) return 0;
+      if ((tag.ber_tag & 0x1f) == 2) { /* dNSName */
+        struct ro_vec an;
+        an.ptr = ptr;
+        an.len = tag.ber_len;
+        dprintf(("alt name: %.*s\n", (int) an.len, an.ptr));
+        if (kr_match_domain_name(n, an)) {
+          dprintf(("name %s matched %.*s\n", name, (int) an.len, an.ptr));
+          return 1;
+        }
+      }
+      ptr += tag.ber_len;
+    }
+  }
+  return 0;
 }

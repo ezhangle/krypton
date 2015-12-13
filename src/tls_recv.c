@@ -331,6 +331,14 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
     ssl->state = STATE_SV_CERT_RCVD;
   }
 
+  if (ssl->ctx->verify_name != NULL) {
+    if (!X509_verify_name(final, ssl->ctx->verify_name)) {
+      dprintf(("cert is not valid for %s\n", ssl->ctx->verify_name));
+      err = ALERT_BAD_CERT;
+      goto err;
+    }
+  }
+
   if (ssl->ctx->vrfy_mode) {
     if (!X509_verify(ssl->ctx, chain)) {
       err = ALERT_BAD_CERT;
@@ -345,7 +353,9 @@ static int handle_certificate(SSL *ssl, const struct tls_hdr *hdr,
 
   X509_free(chain);
   return 1;
+
 err:
+  ssl->nxt->svr_key = NULL;
   X509_free(chain);
   tls_alert(ssl, ALERT_LEVEL_FATAL, err);
   return 0;

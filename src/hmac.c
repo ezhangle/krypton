@@ -23,10 +23,10 @@ NS_INTERNAL int kr_hmac_len(kr_cs_id cs) {
  * Generic HMAC implementation, takes a vector hash function as an argument.
  * NOTE: does not handle keys larger than the block size.
  */
-static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
-                      size_t key_len, size_t num_msgs, const uint8_t *msgs[],
-                      const size_t *msg_lens, uint8_t *digest,
-                      size_t digest_len) {
+NS_INTERNAL void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
+                           size_t key_len, size_t num_msgs,
+                           const uint8_t *msgs[], const size_t *msg_lens,
+                           uint8_t *digest, size_t digest_len) {
   uint8_t k_pad[64];
   const uint8_t **k_msgs =
       (const uint8_t **) calloc(num_msgs + 2, sizeof(uint8_t *));
@@ -57,9 +57,9 @@ static void kr_hmac_v(kr_hash_func_t hash_func, const uint8_t *key,
   free(k_msgs);
 }
 
-static void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
-                        const uint8_t *msgs[], const size_t *msg_lens,
-                        uint8_t *digest) {
+NS_INTERNAL void kr_ssl_hmac(SSL *ssl, int cs, size_t num_msgs,
+                             const uint8_t *msgs[], const size_t *msg_lens,
+                             uint8_t *digest) {
   kr_hash_func_t hf = NULL;
   size_t mac_len = kr_hmac_len(ssl->cur->cipher_suite);
   const uint8_t *key =
